@@ -1,0 +1,71 @@
+#!/bin/bash
+
+# build-release.sh
+# Script to build AMD64 images for production release and push to GitHub Container Registry
+# Usage: ./build-release.sh [version]
+# Example: ./build-release.sh 2.1.0
+
+set -e  # Exit on any error
+
+# Configuration
+GITHUB_USER="araxiaonline"
+VERSION="${1:-2.0.0}"  # Use first argument or default to 2.0.0
+SERVICES=("ac-authserver" "ac-worldserver" "ac-db-import")
+
+# Validate version format (basic semver check)
+if [[ ! $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "❌ Error: Version must be in semver format (e.g., 2.0.0, 1.5.3)"
+    echo "Usage: ./build-release.sh [version]"
+    exit 1
+fi
+
+echo "🚀 Building AzerothCore release images for AMD64..."
+echo "Version: $VERSION"
+echo "GitHub User: $GITHUB_USER"
+echo ""
+
+# Build AMD64 images using release compose file
+echo "📦 Building AMD64 images..."
+docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.release.yml build \
+  ac-authserver ac-worldserver ac-db-import
+
+echo ""
+echo "🏷️  Tagging images for registry..."
+
+# Tag each service for GitHub Container Registry
+for service in "${SERVICES[@]}"; do
+    echo "Tagging $service..."
+
+    # Tag version
+    docker tag acore/ac-wotlk-${service#ac-}:release-amd64 ghcr.io/$GITHUB_USER/$service:$VERSION
+
+    # Tag latest
+    docker tag acore/ac-wotlk-${service#ac-}:release-amd64 ghcr.io/$GITHUB_USER/$service:latest
+done
+
+echo ""
+echo "📤 Pushing images to GitHub Container Registry..."
+
+# Push to registry
+for service in "${SERVICES[@]}"; do
+    echo "Pushing $service:$VERSION..."
+    docker push ghcr.io/$GITHUB_USER/$service:$VERSION
+
+    echo "Pushing $service:latest..."
+    docker push ghcr.io/$GITHUB_USER/$service:latest
+done
+
+echo ""
+echo "✅ Release build complete!"
+echo ""
+echo "Images pushed:"
+for service in "${SERVICES[@]}"; do
+    echo "  • ghcr.io/$GITHUB_USER/$service:$VERSION"
+    echo "  • ghcr.io/$GITHUB_USER/$service:latest"
+done
+
+echo ""
+echo "🖥️  To deploy on server, run:"
+echo "  docker pull ghcr.io/$GITHUB_USER/ac-authserver:$VERSION"
+echo "  docker pull ghcr.io/$GITHUB_USER/ac-worldserver:$VERSION"
+echo "  docker pull ghcr.io/$GITHUB_USER/ac-db-import:$VERSION"

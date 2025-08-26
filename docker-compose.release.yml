@@ -1,0 +1,31 @@
+# docker-compose.release.yml
+# Override file for building AMD64 images for production release
+# Usage: docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.release.yml build
+
+services:
+  ac-authserver:
+    image: acore/ac-wotlk-authserver:release-amd64
+    build:
+      context: .
+      target: authserver
+      dockerfile: apps/docker/Dockerfile
+      platforms:
+        - linux/amd64
+
+  ac-worldserver:
+    image: acore/ac-wotlk-worldserver:release-amd64
+    build:
+      context: .
+      target: worldserver
+      dockerfile: apps/docker/Dockerfile
+      platforms:
+        - linux/amd64
+
+  ac-db-import:
+    image: acore/ac-wotlk-db-import:release-amd64
+    build:
+      context: .
+      target: db-import
+      dockerfile: apps/docker/Dockerfile
+      platforms:
+        - linux/amd64

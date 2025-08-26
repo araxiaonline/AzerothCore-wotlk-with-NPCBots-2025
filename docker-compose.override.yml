@@ -5,6 +5,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+    command: --local-infile=1
 
   # mount the modules directory so that updates to sql scripts are updated without the need to rebuild
   ac-db-import:
@@ -12,11 +13,14 @@ services:
       - ${DOCKER_VOL_MODULES:-./modules}:/azerothcore/modules
 
   ac-worldserver:
+    build:
+      args:
+        DEBUGGER: ${DEBUGGER:-0}
     environment:
       - DEBUGGER=${DEBUGGER:-0}
     command: >
       /bin/bash -c 'if [ "$$DEBUGGER" == "lldb" ]; then
-                     exec lldb /azerothcore/env/dist/bin/worldserver;
+                     exec lldb --no-lldbinit -s /azerothcore/lldb.conf
                    elif [ "$$DEBUGGER" == "gdb" ]; then
                      exec gdb -x /azerothcore/gdb.conf --batch /azerothcore/env/dist/bin/worldserver;
                    else
@@ -28,7 +32,6 @@ services:
       - SYS_ADMIN
     security_opt:
       - seccomp=unconfined  # Disable seccomp to allow unrestricted system calls
-    # platform: linux/amd64
     volumes:
       - ${DOCKER_VOL_DATA:-./env/dist/data/}:/azerothcore/env/dist/data/:ro
       - ${DOCKER_VOL_MODULES:-./modules}:/azerothcore/modules
