@@ -1,9 +1,9 @@
 ARG UBUNTU_VERSION=22.04 # LTS
-ARG ARCH=arm64
+ARG TARGETARCH           # Docker automatically sets this based on --platform
 ARG TZ=Etc/America/New_York
 
-# Base image with specified architecture
-FROM --platform=linux/$ARCH ubuntu:$UBUNTU_VERSION AS skeleton
+# Use TARGETARCH instead of hardcoded ARCH
+FROM --platform=linux/${TARGETARCH} ubuntu:$UBUNTU_VERSION AS skeleton
 # FROM ubuntu:$UBUNTU_VERSION AS skeleton
 
 ARG DOCKER=1
@@ -122,8 +122,15 @@ RUN --mount=type=cache,target=/ccache,sharing=locked \
        -DCMAKE_LINKER=lld                              \
        -DCMAKE_CXX_LINKER=lld                          \
        -DCMAKE_C_LINKER=lld                            \
-    && cmake --build . --config "$CTYPE" -j $(($(nproc) + 1)) \
-    && cmake --install . --config "$CTYPE"
+       > /dev/null \
+    && (cmake --build . --config "$CTYPE" -j $(($(nproc) + 1)) 2>&1 | \
+       sed -u -n \
+           -e '/[Ee]rror\|[Ff]ailed\|undefined reference\|cannot find/{ s/.*/\x1b[31m&\x1b[0m/p; }' \
+           -e '/[Ww]arning/{ s/.*/\x1b[33m&\x1b[0m/p; }' \
+           -e '/\[.*%\]/d' \
+           -e '/^$/d' || \
+       (echo "\x1b[32mBuild completed successfully\x1b[0m" && exit 0)) \
+    && cmake --install . --config "$CTYPE" > /dev/null
 
 #############################
 # Base runtime for services #
@@ -134,6 +141,7 @@ FROM skeleton AS runtime
 ARG USER_ID=1000
 ARG GROUP_ID=1000
 ARG DOCKER_USER=acore
+ARG DEBUGGER=0
 
 ENV ACORE_COMPONENT=undefined
 
@@ -147,21 +155,29 @@ ENV ACORE_COMPONENT=undefined
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       libmysqlclient21 libreadline8 \
-    gettext-base default-mysql-client \
+      gettext-base default-mysql-client \
     && rm -rf /var/lib/apt/lists/*
 
-# Install conditional software based on the DEBUGGER argument
-RUN if [ "$DEBUGGER" = "lldb" ]; then \
-        apt-get install -y --no-install-recommends lldb python3-lldb; \
-        chmod -R a+rX /usr/lib/llvm-14/lib/python3/dist-packages/lldb && \
-        chmod -R a+rX /usr/lib/llvm-14/lib/python3.10/dist-packages/lldb; \
-        COPY apps/startup-scripts/.lldbinit /azerothcore/.lldbinit; \
+# Install debuggers
+RUN apt-get update && \
+    if [ "$DEBUGGER" = "lldb" ]; then \
+        apt-get install -y --no-install-recommends lldb python3-lldb && \
+        if [ -d "/usr/lib/llvm-*/lib/python3/dist-packages/lldb" ]; then \
+            chmod -R a+rX /usr/lib/llvm-*/lib/python3/dist-packages/lldb; \
+        fi && \
+        if [ -d "/usr/lib/llvm-*/lib/python3.*/dist-packages/lldb" ]; then \
+            chmod -R a+rX /usr/lib/llvm-*/lib/python3.*/dist-packages/lldb; \
+        fi; \
     elif [ "$DEBUGGER" = "gdb" ]; then \
         apt-get install -y --no-install-recommends gdb; \
-        COPY apps/startup-scripts/gdb.conf /azerothcore/gdb.conf; \
     else \
         echo "No debugger specified, skipping installation."; \
-    fi
+    fi && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy debugger configurations
+COPY apps/startup-scripts/lldb.conf /azerothcore/lldb.conf
+COPY apps/startup-scripts/gdb.conf /azerothcore/gdb.conf
 
 COPY --from=build /azerothcore/env/dist/etc/ /azerothcore/env/ref/etc
 
