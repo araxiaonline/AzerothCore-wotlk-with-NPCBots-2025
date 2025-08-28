@@ -2331,7 +2331,7 @@ void bot_ai::SetStats(bool force)
     if (myclass == BOT_CLASS_DRUID && GetBotStance() != BOT_STANCE_NONE)
         myclass = GetBotStance();
 
-    uint8 mylevel = std::min<uint8>(master->GetLevel(), DEFAULT_MAX_LEVEL);
+    uint8 mylevel = std::min<uint8>(master->GetLevel(), BotMgr::GetMaxBotLevel());
     if (IsWanderer())
     {
         if (_baseLevel == 0) //this only happens once
@@ -2355,7 +2355,7 @@ void bot_ai::SetStats(bool force)
     else
         mylevel += BotDataMgr::GetLevelBonusForBotRank(me->GetCreatureTemplate()->rank);
 
-    mylevel = std::min<uint8>(mylevel, DEFAULT_MAX_LEVEL + 3);
+    mylevel = std::min<uint8>(mylevel, BotMgr::GetMaxBotLevel());
 
     //Do not remove this code
     mylevel = std::max<uint8>(mylevel, BotDataMgr::GetMinLevelForBotClass(_botclass));

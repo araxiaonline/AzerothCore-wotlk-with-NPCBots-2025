@@ -150,6 +150,7 @@ class AC_GAME_API BotMgr
         static bool IsBotHKAchievementsEnabled();
         static uint8 GetMaxClassBots();
         static uint8 GetMaxAccountBots();
+        static uint8 GetMaxBotLevel();
         static uint32 GetGearBankCapacity();
         static uint32 GetGearBankEquipmentSetsCount();
         static uint8 GetHealTargetIconFlags();
