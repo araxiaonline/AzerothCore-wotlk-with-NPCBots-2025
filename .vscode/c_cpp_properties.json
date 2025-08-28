@@ -7,7 +7,7 @@
                 "${workspaceFolder}/src",
                 "${workspaceFolder}/deps",
                 "${workspaceFolder}/**",
-                "/opt/homebrew/include"
+                "/opt/homebrew/opt/boost/include"
             ],
             "defines": [
                 "AZEROTHCORE",
