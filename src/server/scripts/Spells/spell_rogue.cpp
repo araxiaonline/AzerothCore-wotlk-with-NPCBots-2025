@@ -1,33 +1,36 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "AreaDefines.h"
-#include "CellImpl.h"
-#include "CreatureScript.h"
-#include "GridNotifiers.h"
-#include "SpellAuraEffects.h"
-#include "SpellMgr.h"
-#include "SpellScript.h"
-#include "SpellScriptLoader.h"
 /*
  * Scripts for spells with SPELLFAMILY_ROGUE and SPELLFAMILY_GENERIC spells used by rogue players.
  * Ordered alphabetically using scriptname.
  * Scriptnames of files in this file should be prefixed with "spell_rog_".
  */
+
+#include "CellImpl.h"
+#include "CreatureScript.h"
+#include "GridNotifiers.h"
+#include "ScriptMgr.h"
+#include "SpellAuraEffects.h"
+#include "SpellMgr.h"
+#include "SpellScript.h"
+#include "SpellScriptLoader.h"
+#include "SpellAuras.h"
+#include "Player.h"
 
 //npcbot
 #include "Creature.h"
@@ -48,6 +51,73 @@ enum RogueSpells
     SPELL_ROGUE_TRICKS_OF_THE_TRADE_DMG_BOOST   = 57933,
     SPELL_ROGUE_TRICKS_OF_THE_TRADE_PROC        = 59628,
 };
+
+class spell_rogue_shadowdance_plus : public SpellScript
+{
+    PrepareSpellScript(spell_rogue_shadowdance_plus);
+
+    void HandleAfterCast()
+    {
+        Unit* caster = GetCaster();
+
+        // Check if the caster is an NPC bot and exclude them
+        if (caster->IsNPCBot())
+            return;
+
+        caster->CastSpell(caster, 920540, true); // Cast spell 920540
+    }
+
+    void Register() override
+    {
+        AfterCast += SpellCastFn(spell_rogue_shadowdance_plus::HandleAfterCast);
+    }
+};
+
+void AddSC_spell_rogue_shadowdance_plus()
+{
+    RegisterSpellScript(spell_rogue_shadowdance_plus);
+}
+
+class spell_rogue_swiftness_strikes : public SpellScript
+{
+    PrepareSpellScript(spell_rogue_swiftness_strikes);
+
+    static const uint32 REQUIRED_AURA_ID = 920019;
+    static const uint32 AURA_ID = 920020;
+    static const uint32 STACK_LIMIT = 12;
+    static const uint32 SPELL_ON_LIMIT = 920021;
+
+    void HandleOnCast()
+    {
+        Unit* caster = GetCaster();
+        if (!caster || caster->IsNPCBot()) // Exclude NPC bots
+            return;
+
+        if (!caster->HasAura(REQUIRED_AURA_ID))
+            return;
+
+        if (urand(1, 100) <= 40)
+        {
+            caster->CastSpell(caster, AURA_ID, true);
+            Aura* aura = caster->GetAura(AURA_ID);
+            if (aura && aura->GetStackAmount() >= STACK_LIMIT)
+            {
+                caster->CastSpell(caster, SPELL_ON_LIMIT, true);
+                aura->Remove();
+            }
+        }
+    }
+
+    void Register() override
+    {
+        OnCast += SpellCastFn(spell_rogue_swiftness_strikes::HandleOnCast);
+    }
+};
+
+void AddSC_spell_rogue_swiftness_strikes()
+{
+    RegisterSpellScript(spell_rogue_swiftness_strikes);
+}
 
 class spell_rog_savage_combat : public AuraScript
 {
@@ -401,7 +471,7 @@ class spell_rog_killing_spree : public SpellScript
     SpellCastResult CheckCast()
     {
         // Kologarn area, Killing Spree should not work
-        if (GetCaster()->GetMapId() == MAP_ULDUAR && GetCaster()->GetDistance2d(1766.936f, -24.748f) < 50.0f)
+        if (GetCaster()->GetMapId() == 603 /*Ulduar*/ && GetCaster()->GetDistance2d(1766.936f, -24.748f) < 50.0f)
             return SPELL_FAILED_CANT_DO_THAT_RIGHT_NOW;
         return SPELL_CAST_OK;
     }
@@ -545,7 +615,7 @@ class spell_rog_prey_on_the_weak : public AuraScript
         if (!victim && target->IsPlayer())
             victim = target->ToPlayer()->GetSelectedUnit();
 
-        if (victim && victim->IsAlive() && (target->GetHealthPct() > victim->GetHealthPct()))
+        if (victim && (target->GetHealthPct() > victim->GetHealthPct()))
         {
             if (!target->HasAura(SPELL_ROGUE_PREY_ON_THE_WEAK))
             {
@@ -731,6 +801,43 @@ class spell_rog_pickpocket : public SpellScript
     }
 };
 
+class spell_rogue_add_combo_points : public SpellScriptLoader
+{
+public:
+    spell_rogue_add_combo_points() : SpellScriptLoader("spell_rogue_add_combo_points") { }
+
+    class spell_rogue_add_combo_points_SpellScript : public SpellScript
+    {
+        PrepareSpellScript(spell_rogue_add_combo_points_SpellScript);
+
+        void HandleAfterCast()
+        {
+            if (Player* player = GetCaster()->ToPlayer())
+            {
+                if (Unit* target = player->GetSelectedUnit())
+                {
+                    // Retrieve the base points of Effect 1 to determine the number of combo points to add
+                    int32 comboPointsToAdd = GetSpellInfo()->Effects[EFFECT_1].BasePoints;
+
+                    // Add the determined number of combo points to the player's target
+                    player->AddComboPoints(target, comboPointsToAdd);
+                    player->SendComboPoints();
+                }
+            }
+        }
+
+        void Register() override
+        {
+            AfterCast += SpellCastFn(spell_rogue_add_combo_points_SpellScript::HandleAfterCast);
+        }
+    };
+
+    SpellScript* GetSpellScript() const override
+    {
+        return new spell_rogue_add_combo_points_SpellScript();
+    }
+};
+
 enum vanish
 {
     SPELL_STEALTH           = 1784,
@@ -821,6 +928,9 @@ void AddSC_rogue_spell_scripts()
     RegisterSpellScript(spell_rog_tricks_of_the_trade);
     RegisterSpellScript(spell_rog_tricks_of_the_trade_proc);
     RegisterSpellScript(spell_rog_pickpocket);
+    RegisterSpellScript(spell_rogue_swiftness_strikes);
+    RegisterSpellScript(spell_rogue_shadowdance_plus);
+    new spell_rogue_add_combo_points();
     RegisterSpellScript(spell_rog_vanish_purge);
     RegisterSpellScript(spell_rog_vanish);
 }

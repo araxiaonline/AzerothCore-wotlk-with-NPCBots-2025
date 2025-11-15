@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -59,7 +59,7 @@ void Player::Update(uint32 p_time)
     if (!IsInWorld())
         return;
 
-    sScriptMgr->OnPlayerBeforeUpdate(this, p_time);
+    sScriptMgr->OnBeforePlayerUpdate(this, p_time);
 
     // undelivered mail
     if (m_nextMailDelivereTime && m_nextMailDelivereTime <= GameTime::GetGameTime().count())
@@ -185,8 +185,8 @@ void Player::Update(uint32 p_time)
                         m_swingErrorMsg = 1;
                     }
                 }
-                // 120 degrees of radiant range, if player is not in boundary radius
-                else if (!IsWithinBoundaryRadius(victim) && !HasInArc(2 * float(M_PI) / 3, victim))
+                // 120 degrees of radiant range
+                else if (!HasInArc(2 * M_PI / 3, victim))
                 {
                     setAttackTimer(BASE_ATTACK, 100);
                     if (m_swingErrorMsg != 2) // send single time (client auto repeat)
@@ -215,8 +215,8 @@ void Player::Update(uint32 p_time)
             {
                 if (!IsWithinMeleeRange(victim))
                     setAttackTimer(OFF_ATTACK, 100);
-                else if (!IsWithinBoundaryRadius(victim) && !HasInArc(2 * float(M_PI) / 3, victim))
-                    setAttackTimer(BASE_ATTACK, 100);
+                else if (!HasInArc(2 * M_PI / 3, victim))
+                    setAttackTimer(OFF_ATTACK, 100);
                 else
                 {
                     // prevent base and off attack in same time, delay attack at
@@ -469,44 +469,6 @@ void Player::UpdateNextMailTimeAndUnreads()
     }
 }
 
-void Player::UpdateLFGChannel()
-{
-    if (!sWorld->getBoolConfig(CONFIG_RESTRICTED_LFG_CHANNEL))
-        return;
-
-    ChannelMgr* cMgr = ChannelMgr::forTeam(GetTeamId());
-    if (!cMgr)
-        return;
-
-    ChatChannelsEntry const* cce = sChatChannelsStore.LookupEntry(26); /*LookingForGroup*/
-    Channel* cLFG = cMgr->GetJoinChannel(cce->pattern[m_session->GetSessionDbcLocale()], cce->ChannelID);
-    if (!cLFG)
-        return;
-
-    Channel* cUsed = nullptr;
-    for (Channel* channel : m_channels)
-        if (channel && channel->GetChannelId() == cce->ChannelID)
-        {
-            cUsed = cLFG;
-            break;
-        }
-
-    if (IsUsingLfg())
-    {
-        if (cUsed == cLFG)
-            return;
-
-        cLFG->JoinChannel(this, "");
-    }
-    else
-    {
-        if (cLFG != cUsed)
-            return;
-
-        cLFG->LeaveChannel(this, true);
-    }
-}
-
 void Player::UpdateLocalChannels(uint32 newZone)
 {
     // pussywizard: mutex needed (tc changed opcode to THREAD UNSAFE)
@@ -558,16 +520,17 @@ void Player::UpdateLocalChannels(uint32 newZone)
                                   // names are not changing
 
                     char        new_channel_name_buf[100];
-                    std::string currentNameExt;
+                    char const* currentNameExt;
 
                     if (channel->flags & CHANNEL_DBC_FLAG_CITY_ONLY)
-                        currentNameExt = sObjectMgr->GetAcoreStringForDBCLocale(LANG_CHANNEL_CITY);
+                        currentNameExt = sObjectMgr->GetAcoreStringForDBCLocale(
+                            LANG_CHANNEL_CITY);
                     else
-                        currentNameExt = current_zone_name;
+                        currentNameExt = current_zone_name.c_str();
 
                     snprintf(new_channel_name_buf, 100,
                              channel->pattern[m_session->GetSessionDbcLocale()],
-                             currentNameExt.c_str());
+                             currentNameExt);
 
                     joinChannel = cMgr->GetJoinChannel(new_channel_name_buf,
                                                        channel->ChannelID);
@@ -716,7 +679,7 @@ void Player::UpdateAllRatings()
 // skill+step, checking for max value
 bool Player::UpdateSkill(uint32 skill_id, uint32 step)
 {
-    if (!skill_id || !sScriptMgr->OnPlayerCanUpdateSkill(this, skill_id))
+    if (!skill_id)
         return false;
 
     SkillStatusMap::iterator itr = mSkillStatus.find(skill_id);
@@ -727,8 +690,6 @@ bool Player::UpdateSkill(uint32 skill_id, uint32 step)
     uint32 data       = GetUInt32Value(valueIndex);
     uint32 value      = SKILL_VALUE(data);
     uint32 max        = SKILL_MAX(data);
-
-    sScriptMgr->OnPlayerBeforeUpdateSkill(this, skill_id, value, max, step);
 
     if ((!max) || (!value) || (value >= max))
         return false;
@@ -746,8 +707,6 @@ bool Player::UpdateSkill(uint32 skill_id, uint32 step)
         UpdateSkillEnchantments(skill_id, value, new_value);
         UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_REACH_SKILL_LEVEL,
                                   skill_id);
-
-        sScriptMgr->OnPlayerUpdateSkill(this, skill_id, value, max, step, new_value);
         return true;
     }
 
@@ -768,65 +727,84 @@ inline int SkillGainChance(uint32 SkillValue, uint32 GrayLevel,
 }
 
 bool Player::UpdateGatherSkill(uint32 SkillId, uint32 SkillValue,
-                               uint32 RedLevel, uint32 Multiplicator)
+    uint32 RedLevel, uint32 Multiplicator)
 {
     LOG_DEBUG("entities.player.skills",
-              "UpdateGatherSkill(SkillId {} SkillLevel {} RedLevel {})",
-              SkillId, SkillValue, RedLevel);
+        "UpdateGatherSkill(SkillId {} SkillLevel {} RedLevel {})",
+        SkillId, SkillValue, RedLevel);
 
     uint32 gathering_skill_gain =
         sWorld->getIntConfig(CONFIG_SKILL_GAIN_GATHERING);
-    sScriptMgr->OnPlayerUpdateGatheringSkill(this, SkillId, SkillValue, RedLevel + 100, RedLevel + 50, RedLevel + 25, gathering_skill_gain);
+    sScriptMgr->OnUpdateGatheringSkill(this, SkillId, SkillValue, RedLevel + 100, RedLevel + 50, RedLevel + 25, gathering_skill_gain);
 
-    // For skinning and Mining chance decrease with level. 1-74 - no decrease,
-    // 75-149 - 2 times, 225-299 - 8 times
+    // XP multiplier based on skill level ranges
+    float xpMultiplier = 1.0f; // Default multiplier
+    if (SkillValue <= 100)
+        xpMultiplier = 0.5f; // 50% XP for skill levels 1-100
+    else if (SkillValue <= 200)
+        xpMultiplier = 0.75f; // 75% XP for skill levels 101-200
+
+    // Gathering experience calculation
+    uint32 xpToNextLevel = GetUInt32Value(PLAYER_NEXT_LEVEL_XP);
+    float xpBase = xpToNextLevel * 0.0025f; // Base XP (e.g., 0.25% of xpToNextLevel)
+    uint32 xpAmount = (uint32)ceil(xpBase * xpMultiplier);
+
+    // For skinning and mining, chance decreases with level
+    bool skillIncreased = false;
     switch (SkillId)
     {
     case SKILL_HERBALISM:
     case SKILL_LOCKPICKING:
     case SKILL_JEWELCRAFTING:
     case SKILL_INSCRIPTION:
-        return UpdateSkillPro(SkillId,
-                              SkillGainChance(SkillValue, RedLevel + 100,
-                                              RedLevel + 50, RedLevel + 25) *
-                                  Multiplicator,
-                              gathering_skill_gain);
+        skillIncreased = UpdateSkillPro(SkillId,
+            SkillGainChance(SkillValue, RedLevel + 100,
+                RedLevel + 50, RedLevel + 25) *
+            Multiplicator,
+            gathering_skill_gain);
+        break;
     case SKILL_SKINNING:
         if (sWorld->getIntConfig(CONFIG_SKILL_CHANCE_SKINNING_STEPS) == 0)
-            return UpdateSkillPro(SkillId,
-                                  SkillGainChance(SkillValue, RedLevel + 100,
-                                                  RedLevel + 50,
-                                                  RedLevel + 25) *
-                                      Multiplicator,
-                                  gathering_skill_gain);
+            skillIncreased = UpdateSkillPro(SkillId,
+                SkillGainChance(SkillValue, RedLevel + 100,
+                    RedLevel + 50, RedLevel + 25) *
+                Multiplicator,
+                gathering_skill_gain);
         else
-            return UpdateSkillPro(
+            skillIncreased = UpdateSkillPro(
                 SkillId,
                 (SkillGainChance(SkillValue, RedLevel + 100, RedLevel + 50,
-                                 RedLevel + 25) *
-                 Multiplicator) >>
-                    (SkillValue /
-                     sWorld->getIntConfig(CONFIG_SKILL_CHANCE_SKINNING_STEPS)),
+                    RedLevel + 25) *
+                    Multiplicator) >>
+                (SkillValue /
+                    sWorld->getIntConfig(CONFIG_SKILL_CHANCE_SKINNING_STEPS)),
                 gathering_skill_gain);
+        break;
     case SKILL_MINING:
         if (sWorld->getIntConfig(CONFIG_SKILL_CHANCE_MINING_STEPS) == 0)
-            return UpdateSkillPro(SkillId,
-                                  SkillGainChance(SkillValue, RedLevel + 100,
-                                                  RedLevel + 50,
-                                                  RedLevel + 25) *
-                                      Multiplicator,
-                                  gathering_skill_gain);
+            skillIncreased = UpdateSkillPro(SkillId,
+                SkillGainChance(SkillValue, RedLevel + 100,
+                    RedLevel + 50, RedLevel + 25) *
+                Multiplicator,
+                gathering_skill_gain);
         else
-            return UpdateSkillPro(
+            skillIncreased = UpdateSkillPro(
                 SkillId,
                 (SkillGainChance(SkillValue, RedLevel + 100, RedLevel + 50,
-                                 RedLevel + 25) *
-                 Multiplicator) >>
-                    (SkillValue /
-                     sWorld->getIntConfig(CONFIG_SKILL_CHANCE_MINING_STEPS)),
+                    RedLevel + 25) *
+                    Multiplicator) >>
+                (SkillValue /
+                    sWorld->getIntConfig(CONFIG_SKILL_CHANCE_MINING_STEPS)),
                 gathering_skill_gain);
+        break;
     }
-    return false;
+
+    if (skillIncreased && xpAmount > 0)
+    {
+        GiveXP(xpAmount, nullptr, 0, false);
+    }
+
+    return skillIncreased;
 }
 
 bool Player::UpdateCraftSkill(uint32 spellid)
@@ -840,31 +818,51 @@ bool Player::UpdateCraftSkill(uint32 spellid)
     {
         if (_spell_idx->second->SkillLine)
         {
-            uint32 SkillValue =
-                GetPureSkillValue(_spell_idx->second->SkillLine);
+            uint32 SkillValue = GetPureSkillValue(_spell_idx->second->SkillLine);
 
             // Alchemy Discoveries here
             SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellid);
             if (spellInfo && spellInfo->Mechanic == MECHANIC_DISCOVERY)
             {
-                if (uint32 discoveredSpell = GetSkillDiscoverySpell(
-                        _spell_idx->second->SkillLine, spellid, this))
+                if (uint32 discoveredSpell = GetSkillDiscoverySpell(_spell_idx->second->SkillLine, spellid, this))
                     learnSpell(discoveredSpell);
             }
 
-            uint32 craft_skill_gain =
-                sWorld->getIntConfig(CONFIG_SKILL_GAIN_CRAFTING);
-            sScriptMgr->OnPlayerUpdateCraftingSkill(this, _spell_idx->second, SkillValue, craft_skill_gain);
+            uint32 craft_skill_gain = sWorld->getIntConfig(CONFIG_SKILL_GAIN_CRAFTING);
+            sScriptMgr->OnUpdateCraftingSkill(this, _spell_idx->second, SkillValue, craft_skill_gain);
 
-            return UpdateSkillPro(
+            // UpdateSkillPro returns true if a skill point was gained
+            bool skillIncreased = UpdateSkillPro(
                 _spell_idx->second->SkillLine,
-                SkillGainChance(SkillValue,
-                                _spell_idx->second->TrivialSkillLineRankHigh,
-                                (_spell_idx->second->TrivialSkillLineRankHigh +
-                                 _spell_idx->second->TrivialSkillLineRankLow) /
-                                    2,
-                                _spell_idx->second->TrivialSkillLineRankLow),
-                craft_skill_gain);
+                SkillGainChance(
+                    SkillValue,
+                    _spell_idx->second->TrivialSkillLineRankHigh,
+                    (_spell_idx->second->TrivialSkillLineRankHigh + _spell_idx->second->TrivialSkillLineRankLow) / 2,
+                    _spell_idx->second->TrivialSkillLineRankLow),
+                craft_skill_gain
+            );
+
+            if (skillIncreased)
+            {
+                // Total XP required to reach next level from level start:
+                uint32 xpToNextLevel = GetUInt32Value(PLAYER_NEXT_LEVEL_XP);
+
+                // XP multiplier based on skill level ranges
+                float xpMultiplier = 1.0f; 
+                if (SkillValue <= 100)
+                    xpMultiplier = 0.5f; // 50% XP for skill levels 1-100
+                else if (SkillValue <= 200)
+                    xpMultiplier = 0.75f; // 75% XP for skill levels 101-200
+
+                // Base XP to award (0.3% of xpToNextLevel)
+                float xpBase = xpToNextLevel * 0.003f;
+                uint32 xpAmount = (uint32)ceil(xpBase * xpMultiplier);
+
+                if (xpAmount > 0)
+                    GiveXP(xpAmount, nullptr, 0, false);
+            }
+
+            return skillIncreased;
         }
     }
     return false;
@@ -923,7 +921,7 @@ bool Player::UpdateSkillPro(uint16 SkillId, int32 Chance, uint32 step)
     LOG_DEBUG("entities.player.skills",
               "UpdateSkillPro(SkillId {}, Chance {:3.1f}%)", SkillId,
               Chance / 10.0f);
-    if (!SkillId || !sScriptMgr->OnPlayerCanUpdateSkill(this, SkillId))
+    if (!SkillId)
         return false;
 
     if (Chance <= 0) // speedup in 0 chance case
@@ -941,10 +939,8 @@ bool Player::UpdateSkillPro(uint16 SkillId, int32 Chance, uint32 step)
     uint32 valueIndex = PLAYER_SKILL_VALUE_INDEX(itr->second.pos);
 
     uint32 data       = GetUInt32Value(valueIndex);
-    uint32 SkillValue = SKILL_VALUE(data);
-    uint32 MaxValue   = SKILL_MAX(data);
-
-    sScriptMgr->OnPlayerBeforeUpdateSkill(this, SkillId, SkillValue, MaxValue, step);
+    uint16 SkillValue = SKILL_VALUE(data);
+    uint16 MaxValue   = SKILL_MAX(data);
 
     if (!MaxValue || !SkillValue || SkillValue >= MaxValue)
         return false;
@@ -976,8 +972,6 @@ bool Player::UpdateSkillPro(uint16 SkillId, int32 Chance, uint32 step)
         LOG_DEBUG("entities.player.skills",
                   "Player::UpdateSkillPro Chance={:3.1f}% taken",
                   Chance / 10.0f);
-
-        sScriptMgr->OnPlayerUpdateSkill(this, SkillId, SkillValue, MaxValue, step, new_value);
         return true;
     }
 
@@ -994,7 +988,9 @@ void Player::UpdateWeaponSkill(Unit* victim, WeaponAttackType attType, Item* ite
     if (GetShapeshiftForm() == FORM_TREE)
         return; // use weapon but not skill up
 
-    if (victim->IsCreature() && victim->ToCreature()->HasFlagsExtra(CREATURE_FLAG_EXTRA_NO_SKILL_GAINS))
+    if (victim->IsCreature() &&
+        (victim->ToCreature()->GetCreatureTemplate()->flags_extra &
+         CREATURE_FLAG_EXTRA_NO_SKILL_GAINS))
         return;
 
     uint32 weapon_skill_gain = sWorld->getIntConfig(CONFIG_SKILL_GAIN_WEAPON);
@@ -1180,7 +1176,7 @@ bool Player::UpdatePosition(float x, float y, float z, float orientation,
         SetGroupUpdateFlag(GROUP_UPDATE_FLAG_POSITION);
 
     if (GetTrader() && !IsWithinDistInMap(GetTrader(), INTERACTION_DISTANCE))
-        GetSession()->SendCancelTrade(TRADE_STATUS_TRADE_CANCELED);
+        GetSession()->SendCancelTrade();
 
     CheckAreaExploreAndOutdoor();
 
@@ -1257,20 +1253,19 @@ void Player::UpdateArea(uint32 newArea)
         RemoveRestFlag(REST_FLAG_IN_FACTION_AREA);
 }
 
-void Player::UpdateZone(uint32 newZone, uint32 newArea, bool force)
+void Player::UpdateZone(uint32 newZone, uint32 newArea)
 {
     if (!newZone)
+    {
         return;
+    }
 
-    if (m_zoneUpdateId != newZone || force)
+    if (m_zoneUpdateId != newZone)
     {
         sOutdoorPvPMgr->HandlePlayerLeaveZone(this, m_zoneUpdateId);
         sOutdoorPvPMgr->HandlePlayerEnterZone(this, newZone);
-        sWorldState->HandlePlayerLeaveZone(this, static_cast<AreaTableIDs>(m_zoneUpdateId));
-        sWorldState->HandlePlayerEnterZone(this, static_cast<AreaTableIDs>(newZone));
-    }
-    if (m_zoneUpdateId != newZone)
-    {
+        sWorldState->HandlePlayerLeaveZone(this, static_cast<WorldStateZoneId>(m_zoneUpdateId));
+        sWorldState->HandlePlayerEnterZone(this, static_cast<WorldStateZoneId>(newZone));
         sBattlefieldMgr->HandlePlayerLeaveZone(this, m_zoneUpdateId);
         sBattlefieldMgr->HandlePlayerEnterZone(this, newZone);
         SendInitWorldStates(newZone,
@@ -1279,8 +1274,6 @@ void Player::UpdateZone(uint32 newZone, uint32 newArea, bool force)
         if (Guild* guild = GetGuild())
             guild->UpdateMemberData(this, GUILD_MEMBER_DATA_ZONEID, newZone);
     }
-
-    GetMap()->UpdatePlayerZoneStats(m_zoneUpdateId, newZone);
 
     // group update
     if (GetGroup())
@@ -1297,9 +1290,13 @@ void Player::UpdateZone(uint32 newZone, uint32 newArea, bool force)
         return;
 
     if (sWorld->getBoolConfig(CONFIG_WEATHER))
-        GetMap()->GetOrGenerateZoneDefaultWeather(newZone);
-
-    GetMap()->SendZoneDynamicInfo(newZone, this);
+    {
+        if (Weather* weather = WeatherMgr::FindWeather(zone->ID))
+            weather->SendWeatherUpdateToPlayer(this);
+        else if (!WeatherMgr::AddWeather(zone->ID))
+            // send fine weather packet to remove old zone's weather
+            WeatherMgr::SendFineWeatherUpdateToPlayer(this);
+    }
 
     sScriptMgr->OnPlayerUpdateZone(this, newZone, newArea);
 
@@ -1390,7 +1387,7 @@ void Player::UpdateEquipSpellsAtFormChange()
 
             ApplyEquipSpell(spellInfo, nullptr, false,
                             true); // remove spells that not fit to form
-            if (!sScriptMgr->OnPlayerCanApplyEquipSpellsItemSet(this, eff))
+            if (!sScriptMgr->CanApplyEquipSpellsItemSet(this, eff))
                 break;
             ApplyEquipSpell(spellInfo, nullptr, true,
                             true); // add spells that fit form but not active
@@ -1409,7 +1406,7 @@ void Player::UpdateHomebindTime(uint32 time)
             WorldPacket data(SMSG_RAID_GROUP_ONLY, 4 + 4);
             data << uint32(0);
             data << uint32(0);
-            SendDirectMessage(&data);
+            GetSession()->SendPacket(&data);
         }
         // instance is valid, reset homebind timer
         m_HomebindTimer = 0;
@@ -1432,7 +1429,7 @@ void Player::UpdateHomebindTime(uint32 time)
         WorldPacket data(SMSG_RAID_GROUP_ONLY, 4 + 4);
         data << uint32(m_HomebindTimer);
         data << uint32(1);
-        SendDirectMessage(&data);
+        GetSession()->SendPacket(&data);
         LOG_DEBUG(
             "maps",
             "PLAYER: Player '{}' ({}) will be teleported to homebind in 60 "
@@ -1468,7 +1465,7 @@ void Player::UpdateFFAPvPState(bool reset /*= true*/)
     {
         if (!IsFFAPvP())
         {
-            sScriptMgr->OnPlayerFfaPvpStateUpdate(this, true);
+            sScriptMgr->OnFfaPvpStateUpdate(this, true);
             SetByteFlag(UNIT_FIELD_BYTES_2, 1, UNIT_BYTE2_FLAG_FFA_PVP);
             for (ControlSet::iterator itr = m_Controlled.begin();
                  itr != m_Controlled.end(); ++itr)
@@ -1490,7 +1487,7 @@ void Player::UpdateFFAPvPState(bool reset /*= true*/)
             if (HasByteFlag(UNIT_FIELD_BYTES_2, 1, UNIT_BYTE2_FLAG_FFA_PVP))
             {
                 RemoveByteFlag(UNIT_FIELD_BYTES_2, 1, UNIT_BYTE2_FLAG_FFA_PVP);
-                sScriptMgr->OnPlayerFfaPvpStateUpdate(this, false);
+                sScriptMgr->OnFfaPvpStateUpdate(this, false);
             }
             for (ControlSet::iterator itr = m_Controlled.begin();
                  itr != m_Controlled.end(); ++itr)
@@ -1603,12 +1600,21 @@ void Player::UpdateVisibilityForPlayer(bool mapChange)
     // After added to map seer must be a player - there is no possibility to
     // still have different seer (all charm auras must be already removed)
     if (mapChange && m_seer != this)
+    {
         m_seer = this;
+    }
 
-    Acore::VisibleNotifier notifier(*this, mapChange);
-    Cell::VisitObjects(m_seer, notifier, GetSightRange());
-    Cell::VisitFarVisibleObjects(m_seer, notifier, VISIBILITY_DISTANCE_GIGANTIC);
-    notifier.SendToSelf();
+    Acore::VisibleNotifier notifierNoLarge(
+        *this, mapChange,
+        false); // visit only objects which are not large; default distance
+    Cell::VisitAllObjects(m_seer, notifierNoLarge,
+                          GetSightRange() + VISIBILITY_INC_FOR_GOBJECTS);
+    notifierNoLarge.SendToSelf();
+
+    Acore::VisibleNotifier notifierLarge(
+        *this, mapChange, true); // visit only large objects; maximum distance
+    Cell::VisitAllObjects(m_seer, notifierLarge, GetSightRange());
+    notifierLarge.SendToSelf();
 
     if (mapChange)
         m_last_notify_position.Relocate(-5000.0f, -5000.0f, -5000.0f, 0.0f);
@@ -1635,32 +1641,35 @@ void Player::UpdateObjectVisibility(bool forced, bool fromUpdate)
 }
 
 template <class T>
-inline void UpdateVisibilityOf_helper(Player* player, T* target,
+inline void UpdateVisibilityOf_helper(GuidUnorderedSet& s64, T* target,
                                       std::vector<Unit*>& /*v*/)
 {
-    player->GetObjectVisibilityContainer().LinkWorldObjectVisibility(target);
+    s64.insert(target->GetGUID());
 }
 
 template <>
-inline void UpdateVisibilityOf_helper(Player* player, GameObject* target,
+inline void UpdateVisibilityOf_helper(GuidUnorderedSet& s64, GameObject* target,
                                       std::vector<Unit*>& /*v*/)
 {
-    player->GetObjectVisibilityContainer().LinkWorldObjectVisibility(target);
+    // @HACK: This is to prevent objects like deeprun tram from disappearing
+    // when player moves far from its spawn point while riding it
+    if ((target->GetGOInfo()->type != GAMEOBJECT_TYPE_TRANSPORT))
+        s64.insert(target->GetGUID());
 }
 
 template <>
-inline void UpdateVisibilityOf_helper(Player* player, Creature* target,
+inline void UpdateVisibilityOf_helper(GuidUnorderedSet& s64, Creature* target,
                                       std::vector<Unit*>& v)
 {
-    player->GetObjectVisibilityContainer().LinkWorldObjectVisibility(target);
+    s64.insert(target->GetGUID());
     v.push_back(target);
 }
 
 template <>
-inline void UpdateVisibilityOf_helper(Player* player, Player* target,
+inline void UpdateVisibilityOf_helper(GuidUnorderedSet& s64, Player* target,
                                       std::vector<Unit*>& v)
 {
-    player->GetObjectVisibilityContainer().LinkWorldObjectVisibility(target);
+    s64.insert(target->GetGUID());
     v.push_back(target);
 }
 
@@ -1680,8 +1689,6 @@ template <class T>
 void Player::UpdateVisibilityOf(T* target, UpdateData& data,
                                 std::vector<Unit*>& visibleNow)
 {
-    GetMap()->AddObjectToPendingUpdateList(target);
-
     if (HaveAtClient(target))
     {
         if (!CanSeeOrDetect(target, false, true))
@@ -1689,7 +1696,7 @@ void Player::UpdateVisibilityOf(T* target, UpdateData& data,
             BeforeVisibilityDestroy<T>(target, this);
 
             target->BuildOutOfRangeUpdateBlock(&data);
-            GetObjectVisibilityContainer().UnlinkWorldObjectVisibility(target);
+            m_clientGUIDs.erase(target->GetGUID());
         }
     }
     else
@@ -1697,7 +1704,7 @@ void Player::UpdateVisibilityOf(T* target, UpdateData& data,
         if (CanSeeOrDetect(target, false, true))
         {
             target->BuildCreateUpdateBlockForPlayer(&data, this);
-            UpdateVisibilityOf_helper(this, target, visibleNow);
+            UpdateVisibilityOf_helper(m_clientGUIDs, target, visibleNow);
         }
     }
 }
@@ -1723,7 +1730,7 @@ void Player::UpdateVisibilityOf(WorldObject* target)
                 BeforeVisibilityDestroy<Creature>(target->ToCreature(), this);
 
             target->DestroyForPlayer(this);
-            GetObjectVisibilityContainer().UnlinkWorldObjectVisibility(target);
+            m_clientGUIDs.erase(target->GetGUID());
         }
     }
     else
@@ -1731,7 +1738,7 @@ void Player::UpdateVisibilityOf(WorldObject* target)
         if (CanSeeOrDetect(target, false, true))
         {
             target->SendUpdateToPlayer(this);
-            GetObjectVisibilityContainer().LinkWorldObjectVisibility(target);
+            m_clientGUIDs.insert(target->GetGUID());
 
             // target aura duration for caster show only if target exist at
             // caster client send data at target visibility change (adding to
@@ -1744,67 +1751,69 @@ void Player::UpdateVisibilityOf(WorldObject* target)
 
 void Player::UpdateTriggerVisibility()
 {
+    if (m_clientGUIDs.empty())
+        return;
+
     if (!IsInWorld())
         return;
 
-    if (GetObjectVisibilityContainer().GetVisibleWorldObjectsMap()->empty())
-        return;
-
-    UpdateData udata;
-    DoForAllVisibleWorldObjects([this, &udata](WorldObject* worldObject)
+    UpdateData  udata;
+    WorldPacket packet;
+    for (GuidUnorderedSet::iterator itr = m_clientGUIDs.begin();
+         itr != m_clientGUIDs.end(); ++itr)
     {
-        if (worldObject->IsCreature())
+        if ((*itr).IsCreatureOrVehicle())
         {
-            Creature* creature = worldObject->ToCreature();
+            Creature* creature = GetMap()->GetCreature(*itr);
             // Update fields of triggers, transformed units or unselectable
             // units (values dependent on GM state)
             if (!creature || (!creature->IsTrigger() &&
-                !creature->HasTransformAura() &&
-                !creature->HasUnitFlag(UNIT_FLAG_NOT_SELECTABLE)))
-                return;
+                              !creature->HasTransformAura() &&
+                              !creature->HasUnitFlag(UNIT_FLAG_NOT_SELECTABLE)))
+                continue;
 
             creature->SetFieldNotifyFlag(UF_FLAG_PUBLIC);
             creature->BuildValuesUpdateBlockForPlayer(&udata, this);
             creature->RemoveFieldNotifyFlag(UF_FLAG_PUBLIC);
         }
-        else if (worldObject->IsGameObject())
+        else if ((*itr).IsGameObject())
         {
-            GameObject* go = worldObject->ToGameObject();
+            GameObject* go = GetMap()->GetGameObject(*itr);
             if (!go)
-                return;
+                continue;
 
             go->SetFieldNotifyFlag(UF_FLAG_PUBLIC);
             go->BuildValuesUpdateBlockForPlayer(&udata, this);
             go->RemoveFieldNotifyFlag(UF_FLAG_PUBLIC);
         }
-    });
+    }
 
     if (!udata.HasData())
         return;
 
-    WorldPacket packet;
     udata.BuildPacket(packet);
-    SendDirectMessage(&packet);
+    GetSession()->SendPacket(&packet);
 }
 
 void Player::UpdateForQuestWorldObjects()
 {
-    if (GetObjectVisibilityContainer().GetVisibleWorldObjectsMap()->empty())
+    if (m_clientGUIDs.empty())
         return;
 
-    UpdateData udata;
-    DoForAllVisibleWorldObjects([this, &udata](WorldObject* worldObject)
+    UpdateData  udata;
+    WorldPacket packet;
+    for (GuidUnorderedSet::iterator itr = m_clientGUIDs.begin(); itr != m_clientGUIDs.end(); ++itr)
     {
-        if (worldObject->IsGameObject())
+        if ((*itr).IsGameObject())
         {
-            if (GameObject* obj = worldObject->ToGameObject())
+            if (GameObject* obj = ObjectAccessor::GetGameObject(*this, *itr))
                 obj->BuildValuesUpdateBlockForPlayer(&udata, this);
         }
-        else if (worldObject->IsCreature())
+        else if ((*itr).IsCreatureOrVehicle())
         {
-            Creature* obj = worldObject->ToCreature();
+            Creature* obj = ObjectAccessor::GetCreatureOrPetOrVehicle(*this, *itr);
             if (!obj)
-                return;
+                continue;
 
             // check if this unit requires quest specific flags
             if (obj->HasNpcFlag(UNIT_NPC_FLAG_SPELLCLICK))
@@ -1828,16 +1837,14 @@ void Player::UpdateForQuestWorldObjects()
                 }
             }
             else if (obj->HasNpcFlag(UNIT_NPC_FLAG_VENDOR_MASK | UNIT_NPC_FLAG_TRAINER))
+            {
                 obj->BuildValuesUpdateBlockForPlayer(&udata, this);
+            }
         }
-    });
+    }
 
-    if (!udata.HasData())
-        return;
-
-    WorldPacket packet;
     udata.BuildPacket(packet);
-    SendDirectMessage(&packet);
+    GetSession()->SendPacket(&packet);
 }
 
 void Player::UpdateTitansGrip()
@@ -1981,7 +1988,10 @@ void Player::UpdateCharmedAI()
 
     Unit* target = GetVictim();
     if (target)
+    {
         SetInFront(target);
+        SendMovementFlagUpdate(true);
+    }
 
     if (HasUnitState(UNIT_STATE_CASTING))
         return;
@@ -2375,24 +2385,10 @@ void Player::ProcessSpellQueue()
     {
         PendingSpellCastRequest& request = SpellQueue.front(); // Peek at the first spell
         SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(request.spellId);
-        if (!spellInfo)
-        {
-            LOG_ERROR("entities.player", "Player::ProcessSpellQueue: Invalid spell {}", request.spellId);
-            SpellQueue.clear();
-            break;
-        }
         if (CanExecutePendingSpellCastRequest(spellInfo))
         {
             ExecuteOrCancelSpellCastRequest(&request);
-
-            // ExecuteOrCancelSpellCastRequest() can lead to clearing the SpellQueue.
-            // Example scenario:
-            //   Handling a spell → Dealing damage to yourself (e.g., spell_pri_vampiric_touch) →
-            //   Killing yourself → Player::setDeathState() → SpellQueue.clear().
-            // Calling std::deque::pop_front() on an empty deque results in undefined behavior,
-            // so an additional check is added.
-            if (!SpellQueue.empty())
-                SpellQueue.pop_front();
+            SpellQueue.pop_front(); // Remove from the queue
         }
         else // If the first spell can't execute, stop processing
             break;

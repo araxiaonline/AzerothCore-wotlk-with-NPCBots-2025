@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -23,6 +23,7 @@
 #include "trial_of_the_champion.h"
 
 const Position SpawnPosition = {746.67f, 684.08f, 412.5f, 4.65f};
+#define CLEANUP_CHECK_INTERVAL  5000
 
 /**
  *  @todo: Missing dialog/RP (already populated in DB) && spawns (can use ToC25 locations?) for:
@@ -40,7 +41,7 @@ class Group;
 class instance_trial_of_the_champion : public InstanceMapScript
 {
 public:
-    instance_trial_of_the_champion() : InstanceMapScript("instance_trial_of_the_champion", MAP_TRIAL_OF_THE_CHAMPION) { }
+    instance_trial_of_the_champion() : InstanceMapScript("instance_trial_of_the_champion", 650) { }
 
     InstanceScript* GetInstanceScript(InstanceMap* pMap) const override
     {
@@ -56,6 +57,7 @@ public:
         }
 
         bool CLEANED;
+        TeamId TeamIdInInstance;
         uint32 InstanceProgress;
         uint32 m_auiEncounter[MAX_ENCOUNTER];
         std::string str_data;
@@ -81,13 +83,14 @@ public:
 
         void Initialize() override
         {
+            TeamIdInInstance = TEAM_NEUTRAL;
             InstanceProgress = 0;
             memset(&m_auiEncounter, 0, sizeof(m_auiEncounter));
 
             VehicleList.clear();
             CLEANED = false;
             events.Reset();
-            events.RescheduleEvent(EVENT_CHECK_PLAYERS, 0ms);
+            events.RescheduleEvent(EVENT_CHECK_PLAYERS, 0);
             Counter = 0;
             temp1 = 0;
             temp2 = 0;
@@ -106,49 +109,57 @@ public:
 
         void OnCreatureCreate(Creature* creature) override
         {
+            if (TeamIdInInstance == TEAM_NEUTRAL)
+            {
+                Map::PlayerList const& players = instance->GetPlayers();
+                if (!players.IsEmpty())
+                    if (Player* pPlayer = players.begin()->GetSource())
+                        TeamIdInInstance = pPlayer->GetTeamId();
+            }
+
             switch (creature->GetEntry())
             {
                 // Grand Champions:
                 case NPC_MOKRA:
-                    if (GetTeamIdInInstance() == TEAM_HORDE)
+                    if (TeamIdInInstance == TEAM_HORDE)
                         creature->UpdateEntry(NPC_JACOB);
                     break;
                 case NPC_ERESSEA:
-                    if (GetTeamIdInInstance() == TEAM_HORDE)
+                    if (TeamIdInInstance == TEAM_HORDE)
                         creature->UpdateEntry(NPC_AMBROSE);
                     break;
                 case NPC_RUNOK:
-                    if (GetTeamIdInInstance() == TEAM_HORDE)
+                    if (TeamIdInInstance == TEAM_HORDE)
                         creature->UpdateEntry(NPC_COLOSOS);
                     break;
                 case NPC_ZULTORE:
-                    if (GetTeamIdInInstance() == TEAM_HORDE)
+                    if (TeamIdInInstance == TEAM_HORDE)
                         creature->UpdateEntry(NPC_JAELYNE);
                     break;
                 case NPC_VISCERI:
-                    if (GetTeamIdInInstance() == TEAM_HORDE)
+                    if (TeamIdInInstance == TEAM_HORDE)
                         creature->UpdateEntry(NPC_LANA);
                     break;
 
                 // Grand Champion Minions:
                 case NPC_ORGRIMMAR_MINION:
-                    if (GetTeamIdInInstance() == TEAM_HORDE)
+                    if (TeamIdInInstance == TEAM_HORDE)
                         creature->UpdateEntry(NPC_STORMWIND_MINION);
                     break;
                 case NPC_SILVERMOON_MINION:
-                    if (GetTeamIdInInstance() == TEAM_HORDE)
+                    if (TeamIdInInstance == TEAM_HORDE)
                         creature->UpdateEntry(NPC_GNOMEREGAN_MINION);
                     break;
                 case NPC_THUNDER_BLUFF_MINION:
-                    if (GetTeamIdInInstance() == TEAM_HORDE)
+                    if (TeamIdInInstance == TEAM_HORDE)
                         creature->UpdateEntry(NPC_EXODAR_MINION);
                     break;
                 case NPC_SENJIN_MINION:
-                    if (GetTeamIdInInstance() == TEAM_HORDE)
+                    if (TeamIdInInstance == TEAM_HORDE)
                         creature->UpdateEntry(NPC_DARNASSUS_MINION);
                     break;
                 case NPC_UNDERCITY_MINION:
-                    if (GetTeamIdInInstance() == TEAM_HORDE)
+                    if (TeamIdInInstance == TEAM_HORDE)
                         creature->UpdateEntry(NPC_IRONFORGE_MINION);
                     break;
 
@@ -162,7 +173,7 @@ public:
                 case NPC_JAEREN:
                 case NPC_ARELAS:
                     NPC_AnnouncerGUID = creature->GetGUID();
-                    //if (GetTeamIdInInstance() == TEAM_ALLIANCE)
+                    //if (TeamIdInInstance == TEAM_ALLIANCE)
                     //  creature->UpdateEntry(NPC_ARELAS);
                     creature->SetReactState(REACT_PASSIVE);
                     break;
@@ -260,14 +271,14 @@ public:
 
         // EVENT STUFF BELOW:
 
-        void OnPlayerEnter(Player* player) override
+        void OnPlayerEnter(Player* plr) override
         {
-            InstanceScript::OnPlayerEnter(player);
-
-            if (DoNeedCleanup(player))
+            if (DoNeedCleanup(plr))
+            {
                 InstanceCleanup();
+            }
 
-            events.RescheduleEvent(EVENT_CHECK_PLAYERS, 5s);
+            events.RescheduleEvent(EVENT_CHECK_PLAYERS, CLEANUP_CHECK_INTERVAL);
         }
 
         bool DoNeedCleanup(Player* ignoredPlayer = nullptr)
@@ -442,7 +453,7 @@ public:
             Counter = 0;
             SaveToDB();
             events.Reset();
-            events.RescheduleEvent(EVENT_CHECK_PLAYERS, 5s);
+            events.RescheduleEvent(EVENT_CHECK_PLAYERS, CLEANUP_CHECK_INTERVAL);
 
             CLEANED = true;
         }
@@ -454,7 +465,7 @@ public:
                 case DATA_INSTANCE_PROGRESS:
                     return InstanceProgress;
                 case DATA_TEAMID_IN_INSTANCE:
-                    return GetTeamIdInInstance();
+                    return TeamIdInInstance;
             }
 
             return 0;
@@ -784,7 +795,7 @@ public:
                         {
                             InstanceCleanup();
                         }
-                        events.Repeat(5s);
+                        events.RepeatEvent(CLEANUP_CHECK_INTERVAL);
                     }
                     break;
                 case EVENT_SUMMON_GRAND_CHAMPION_1:
@@ -811,7 +822,7 @@ public:
                         while( number == temp1 || number == temp2 );
                         DoSummonGrandChampion(number, 2);
                         HandleGameObject(GO_MainGateGUID, true);
-                        events.ScheduleEvent(EVENT_CLOSE_GATE, 6s);
+                        events.ScheduleEvent(EVENT_CLOSE_GATE, 6000);
                     }
                     break;
                 case EVENT_CLOSE_GATE:
@@ -1128,7 +1139,7 @@ public:
                         if (Creature* boss = instance->GetCreature(NPC_ArgentChampionGUID))
                         {
                             boss->GetMotionMaster()->MovePoint(0, SpawnPosition);
-                            boss->DespawnOrUnsummon(3s);
+                            boss->DespawnOrUnsummon(3000);
                         }
                     }
                     break;

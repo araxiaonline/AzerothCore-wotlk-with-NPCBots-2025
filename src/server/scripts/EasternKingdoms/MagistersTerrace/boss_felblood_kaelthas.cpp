@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -31,8 +31,7 @@ enum Says
     SAY_GRAVITY_LAPSE           = 3,
     SAY_TIRED                   = 4,
     SAY_RECAST_GRAVITY          = 5,
-    SAY_DEATH                   = 6,
-    SAY_AGGRO_2                 = 7
+    SAY_DEATH                   = 6
 };
 
 enum Spells
@@ -52,12 +51,7 @@ enum Spells
     SPELL_GRAVITY_LAPSE_FLY         = 44227,
     SPELL_GRAVITY_LAPSE_DOT         = 44226,
     SPELL_GRAVITY_LAPSE_CHANNEL     = 44251,
-    SPELL_POWER_FEEDBACK            = 44233,
-    SPELL_CLEAR_FLIGHT              = 44232, // Does nothing currently
-
-    SPELL_EMOTE_EXCLAMATION         = 48348,
-    SPELL_EMOTE_POINT               = 48349,
-    SPELL_EMOTE_ROAR                = 48350
+    SPELL_POWER_FEEDBACK            = 44233
 };
 
 enum Misc
@@ -72,14 +66,18 @@ enum Misc
 
 struct boss_felblood_kaelthas : public BossAI
 {
-    boss_felblood_kaelthas(Creature* creature) : BossAI(creature, DATA_KAELTHAS) { }
+    boss_felblood_kaelthas(Creature* creature) : BossAI(creature, DATA_KAELTHAS)
+    {
+        _hasDoneIntro = false;
+    }
 
     void Reset() override
     {
         BossAI::Reset();
+        _OOCScheduler.CancelAll();
         _gravityLapseCounter = 0;
         me->ApplySpellImmune(0, IMMUNITY_EFFECT, SPELL_EFFECT_INTERRUPT_CAST, false);
-
+        me->SetImmuneToAll(false);
         ScheduleHealthCheckEvent(50, [&]{
             me->CastStop();
             me->ApplySpellImmune(0, IMMUNITY_EFFECT, SPELL_EFFECT_INTERRUPT_CAST, true);
@@ -98,6 +96,12 @@ struct boss_felblood_kaelthas : public BossAI
             }, 10s, 15s);
             GravityLapseSequence(true);
         });
+    }
+
+    void JustSummoned(Creature* summon) override
+    {
+        BossAI::JustSummoned(summon);
+        summon->SetReactState(REACT_PASSIVE);
     }
 
     void GravityLapseSequence(bool firstTime)
@@ -125,6 +129,12 @@ struct boss_felblood_kaelthas : public BossAI
         });
     }
 
+    void InitializeAI() override
+    {
+        BossAI::InitializeAI();
+        me->SetImmuneToAll(true);
+    }
+
     void JustDied(Unit* killer) override
     {
         BossAI::JustDied(killer);
@@ -138,7 +148,7 @@ struct boss_felblood_kaelthas : public BossAI
 
         ScheduleTimedEvent(0ms, [&]{
             DoCastVictim(SPELL_FIREBALL);
-        }, 3s, 4500ms);
+        }, 3000ms, 4500ms);
         ScheduleTimedEvent(15s, [&]{
             Talk(SAY_PHOENIX);
             DoCastSelf(SPELL_PHOENIX);
@@ -155,32 +165,19 @@ struct boss_felblood_kaelthas : public BossAI
             }, 50s);
     }
 
-    void DoAction(int32 actionId) override
+    void MoveInLineOfSight(Unit* who) override
     {
-        if (actionId == DATA_KAEL_INTRO)
+        if (!_hasDoneIntro && me->IsWithinDistInMap(who, 40.0f) && who->IsPlayer())
         {
-            uint32 counter = instance->GetPersistentData(DATA_KAEL_INTRO);
-            instance->StorePersistentData(DATA_KAEL_INTRO, ++counter);
-
-            if (counter == 6 && !me->IsInCombat())
-            {
-                me->SetEmoteState(EMOTE_STATE_TALK);
-                Talk(SAY_AGGRO);
-
-                me->m_Events.AddEventAtOffset([&] {
-                    me->HandleEmoteCommand(EMOTE_ONESHOT_LAUGH_NO_SHEATHE);
-                }, 15s);
-
-                Talk(SAY_AGGRO_2, 20s);
-                me->SetImmuneToAll(true);
-
-                me->m_Events.AddEventAtOffset([&] {
-                    me->ClearEmoteState();
-                    me->SetReactState(REACT_AGGRESSIVE);
-                    me->SetImmuneToAll(false);
-                }, 35s);
-            }
+            Talk(SAY_AGGRO);
+            _hasDoneIntro = true;
+            _OOCScheduler.Schedule(35s, [this](TaskContext){
+                me->SetReactState(REACT_AGGRESSIVE);
+                me->SetImmuneToAll(false);
+                me->SetInCombatWithZone();
+            });
         }
+        BossAI::MoveInLineOfSight(who);
     }
 
     void DamageTaken(Unit* attacker, uint32& damage, DamageEffectType damagetype, SpellSchoolMask damageSchoolMask) override
@@ -190,35 +187,19 @@ struct boss_felblood_kaelthas : public BossAI
             damage = me->GetHealth() - 1;
             if (me->isRegeneratingHealth())
             {
-                me->CombatStop();
                 me->CastStop();
                 me->SetRegeneratingHealth(false);
                 me->SetUnitFlag(UNIT_FLAG_DISABLE_MOVE);
                 me->SetImmuneToAll(true);
+                me->SetStandState(UNIT_STAND_STATE_KNEEL);
+                me->CombatStop();
                 me->SetReactState(REACT_PASSIVE);
                 LapseAction(ACTION_REMOVE_FLY);
                 scheduler.CancelAll();
-                summons.DespawnAll();
-
-                Talk(SAY_DEATH);
-                DoCastSelf(SPELL_EMOTE_EXCLAMATION);
-
-                me->m_Events.AddEventAtOffset([&] {
-                    DoCastSelf(SPELL_EMOTE_POINT);
-                }, 3s);
-
-                me->m_Events.AddEventAtOffset([&] {
-                    DoCastSelf(SPELL_EMOTE_ROAR);
-                }, 7s);
-
-                me->m_Events.AddEventAtOffset([&] {
-                    DoCastSelf(SPELL_EMOTE_ROAR);
-                    DoCastSelf(SPELL_CLEAR_FLIGHT);
-                }, 9s);
-
-                me->m_Events.AddEventAtOffset([&] {
+                _OOCScheduler.Schedule(6s, [this](TaskContext){
                     me->KillSelf();
-                }, 11s);
+                });
+                Talk(SAY_DEATH);
             }
         }
         BossAI::DamageTaken(attacker, damage, damagetype, damageSchoolMask);
@@ -229,9 +210,6 @@ struct boss_felblood_kaelthas : public BossAI
         _gravityLapseCounter = 0;
         me->GetMap()->DoForAllPlayers([&](Player* player)
         {
-            if (player->IsGameMaster())
-                return;
-
             if (action == ACTION_TELEPORT_PLAYERS)
                 DoCast(player, SPELL_GRAVITY_LAPSE_PLAYER + _gravityLapseCounter, true);
             else if (action == ACTION_KNOCKUP)
@@ -246,7 +224,15 @@ struct boss_felblood_kaelthas : public BossAI
             ++_gravityLapseCounter;
         });
     }
+
+    void UpdateAI(uint32 diff) override
+    {
+        _OOCScheduler.Update(diff);
+        BossAI::UpdateAI(diff);
+    }
 private:
+    TaskScheduler _OOCScheduler;
+    bool _hasDoneIntro;
     uint8 _gravityLapseCounter;
 };
 

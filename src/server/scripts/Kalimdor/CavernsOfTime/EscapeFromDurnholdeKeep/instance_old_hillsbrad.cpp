@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -19,7 +19,6 @@
 #include "InstanceMapScript.h"
 #include "InstanceScript.h"
 #include "Player.h"
-#include "WorldStateDefines.h"
 #include "old_hillsbrad.h"
 
 static Position const instancePositions[INSTANCE_POSITIONS_COUNT] =
@@ -41,7 +40,7 @@ const Position thrallPositions[THRALL_POSITIONS_COUNT] =
 class instance_old_hillsbrad : public InstanceMapScript
 {
 public:
-    instance_old_hillsbrad() : InstanceMapScript("instance_old_hillsbrad", MAP_THE_ESCAPE_FROM_DURNHOLDE) { }
+    instance_old_hillsbrad() : InstanceMapScript("instance_old_hillsbrad", 560) { }
 
     InstanceScript* GetInstanceScript(InstanceMap* map) const override
     {
@@ -70,8 +69,10 @@ public:
             if (instance->GetPlayersCountExceptGMs() <= 1)
                 CleanupInstance();
 
+            EnsureGridLoaded();
+
             if (_encounterProgress < ENCOUNTER_PROGRESS_BARRELS)
-                player->SendUpdateWorldState(WORLD_STATE_OLD_HILLSBRAD_BARRELS_PLANTED, _barrelCount);
+                player->SendUpdateWorldState(WORLD_STATE_BARRELS_PLANTED, _barrelCount);
         }
 
         void CleanupInstance()
@@ -79,11 +80,11 @@ public:
             if (_encounterProgress == ENCOUNTER_PROGRESS_NONE)
                 return;
 
-            _events.ScheduleEvent(EVENT_INITIAL_BARRELS_FLAME, 0ms);
-            _events.ScheduleEvent(EVENT_FINAL_BARRELS_FLAME, 0ms);
+            _events.ScheduleEvent(EVENT_INITIAL_BARRELS_FLAME, 0);
+            _events.ScheduleEvent(EVENT_FINAL_BARRELS_FLAME, 0);
 
             if (_encounterProgress == ENCOUNTER_PROGRESS_BARRELS)
-                _events.ScheduleEvent(EVENT_SUMMON_LIEUTENANT, 0ms);
+                _events.ScheduleEvent(EVENT_SUMMON_LIEUTENANT, 0);
             else
                 SetData(DATA_THRALL_REPOSITION, 2);
         }
@@ -138,7 +139,7 @@ public:
             {
                 case DATA_THRALL_REPOSITION:
                     if (data > 1)
-                        _events.ScheduleEvent(EVENT_THRALL_REPOSITION, data == 2 ? 0ms : 10s);
+                        _events.ScheduleEvent(EVENT_THRALL_REPOSITION, data == 2 ? 0 : 10000);
                     else if (Creature* thrall = instance->GetCreature(_thrallGUID))
                         Reposition(thrall);
                     return;
@@ -154,12 +155,12 @@ public:
                         if (_barrelCount >= 5 || _encounterProgress > ENCOUNTER_PROGRESS_NONE)
                             return;
 
-                        DoUpdateWorldState(WORLD_STATE_OLD_HILLSBRAD_BARRELS_PLANTED, ++_barrelCount);
+                        DoUpdateWorldState(WORLD_STATE_BARRELS_PLANTED, ++_barrelCount);
                         if (_barrelCount == 5)
                         {
-                            _events.ScheduleEvent(EVENT_INITIAL_BARRELS_FLAME, 4s);
-                            _events.ScheduleEvent(EVENT_FINAL_BARRELS_FLAME, 12s);
-                            _events.ScheduleEvent(EVENT_SUMMON_LIEUTENANT, 18s);
+                            _events.ScheduleEvent(EVENT_INITIAL_BARRELS_FLAME, 4000);
+                            _events.ScheduleEvent(EVENT_FINAL_BARRELS_FLAME, 12000);
+                            _events.ScheduleEvent(EVENT_SUMMON_LIEUTENANT, 18000);
                         }
                         break;
                     }
@@ -196,6 +197,9 @@ public:
             {
                 case EVENT_INITIAL_BARRELS_FLAME:
                     {
+                        instance->LoadGrid(instancePositions[0].GetPositionX(), instancePositions[0].GetPositionY());
+                        instance->LoadGrid(instancePositions[1].GetPositionX(), instancePositions[1].GetPositionY());
+
                         for (ObjectGuid const& guid : _prisonersSet)
                             if (Creature* orc = instance->GetCreature(guid))
                             {
@@ -216,6 +220,9 @@ public:
                     }
                 case EVENT_FINAL_BARRELS_FLAME:
                     {
+                        instance->LoadGrid(instancePositions[0].GetPositionX(), instancePositions[0].GetPositionY());
+                        instance->LoadGrid(instancePositions[1].GetPositionX(), instancePositions[1].GetPositionY());
+
                         if (_encounterProgress == ENCOUNTER_PROGRESS_NONE)
                         {
                             Map::PlayerList const& players = instance->GetPlayers();
@@ -238,11 +245,12 @@ public:
                                     orc->HandleEmoteCommand(EMOTE_ONESHOT_CHEER);
 
                         SetData(DATA_ESCORT_PROGRESS, ENCOUNTER_PROGRESS_BARRELS);
-                        DoUpdateWorldState(WORLD_STATE_OLD_HILLSBRAD_BARRELS_PLANTED, 0);
+                        DoUpdateWorldState(WORLD_STATE_BARRELS_PLANTED, 0);
                         break;
                     }
                 case EVENT_SUMMON_LIEUTENANT:
                     {
+                        instance->LoadGrid(instancePositions[2].GetPositionX(), instancePositions[2].GetPositionY());
                         instance->SummonCreature(NPC_LIEUTENANT_DRAKE, instancePositions[2]);
                         break;
                     }
@@ -253,6 +261,7 @@ public:
                             if (!thrall->IsAlive())
                             {
                                 ++_attemptsCount;
+                                EnsureGridLoaded();
                                 thrall->SetVisible(false);
                                 Reposition(thrall);
                                 thrall->setDeathState(DeathState::Dead);
@@ -282,6 +291,12 @@ public:
                     thrall->SetFacingTo(thrallPositions[data - ENCOUNTER_PROGRESS_THRALL_ARMORED].GetOrientation());
                     break;
             }
+        }
+
+        void EnsureGridLoaded()
+        {
+            for (uint8 i = 0; i < THRALL_POSITIONS_COUNT; ++i)
+                instance->LoadGrid(thrallPositions[i].GetPositionX(), thrallPositions[i].GetPositionY());
         }
 
         void ReadSaveDataMore(std::istringstream& data) override

@@ -140,8 +140,7 @@ foreach(TOOL_NAME ${TOOLS_BUILD_LIST})
         mpq
         zlib
         Recast
-        g3dlib
-        fkYAML)
+        g3dlib)
   endif()
 
   unset(TOOL_PUBLIC_INCLUDES)
@@ -170,9 +169,5 @@ foreach(TOOL_NAME ${TOOLS_BUILD_LIST})
     install(TARGETS ${TOOL_PROJECT_NAME} DESTINATION bin)
   elseif (WIN32)
     install(TARGETS ${TOOL_PROJECT_NAME} DESTINATION "${CMAKE_INSTALL_PREFIX}")
-  endif()
-
-  if (${TOOL_PROJECT_NAME} STREQUAL "mmaps_generator")
-    install(FILES ${SOURCE_TOOL_PATH}/mmaps-config.yaml DESTINATION bin)
   endif()
 endforeach()

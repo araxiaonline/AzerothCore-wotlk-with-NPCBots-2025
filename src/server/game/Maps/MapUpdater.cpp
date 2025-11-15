@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -18,9 +18,7 @@
 #include "MapUpdater.h"
 #include "DatabaseEnv.h"
 #include "LFGMgr.h"
-#include "Log.h"
 #include "Map.h"
-#include "MapMgr.h"
 #include "Metric.h"
 
 class UpdateRequest
@@ -54,27 +52,6 @@ private:
     uint32 s_diff;
 };
 
-class MapPreloadRequest : public UpdateRequest
-{
-public:
-    MapPreloadRequest(uint32 mapId, MapUpdater& updater)
-        : _mapId(mapId), _updater(updater)
-    {
-    }
-
-    void call() override
-    {
-        Map* map = sMapMgr->CreateBaseMap(_mapId);
-        LOG_INFO("server.loading", ">> Loading All Grids For Map {} ({})", map->GetId(), map->GetMapName());
-        map->LoadAllGrids();
-        _updater.update_finished();
-    }
-
-private:
-    uint32 _mapId;
-    MapUpdater& _updater;
-};
-
 class LFGUpdateRequest : public UpdateRequest
 {
 public:
@@ -90,7 +67,7 @@ private:
     uint32 m_diff;
 };
 
-MapUpdater::MapUpdater() : pending_requests(0), _cancelationToken(false)
+MapUpdater::MapUpdater(): pending_requests(0)
 {
 }
 
@@ -107,11 +84,10 @@ void MapUpdater::deactivate()
 {
     _cancelationToken = true;
 
-    wait();  // This is where we wait for tasks to complete
+    wait();
 
-    _queue.Cancel();  // Cancel the queue to prevent further task processing
+    _queue.Cancel();
 
-    // Join all worker threads
     for (auto& thread : _workerThreads)
     {
         if (thread.joinable())
@@ -123,50 +99,44 @@ void MapUpdater::deactivate()
 
 void MapUpdater::wait()
 {
-    std::unique_lock<std::mutex> guard(_lock);  // Guard lock for safe waiting
+    std::unique_lock<std::mutex> guard(_lock);
 
-    // Wait until there are no pending requests
-    _condition.wait(guard, [this] {
-        return pending_requests.load(std::memory_order_acquire) == 0;
-    });
-}
+    while (pending_requests > 0)
+        _condition.wait(guard);
 
-void MapUpdater::schedule_task(UpdateRequest* request)
-{
-    // Atomic increment for pending_requests
-    pending_requests.fetch_add(1, std::memory_order_release);
-    _queue.Push(request);
+    guard.unlock();
 }
 
 void MapUpdater::schedule_update(Map& map, uint32 diff, uint32 s_diff)
 {
-    schedule_task(new MapUpdateRequest(map, *this, diff, s_diff));
-}
+    std::lock_guard<std::mutex> guard(_lock);
 
-void MapUpdater::schedule_map_preload(uint32 mapid)
-{
-    schedule_task(new MapPreloadRequest(mapid, *this));
+    ++pending_requests;
+
+    _queue.Push(new MapUpdateRequest(map, *this, diff, s_diff));
 }
 
 void MapUpdater::schedule_lfg_update(uint32 diff)
 {
-    schedule_task(new LFGUpdateRequest(*this, diff));
+    std::lock_guard<std::mutex> guard(_lock);
+
+    ++pending_requests;
+
+    _queue.Push(new LFGUpdateRequest(*this, diff));
 }
 
 bool MapUpdater::activated()
 {
-    return !_workerThreads.empty();
+    return _workerThreads.size() > 0;
 }
 
 void MapUpdater::update_finished()
 {
-    // Atomic decrement for pending_requests
-    if (pending_requests.fetch_sub(1, std::memory_order_acquire) == 1)
-    {
-        // Only notify when pending_requests becomes 0 (i.e., all tasks are finished)
-        std::lock_guard<std::mutex> lock(_lock);  // Lock only for condition variable notification
-        _condition.notify_all();  // Notify waiting threads that all requests are complete
-    }
+    std::lock_guard<std::mutex> lock(_lock);
+
+    --pending_requests;
+
+    _condition.notify_all();
 }
 
 void MapUpdater::WorkerThread()
@@ -175,16 +145,16 @@ void MapUpdater::WorkerThread()
     CharacterDatabase.WarnAboutSyncQueries(true);
     WorldDatabase.WarnAboutSyncQueries(true);
 
-    while (!_cancelationToken)
+    while (1)
     {
         UpdateRequest* request = nullptr;
 
-        _queue.WaitAndPop(request);  // Wait for and pop a request from the queue
+        _queue.WaitAndPop(request);
+        if (_cancelationToken)
+            return;
 
-        if (!_cancelationToken && request)
-        {
-            request->call();  // Execute the request
-            delete request;  // Clean up after processing
-        }
+        request->call();
+
+        delete request;
     }
 }

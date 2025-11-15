@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -35,6 +35,22 @@
 //  there is probably some underlying problem with imports which should properly addressed
 //  see: https://github.com/azerothcore/azerothcore-wotlk/issues/9766
 #include "GridNotifiersImpl.h"
+
+/* ScriptData
+SDName: Zulfarrak
+SD%Complete: 50
+SDComment: Consider it temporary, no instance script made for this instance yet.
+SDCategory: Zul'Farrak
+EndScriptData */
+
+/* ContentData
+npc_sergeant_bly
+npc_weegli_blastfuse
+EndContentData */
+
+// Dinkle
+#include "../../Custom/Timewalking/10Man.h"
+// end Dinkle
 
 /*######
 ## npc_sergeant_bly
@@ -96,6 +112,21 @@ public:
             ableToPortHome = false;
             startedFight = false;
         }
+
+        // Dinkle
+        void JustDied(Unit* /*killer*/) override
+        {
+            Map::PlayerList const& players = me->GetMap()->GetPlayers();
+            for (auto const& playerPair : players)
+            {
+                Player* player = playerPair.GetSource();
+                if (player)
+                {
+                    DistributeChallengeRewards(player, me, 3, true);
+                }
+            }
+        }
+        // end Dinkle
 
         void EnterEvadeMode(EvadeReason /*reason*/) override
         {
@@ -176,25 +207,25 @@ public:
                 if (Creature* weegli = ObjectAccessor::GetCreature(*me, instance->GetGuidData(NPC_WEEGLI)))
                 {
                     weegli->CastSpell(weegli, SPELL_BLYS_BAND_ESCAPE);
-                    weegli->DespawnOrUnsummon(10s);
+                    weegli->DespawnOrUnsummon(10000);
                 }
                 if (Creature* raven = ObjectAccessor::GetCreature(*me, instance->GetGuidData(NPC_RAVEN)))
                 {
                     raven->CastSpell(raven, SPELL_BLYS_BAND_ESCAPE);
-                    raven->DespawnOrUnsummon(10s);
+                    raven->DespawnOrUnsummon(10000);
                 }
                 if (Creature* oro = ObjectAccessor::GetCreature(*me, instance->GetGuidData(NPC_ORO)))
                 {
                     oro->CastSpell(oro, SPELL_BLYS_BAND_ESCAPE);
-                    oro->DespawnOrUnsummon(10s);
+                    oro->DespawnOrUnsummon(10000);
                 }
                 if (Creature* murta = ObjectAccessor::GetCreature(*me, instance->GetGuidData(NPC_MURTA)))
                 {
                     murta->CastSpell(murta, SPELL_BLYS_BAND_ESCAPE);
-                    murta->DespawnOrUnsummon(10s);
+                    murta->DespawnOrUnsummon(10000);
                 }
                 DoCastSelf(SPELL_BLYS_BAND_ESCAPE);
-                me->DespawnOrUnsummon(10s);
+                me->DespawnOrUnsummon(10000);
                 Porthome_Timer = 156000; //set timer back so that the event doesn't keep triggering
             }
             else
@@ -436,7 +467,7 @@ public:
                             case 1:
                                 me->GetMotionMaster()->MovePoint(2, 1871.18f, 1100.f, 8.88f);
                                 Talk(SAY_WEEGLI_OUT_OF_HERE);
-                                me->DespawnOrUnsummon(8s);
+                                me->DespawnOrUnsummon(8000);
                                 instance->SetData(DATA_PYRAMID, PYRAMID_GATES_DESTROYED);
                                 destroyingDoor = false;
                                 break;
@@ -653,7 +684,7 @@ public:
                 Unit* unit = nullptr;
                 Acore::MostHPMissingInRange u_check(me, 40.f, 1500);
                 Acore::UnitLastSearcher<Acore::MostHPMissingInRange> searcher(me, unit, u_check);
-                Cell::VisitObjects(me, searcher, 40.f);
+                Cell::VisitGridObjects(me, searcher, 40.f);
                 if (unit)
                 {
                     DoCast(unit, SPELL_HEAL);
@@ -671,7 +702,7 @@ public:
                 Unit* unit = nullptr;
                 Acore::MostHPMissingInRange u_check(me, 40.f, 700);
                 Acore::UnitLastSearcher<Acore::MostHPMissingInRange> searcher(me, unit, u_check);
-                Cell::VisitObjects(me, searcher, 40.f);
+                Cell::VisitGridObjects(me, searcher, 40.f);
                 if (unit)
                 {
                     DoCast(unit, SPELL_RENEW);
@@ -704,6 +735,21 @@ public:
                 _shadowBoltTimer -= diff;
             }
         }
+
+        // Dinkle
+        void JustDied(Unit* /*killer*/) override
+        {
+            Map::PlayerList const& players = me->GetMap()->GetPlayers();
+            for (auto const& playerPair : players)
+            {
+                Player* player = playerPair.GetSource();
+                if (player)
+                {
+                    DistributeChallengeRewards(player, me, 3, true);
+                }
+            }
+        }
+        // end Dinkle
 
     private:
         uint32 _shadowBoltTimer;

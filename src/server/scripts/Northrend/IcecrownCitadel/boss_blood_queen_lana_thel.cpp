@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -16,7 +16,6 @@
  */
 
 #include "AchievementCriteriaScript.h"
-#include "AreaDefines.h"
 #include "CreatureScript.h"
 #include "GridNotifiers.h"
 #include "ObjectMgr.h"
@@ -533,7 +532,7 @@ public:
             return _bloodboltedPlayers.count(guid) != 0;
         }
 
-        void SetGUID(ObjectGuid const& guid, int32 type = 0) override
+        void SetGUID(ObjectGuid guid, int32 type = 0) override
         {
             switch (type)
             {
@@ -799,7 +798,7 @@ class spell_blood_queen_vampiric_bite : public SpellScript
 
     SpellCastResult CheckTarget()
     {
-        if (GetExplTargetUnit()->GetMapId() != MAP_ICECROWN_CITADEL)
+        if (GetExplTargetUnit()->GetMapId() != 631)
             return SPELL_FAILED_CANT_DO_THAT_RIGHT_NOW;
         if (IsVampire(GetExplTargetUnit()))
         {
@@ -820,7 +819,7 @@ class spell_blood_queen_vampiric_bite : public SpellScript
             return;
         }
 
-        if (!GetCaster()->IsPlayer() || GetCaster()->GetMapId() != MAP_ICECROWN_CITADEL)
+        if (!GetCaster()->IsPlayer() || GetCaster()->GetMapId() != 631)
             return;
         InstanceScript* instance = GetCaster()->GetInstanceScript();
         if (!instance || instance->GetBossState(DATA_BLOOD_QUEEN_LANA_THEL) != IN_PROGRESS)

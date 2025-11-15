@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -93,6 +93,8 @@ enum Events
  * ---
  */
 
+
+
 struct emerald_dragonAI : public WorldBossAI
 {
     emerald_dragonAI(Creature* creature) : WorldBossAI(creature)
@@ -102,12 +104,13 @@ struct emerald_dragonAI : public WorldBossAI
     void Reset() override
     {
         WorldBossAI::Reset();
+        DoCastSelf(875167, true);
         me->RemoveUnitFlag(UNIT_FLAG_NOT_SELECTABLE | UNIT_FLAG_NON_ATTACKABLE);
         me->SetReactState(REACT_AGGRESSIVE);
         DoCast(me, SPELL_MARK_OF_NATURE_AURA, true);
-        events.ScheduleEvent(EVENT_TAIL_SWEEP, 4s);
-        events.ScheduleEvent(EVENT_NOXIOUS_BREATH, 7500ms, 15s);
-        events.ScheduleEvent(EVENT_SEEPING_FOG, 12500ms, 20s);
+        events.ScheduleEvent(EVENT_TAIL_SWEEP, 8000);
+        events.ScheduleEvent(EVENT_NOXIOUS_BREATH, urand(7500, 15000));
+        events.ScheduleEvent(EVENT_SEEPING_FOG, urand(12500, 20000));
         events.ScheduleEvent(EVENT_SUMMON_PLAYER, 1s);
     }
 
@@ -128,17 +131,17 @@ struct emerald_dragonAI : public WorldBossAI
                 // Despawntime is 2 minutes, so reschedule it for new cast after 2 minutes + a minor "random time" (30 seconds at max)
                 DoCast(me, SPELL_SEEPING_FOG_LEFT, true);
                 DoCast(me, SPELL_SEEPING_FOG_RIGHT, true);
-                events.ScheduleEvent(EVENT_SEEPING_FOG, 120s, 150s);
+                events.ScheduleEvent(EVENT_SEEPING_FOG, urand(120000, 150000));
                 break;
             case EVENT_NOXIOUS_BREATH:
                 // Noxious Breath is cast on random intervals, no less than 7.5 seconds between
                 DoCast(me, SPELL_NOXIOUS_BREATH);
-                events.ScheduleEvent(EVENT_NOXIOUS_BREATH, 7500ms, 15s);
+                events.ScheduleEvent(EVENT_NOXIOUS_BREATH, urand(7500, 15000));
                 break;
             case EVENT_TAIL_SWEEP:
                 // Tail Sweep is cast every two seconds, no matter what goes on in front of the dragon
                 DoCast(me, SPELL_TAIL_SWEEP);
-                events.ScheduleEvent(EVENT_TAIL_SWEEP, 2s);
+                events.ScheduleEvent(EVENT_TAIL_SWEEP, 6000);
                 break;
             case EVENT_SUMMON_PLAYER:
                 if (Unit* target = me->GetVictim())
@@ -171,6 +174,16 @@ struct emerald_dragonAI : public WorldBossAI
             ExecuteEvent(eventId);
 
         DoMeleeAttackIfReady();
+    }
+
+    void JustDied(Unit* /*killer*/) override
+    {
+        _JustDied();
+        DoCastSelf(875167, true);
+        std::list<Creature*> dreamFogs;
+        me->GetCreatureListWithEntryInGrid(dreamFogs, NPC_DREAM_FOG, 100.0f);
+        for (Creature* fog : dreamFogs)
+            fog->DespawnOrUnsummon();
     }
 };
 
@@ -219,7 +232,7 @@ public:
             });
         }
 
-        void SetGUID(ObjectGuid const& guid, int32 type) override
+        void SetGUID(ObjectGuid guid, int32 type) override
         {
             if (type == GUID_DRAGON)
             {
@@ -240,7 +253,7 @@ public:
             {
                 if (dragon->GetAI())
                 {
-                    return dragon->GetAI()->SelectTarget(SelectTargetMethod::Random, 0, 0.0f, true);
+                    return dragon->GetAI()->SelectTarget(SelectTargetMethod::Random, 0, 0.0f, false, false);
                 }
             }
 
@@ -304,7 +317,7 @@ public:
         {
             _stage = 1;
             emerald_dragonAI::Reset();
-            events.ScheduleEvent(EVENT_LIGHTNING_WAVE, 12s);
+            events.ScheduleEvent(EVENT_LIGHTNING_WAVE, 12000);
         }
 
         void JustEngagedWith(Unit* who) override
@@ -320,20 +333,34 @@ public:
             {
                 Talk(SAY_YSONDRE_SUMMON_DRUIDS);
 
-                auto const& attackers = me->GetThreatMgr().GetThreatList();
-                uint8 attackersCount = 0;
+                std::vector<Unit*> validTargets;
 
-                for (const auto attacker : attackers)
+                auto const& attackers = me->GetThreatMgr().GetThreatList();
+
+                for (const auto& threat : attackers)
                 {
-                    if ((*attacker)->ToPlayer() && (*attacker)->IsAlive())
-                        ++attackersCount;
+                    Unit* attacker = threat->GetVictim();
+                    if (attacker && attacker->IsAlive() &&
+                        ((attacker->GetTypeId() == TYPEID_PLAYER) ||
+                            (attacker->GetTypeId() == TYPEID_UNIT && static_cast<Creature*>(attacker)->IsNPCBot())))
+                    {
+                        validTargets.push_back(attacker);
+                    }
                 }
 
-                uint8 amount = attackersCount < 30 ? attackersCount * 0.5f : 15;
-                amount = amount < 1 ? 1 : amount;
+                uint8 amount = validTargets.size() < 30 ? validTargets.size() * 0.5f : 15;
+                amount = std::max<uint8>(amount, 1);  // Ensure at least one druid is summoned
 
+                // Randomly select targets from the list of valid targets and summon druids on them
                 for (uint8 i = 0; i < amount; ++i)
-                    DoCast(me, SPELL_SUMMON_DRUID_SPIRITS, true);
+                {
+                    if (!validTargets.empty())
+                    {
+                        Unit* target = Acore::Containers::SelectRandomContainerElement(validTargets);
+                        DoCast(target, SPELL_SUMMON_DRUID_SPIRITS, true);
+                    }
+                }
+
                 ++_stage;
             }
         }
@@ -343,12 +370,30 @@ public:
             switch (eventId)
             {
                 case EVENT_LIGHTNING_WAVE:
-                    DoCastVictim(SPELL_LIGHTNING_WAVE);
-                    events.ScheduleEvent(EVENT_LIGHTNING_WAVE, 10s, 20s);
+                    CastSpellOnRandomTarget(SPELL_LIGHTNING_WAVE, 100.0f);
+                    events.ScheduleEvent(EVENT_LIGHTNING_WAVE, urand(10000, 20000));
                     break;
                 default:
                     emerald_dragonAI::ExecuteEvent(eventId);
                     break;
+            }
+        }
+
+        void CastSpellOnRandomTarget(uint32 spellId, float range)
+        {
+            std::list<Unit*> targets;
+            Acore::AnyUnitInObjectRangeCheck check(me, range);
+            Acore::UnitListSearcher<Acore::AnyUnitInObjectRangeCheck> searcher(me, targets, check);
+            Cell::VisitAllObjects(me, searcher, range);
+
+            targets.remove_if([this](Unit* unit) -> bool {
+                return !unit->IsAlive() || !(unit->GetTypeId() == TYPEID_PLAYER || (unit->GetTypeId() == TYPEID_UNIT && static_cast<Creature*>(unit)->IsNPCBot()));
+                });
+
+            if (!targets.empty())
+            {
+                Unit* target = Acore::Containers::SelectRandomContainerElement(targets);
+                DoCast(target, spellId);
             }
         }
 
@@ -476,7 +521,7 @@ public:
             if (moveType == FOLLOW_MOTION_TYPE && data == _summonerGuid.GetCounter())
             {
                 me->CastSpell((Unit*)nullptr, SPELL_DARK_OFFERING, false);
-                me->DespawnOrUnsummon(1s);
+                me->DespawnOrUnsummon(1000);
             }
         }
 
@@ -524,7 +569,7 @@ public:
         {
             _stage = 1;
             emerald_dragonAI::Reset();
-            events.ScheduleEvent(EVENT_VOLATILE_INFECTION, 12s);
+            events.ScheduleEvent(EVENT_VOLATILE_INFECTION, 12000);
         }
 
         void KilledUnit(Unit* who) override
@@ -559,7 +604,7 @@ public:
             {
                 case EVENT_VOLATILE_INFECTION:
                     DoCastVictim(SPELL_VOLATILE_INFECTION);
-                    events.ScheduleEvent(EVENT_VOLATILE_INFECTION, 120s);
+                    events.ScheduleEvent(EVENT_VOLATILE_INFECTION, 120000);
                     break;
                 default:
                     emerald_dragonAI::ExecuteEvent(eventId);
@@ -624,8 +669,8 @@ public:
             _banishedTimer = 0;
 
             emerald_dragonAI::Reset();
-            events.ScheduleEvent(EVENT_ARCANE_BLAST, 12s);
-            events.ScheduleEvent(EVENT_BELLOWING_ROAR, 30s);
+            events.ScheduleEvent(EVENT_ARCANE_BLAST, 12000);
+            events.ScheduleEvent(EVENT_BELLOWING_ROAR, 30000);
         }
 
         void JustEngagedWith(Unit* who) override
@@ -671,11 +716,11 @@ public:
             {
                 case EVENT_ARCANE_BLAST:
                     DoCast(SPELL_ARCANE_BLAST);
-                    events.ScheduleEvent(EVENT_ARCANE_BLAST, 7s, 12s);
+                    events.ScheduleEvent(EVENT_ARCANE_BLAST, urand(7000, 12000));
                     break;
                 case EVENT_BELLOWING_ROAR:
                     DoCast(SPELL_BELLOWING_ROAR);
-                    events.ScheduleEvent(EVENT_BELLOWING_ROAR, 20s, 30s);
+                    events.ScheduleEvent(EVENT_BELLOWING_ROAR, urand(20000, 30000));
                     break;
                 default:
                     emerald_dragonAI::ExecuteEvent(eventId);

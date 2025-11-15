@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -91,182 +91,125 @@ GraveyardStruct const* Graveyard::GetDefaultGraveyard(TeamId teamId)
         ALLIANCE_GRAVEYARD = 4, // Westfall
     };
 
-    return GetGraveyard(teamId == TEAM_HORDE ? HORDE_GRAVEYARD : ALLIANCE_GRAVEYARD);
+    return sGraveyard->GetGraveyard(teamId == TEAM_HORDE ? HORDE_GRAVEYARD : ALLIANCE_GRAVEYARD);
 }
+
+GraveyardStruct const* Graveyard::CreateTemporaryGraveyard(Player* player, TeamId teamId)
+{
+    static std::unique_ptr<GraveyardStruct> tempGraveyard;
+
+    if (!tempGraveyard)
+        tempGraveyard = std::make_unique<GraveyardStruct>();
+
+    tempGraveyard->Map = player->GetMapId();
+    tempGraveyard->x = player->GetPositionX();
+    tempGraveyard->y = player->GetPositionY();
+    tempGraveyard->z = player->GetPositionZ();
+
+    LOG_DEBUG("server.loading", "Creating temporary graveyard at player's location: Map {} coords ({}, {}, {})", tempGraveyard->Map, tempGraveyard->x, tempGraveyard->y, tempGraveyard->z);
+
+    return tempGraveyard.get();
+}
+
+// Skip Archerus graveyards if the player isn't a Death Knight.
+enum DeathKnightGraveyards
+{
+    GRAVEYARD_EBON_HOLD = 1369,
+    GRAVEYARD_ARCHERUS = 1405
+};
 
 GraveyardStruct const* Graveyard::GetClosestGraveyard(Player* player, TeamId teamId, bool nearCorpse)
 {
     uint32 graveyardOverride = 0;
-    sScriptMgr->OnPlayerBeforeChooseGraveyard(player, teamId, nearCorpse, graveyardOverride);
+    sScriptMgr->OnBeforeChooseGraveyard(player, teamId, nearCorpse, graveyardOverride);
     if (graveyardOverride)
     {
-        return GetGraveyard(graveyardOverride);
+        return sGraveyard->GetGraveyard(graveyardOverride);
     }
 
-    WorldLocation loc = player->GetWorldLocation();
-
-    if (nearCorpse)
-    {
-        loc = player->GetCorpseLocation();
-    }
-
+    WorldLocation loc = nearCorpse ? player->GetCorpseLocation() : player->GetWorldLocation();
     uint32 mapId = loc.GetMapId();
-    float  x     = loc.GetPositionX();
-    float  y     = loc.GetPositionY();
-    float  z     = loc.GetPositionZ();
+    uint32 zoneId = player->GetZoneId();
+    float x = loc.GetPositionX();
+    float y = loc.GetPositionY();
+    float z = loc.GetPositionZ();
 
-    uint32 zoneId = 0;
-    uint32 areaId = 0;
-    player->GetZoneAndAreaId(zoneId, areaId);
-
-    if (!zoneId && !areaId)
+    // Exception: Send player to their default graveyard if Z is less than or equal to -500
+    if (z <= -500)
     {
-        if (z > -500)
-        {
-            LOG_ERROR("sql.sql", "GetClosestGraveyard: unable to find zoneId and areaId for map {} coords ({}, {}, {})", mapId, x, y, z);
-            return GetDefaultGraveyard(teamId);
-        }
-    }
-
-    // Simulate std. algorithm:
-    //   found some graveyard associated to (ghost_zone, ghost_map)
-    //
-    //   if mapId == graveyard.mapId (ghost in plain zone or city or battleground) and search graveyard at same map
-    //     then check faction
-    //   if mapId != graveyard.mapId (ghost in instance) and search any graveyard associated
-    //     then check faction
-
-    // Fetch the graveyards linked to the areaId first, presumably the closer ones.
-    GraveyardMapBounds range = GraveyardStore.equal_range(areaId);
-
-    // No graveyards linked to the area, search zone.
-    if (range.first == range.second)
-    {
-        range = GraveyardStore.equal_range(zoneId);
-    }
-    else // Found a graveyard linked to the area, check if it's a valid one.
-    {
-        GraveyardData const& graveyardLink = range.first->second;
-
-        if (!graveyardLink.IsNeutralOrFriendlyToTeam(teamId))
-        {
-            // Not a friendly or neutral graveyard, search zone.
-            range = GraveyardStore.equal_range(zoneId);
-        }
-    }
-
-    MapEntry const* map = sMapStore.LookupEntry(mapId);
-
-    // not need to check validity of map object; MapId _MUST_ be valid here
-    if (range.first == range.second && !map->IsBattlegroundOrArena())
-    {
-        LOG_ERROR("sql.sql", "Table `graveyard_zone` incomplete: Zone {} Team {} does not have a linked graveyard.", zoneId, teamId);
         return GetDefaultGraveyard(teamId);
     }
 
-    // at corpse map
-    bool foundNear = false;
-    float distNear = 10000;
-    GraveyardStruct const* entryNear = nullptr;
+    // Variables for nearest graveyards
+    float nearestDistInZone = std::numeric_limits<float>::max();
+    float nearestDist = std::numeric_limits<float>::max();
+    float distEntr = std::numeric_limits<float>::max();
 
-    // at entrance map for corpse map
-    bool foundEntr = false;
-    float distEntr = 10000;
+    GraveyardStruct const* nearestGraveyardInZone = nullptr;
+    GraveyardStruct const* nearestGraveyard = nullptr;
     GraveyardStruct const* entryEntr = nullptr;
-
-    // some where other
     GraveyardStruct const* entryFar = nullptr;
 
     MapEntry const* mapEntry = sMapStore.LookupEntry(mapId);
 
-    for (; range.first != range.second; ++range.first)
+    // Loop through all graveyards
+    for (auto const& [zone, graveyardData] : GraveyardStore)
     {
-        GraveyardData const& graveyardLink = range.first->second;
-        GraveyardStruct const* entry = GetGraveyard(graveyardLink.safeLocId);
-        if (!entry)
-        {
-            LOG_ERROR("sql.sql", "Table `graveyard_zone` has record for not existing `game_graveyard` table {}, skipped.", graveyardLink.safeLocId);
+        GraveyardStruct const* graveyard = sGraveyard->GetGraveyard(graveyardData.safeLocId);
+        if (!graveyard || !graveyardData.IsNeutralOrFriendlyToTeam(teamId))
             continue;
-        }
 
-        // Skip enemy faction graveyard.
-        if (!graveyardLink.IsNeutralOrFriendlyToTeam(teamId))
-        {
-            continue;
-        }
-
-        // Skip Archerus graveyards if the player isn't a Death Knight.
-        enum DeathKnightGraveyards
-        {
-            GRAVEYARD_EBON_HOLD = 1369,
-            GRAVEYARD_ARCHERUS  = 1405
-        };
-
-        if (!player->IsClass(CLASS_DEATH_KNIGHT, CLASS_CONTEXT_GRAVEYARD) && (graveyardLink.safeLocId == GRAVEYARD_EBON_HOLD || graveyardLink.safeLocId == GRAVEYARD_ARCHERUS))
+        // Skip Archerus graveyards if the player isn't a Death Knight
+        if (player->getClass() != CLASS_DEATH_KNIGHT &&
+            (graveyardData.safeLocId == GRAVEYARD_EBON_HOLD || graveyardData.safeLocId == GRAVEYARD_ARCHERUS))
         {
             continue;
         }
 
-        // find now nearest graveyard at other map
-        if (mapId != entry->Map)
-        {
-            // if find graveyard at different map from where entrance placed (or no entrance data), use any first
-            if (!mapEntry
-                    || mapEntry->entrance_map < 0
-                    || uint32(mapEntry->entrance_map) != entry->Map
-                    || (mapEntry->entrance_x == 0 && mapEntry->entrance_y == 0))
-            {
-                // not have any corrdinates for check distance anyway
-                entryFar = entry;
-                continue;
-            }
+        // Check if the graveyard is within the same zone
+        uint32 graveyardZoneId = sMapMgr->GetZoneId(player->GetPhaseMask(), graveyard->Map, graveyard->x, graveyard->y, graveyard->z);
+        float dist2 = (graveyard->x - x) * (graveyard->x - x) + (graveyard->y - y) * (graveyard->y - y) + (graveyard->z - z) * (graveyard->z - z);
 
-            // at entrance map calculate distance (2D);
-            float dist2 = (entry->x - mapEntry->entrance_x) * (entry->x - mapEntry->entrance_x)
-                          + (entry->y - mapEntry->entrance_y) * (entry->y - mapEntry->entrance_y);
-            if (foundEntr)
-            {
-                if (dist2 < distEntr)
-                {
-                    distEntr = dist2;
-                    entryEntr = entry;
-                }
-            }
-            else
-            {
-                foundEntr = true;
-                distEntr = dist2;
-                entryEntr = entry;
-            }
-        }
-        // find now nearest graveyard at same map
-        else
+        if (graveyardZoneId == zoneId && dist2 < nearestDistInZone)
         {
-            float dist2 = (entry->x - x) * (entry->x - x) + (entry->y - y) * (entry->y - y) + (entry->z - z) * (entry->z - z);
-            if (foundNear)
+            nearestDistInZone = dist2;
+            nearestGraveyardInZone = graveyard;
+            continue;
+        }
+
+        // Check for map compatibility (e.g., dungeons, battlegrounds, raids)
+        if (mapId != graveyard->Map && mapEntry && mapEntry->entrance_map == graveyard->Map)
+        {
+            float distEntrance = (graveyard->x - mapEntry->entrance_x) * (graveyard->x - mapEntry->entrance_x) +
+                (graveyard->y - mapEntry->entrance_y) * (graveyard->y - mapEntry->entrance_y);
+            if (distEntrance < distEntr)
             {
-                if (dist2 < distNear)
-                {
-                    distNear = dist2;
-                    entryNear = entry;
-                }
+                distEntr = distEntrance;
+                entryEntr = graveyard;
             }
-            else
-            {
-                foundNear = true;
-                distNear = dist2;
-                entryNear = entry;
-            }
+            continue;
+        }
+
+        // Logic for nearest graveyard on the same map
+        if (mapId == graveyard->Map && dist2 < nearestDist)
+        {
+            nearestDist = dist2;
+            nearestGraveyard = graveyard;
         }
     }
 
-    if (entryNear)
-        return entryNear;
-
+    // Final selection logic: prioritize same zone, then same map, then entrance map
+    if (nearestGraveyardInZone)
+        return nearestGraveyardInZone;
+    if (nearestGraveyard)
+        return nearestGraveyard;
     if (entryEntr)
         return entryEntr;
+    if (entryFar)
+        return entryFar;
 
-    return entryFar;
+    // Fallback to creating a temporary graveyard if no specific graveyard found
+    return CreateTemporaryGraveyard(player, teamId);
 }
 
 GraveyardData const* Graveyard::FindGraveyardData(uint32 id, uint32 zoneId)
@@ -388,7 +331,7 @@ void Graveyard::LoadGraveyardZones()
         uint32 team = fields[2].Get<uint16>();
         TeamId teamId = team == 0 ? TEAM_NEUTRAL : (team == ALLIANCE ? TEAM_ALLIANCE : TEAM_HORDE);
 
-        GraveyardStruct const* entry = GetGraveyard(safeLocId);
+        GraveyardStruct const* entry = sGraveyard->GetGraveyard(safeLocId);
         if (!entry)
         {
             LOG_ERROR("sql.sql", "Table `graveyard_zone` has a record for not existing `game_graveyard` table {}, skipped.", safeLocId);
@@ -438,3 +381,23 @@ GraveyardStruct const* Graveyard::GetGraveyard(const std::string& name) const
 
     return alt;
 }
+//Dinkle: Not sure this is doing what it should. Ideally this is to initialize graveyard data so first repop doesn't lag.
+void Graveyard::InitializeGraveyards()
+{
+    for (auto const& [id, graveyard] : _graveyardStore)
+    {
+        sGraveyard->GetGraveyard(id);
+
+        uint32 zoneId = sMapMgr->GetZoneId(0, graveyard.Map, graveyard.x, graveyard.y, graveyard.z);
+
+        const MapEntry* mapEntry = sMapStore.LookupEntry(graveyard.Map);
+        if (mapEntry)
+        {
+            LOG_DEBUG("server.loading", "Graveyard: Accessing map entry for map ID {}", graveyard.Map);
+        }
+    }
+
+    LOG_INFO("server.loading", "Graveyards have been preloaded into memory.");
+}
+
+

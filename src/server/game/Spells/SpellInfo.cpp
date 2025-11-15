@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -27,6 +27,7 @@
 #include "SpellAuraDefines.h"
 #include "SpellAuraEffects.h"
 #include "SpellMgr.h"
+
 
 //npcbot
 #include "botmgr.h"
@@ -1558,6 +1559,12 @@ SpellCastResult SpellInfo::CheckLocation(uint32 map_id, uint32 zone_id, uint32 a
     // continent limitation (virtual continent)
     if (HasAttribute(SPELL_ATTR4_ONLY_FLYING_AREAS) && (area_id || zone_id))
     {
+        // Dinkle Always allow flying for map IDs 0 and 1
+        if (map_id == 0 || map_id == 1)
+        {
+            return SPELL_CAST_OK;
+        }
+
         AreaTableEntry const* areaEntry = sAreaTableStore.LookupEntry(area_id);
         if (!areaEntry)
         {
@@ -1595,9 +1602,9 @@ SpellCastResult SpellInfo::CheckLocation(uint32 map_id, uint32 zone_id, uint32 a
     {
         case 23333:                                         // Warsong Flag
         case 23335:                                         // Silverwing Flag
-            return map_id == MAP_WARSONG_GULCH && player && player->InBattleground() ? SPELL_CAST_OK : SPELL_FAILED_REQUIRES_AREA;
+            return map_id == 489 && player && player->InBattleground() ? SPELL_CAST_OK : SPELL_FAILED_REQUIRES_AREA;
         case 34976:                                         // Netherstorm Flag
-            return map_id == MAP_EYE_OF_THE_STORM && player && player->InBattleground() ? SPELL_CAST_OK : SPELL_FAILED_REQUIRES_AREA;
+            return map_id == 566 && player && player->InBattleground() ? SPELL_CAST_OK : SPELL_FAILED_REQUIRES_AREA;
         case 2584:                                          // Waiting to Resurrect
         case 22011:                                         // Spirit Heal Channel
         case 22012:                                         // Spirit Heal
@@ -1609,7 +1616,7 @@ SpellCastResult SpellInfo::CheckLocation(uint32 map_id, uint32 zone_id, uint32 a
                 if (!mapEntry)
                     return SPELL_FAILED_INCORRECT_AREA;
 
-                return zone_id == AREA_WINTERGRASP || (mapEntry->IsBattleground() && player && player->InBattleground()) ? SPELL_CAST_OK : SPELL_FAILED_REQUIRES_AREA;
+                return zone_id == 4197 || (mapEntry->IsBattleground() && player && player->InBattleground()) ? SPELL_CAST_OK : SPELL_FAILED_REQUIRES_AREA;
             }
         case 32724:                                         // Gold Team (Alliance)
         case 32725:                                         // Green Team (Alliance)
@@ -1871,7 +1878,7 @@ SpellCastResult SpellInfo::CheckTarget(Unit const* caster, WorldObject const* ta
                         {
                             if (Player const* player = unitTarget->ToPlayer())
                             {
-                                if (player->GetWeaponForAttack(WeaponAttackType(i), true))
+                                if (player->GetWeaponForAttack(WeaponAttackType(BASE_ATTACK + i), true))
                                 {
                                     valid = true;
                                     break;
@@ -1910,25 +1917,11 @@ SpellCastResult SpellInfo::CheckTarget(Unit const* caster, WorldObject const* ta
     else return SPELL_CAST_OK;
 
     // corpseOwner and unit specific target checks
-    if (unitTarget->IsPlayer())
-    {
-        if (HasAttribute(SPELL_ATTR5_NOT_ON_PLAYER))
-            return SPELL_FAILED_TARGET_IS_PLAYER;
-    }
-    else
-    {
-        if (HasAttribute(SPELL_ATTR3_ONLY_ON_PLAYER))
-            //npcbot: allow to target bots
-            if (!unitTarget->IsNPCBot())
-            //end npcbot
-            return SPELL_FAILED_TARGET_NOT_PLAYER;
-
-        if (HasAttribute(SPELL_ATTR5_NOT_ON_PLAYER_CONTROLLED_NPC) && unitTarget->IsControlledByPlayer())
-            //npcbot: allow to target bots
-            if (!unitTarget->IsNPCBot())
-            //end npcbot
-            return SPELL_FAILED_TARGET_IS_PLAYER_CONTROLLED;
-    }
+    if (AttributesEx3 & SPELL_ATTR3_ONLY_ON_PLAYER && !unitTarget->ToPlayer())
+        //npcbot: allow to target bots
+        if (!unitTarget->IsNPCBot())
+        //end npcbot
+        return SPELL_FAILED_TARGET_NOT_PLAYER;
 
     if (!IsAllowingDeadTarget() && !unitTarget->IsAlive())
         return SPELL_FAILED_TARGETS_DEAD;
@@ -1945,10 +1938,24 @@ SpellCastResult SpellInfo::CheckTarget(Unit const* caster, WorldObject const* ta
 
     if (!CheckTargetCreatureType(unitTarget))
     {
-        if (target->IsPlayer())
-            return SPELL_FAILED_TARGET_IS_PLAYER;
+        if (target->GetTypeId() == TYPEID_PLAYER)
+        {
+            const Player* playerTarget = target->ToPlayer();
+            if (!playerTarget)
+                return SPELL_FAILED_BAD_TARGETS;
+
+            // Dinkle: Allow certain spells on certain races
+            if ((Id == 2637 || Id == 18657 || Id == 18658 || Id == 1513 || Id == 14326 || Id == 14327) && playerTarget->GetRaceMask() == 32768)
+                return SPELL_CAST_OK;
+            else if ((Id == 9484 || Id == 9485 || Id == 10955) && playerTarget->GetRaceMask() == 16)
+                return SPELL_CAST_OK;
+            else
+                return SPELL_FAILED_TARGET_IS_PLAYER;
+        }
         else
+        {
             return SPELL_FAILED_BAD_TARGETS;
+        }
     }
 
     // check GM mode and GM invisibility - only for player casts (npc casts are controlled by AI) and negative spells
@@ -2197,7 +2204,6 @@ AuraStateType SpellInfo::LoadAuraState() const
         case 20656:
         case 25602:
         case 32129:
-        case 49163: // Perpetual Instability (Element 115)
             return AURA_STATE_FAERIE_FIRE;
         default:
             break;
@@ -2606,10 +2612,6 @@ SpellInfo const* SpellInfo::GetAuraRankForLevel(uint8 level) const
     //if (IsPassive())
     //    return this;
 
-    // Client ignores spell with these attributes (sub_53D9D0)
-    if (HasAttribute(SPELL_ATTR0_COOLDOWN_ON_EVENT) || HasAttribute(SPELL_ATTR2_ALLOW_LOW_LEVEL_BUFF) || HasAttribute(SPELL_ATTR3_ONLY_PROC_ON_CASTER))
-        return this;
-
     bool needRankSelection = false;
     for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
     {
@@ -2721,6 +2723,16 @@ bool SpellInfo::_IsPositiveEffect(uint8 effIndex, bool deep) const
 
     switch (Effects[effIndex].Effect)
     {
+        case SPELL_EFFECT_DUMMY:
+            // some explicitly required dummy effect sets
+            switch (Id)
+            {
+                case 28441:
+                    return false; // AB Effect 000
+                default:
+                    break;
+            }
+            break;
         // always positive effects (check before target checks that provided non-positive result in some case for positive effects)
         case SPELL_EFFECT_HEAL:
         case SPELL_EFFECT_LEARN_SPELL:
@@ -2730,8 +2742,10 @@ bool SpellInfo::_IsPositiveEffect(uint8 effIndex, bool deep) const
             return true;
         case SPELL_EFFECT_APPLY_AREA_AURA_ENEMY:
             return false;
+
         case SPELL_EFFECT_GAMEOBJECT_DAMAGE:
             return false;
+
         case SPELL_EFFECT_SCHOOL_DAMAGE:
             {
                 bool only = true;
@@ -2755,6 +2769,7 @@ bool SpellInfo::_IsPositiveEffect(uint8 effIndex, bool deep) const
                         return false;
                 break;
             }
+
         // non-positive aura use
         case SPELL_EFFECT_APPLY_AURA:
         case SPELL_EFFECT_APPLY_AREA_AURA_FRIEND:

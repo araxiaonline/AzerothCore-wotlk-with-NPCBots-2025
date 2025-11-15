@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -28,11 +28,14 @@ enum Spells
     SPELL_WORDPAIN          = 15654,
 };
 
-constexpr Milliseconds TIMER_HEAL = 12s;
-constexpr Milliseconds TIMER_MINDBLAST = 16s;
-constexpr Milliseconds TIMER_RENEW = 12s;
-constexpr Milliseconds TIMER_SHADOWBOLT = 16s;
-constexpr Milliseconds TIMER_WORDPAIN = 12s;
+enum SpellTimers
+{
+    TIMER_HEAL          = 12000,
+    TIMER_MINDBLAST     = 16000,
+    TIMER_RENEW         = 12000,
+    TIMER_SHADOWBOLT    = 16000,
+    TIMER_WORDPAIN      = 12000,
+};
 
 struct boss_moira_bronzebeardAI : public BossAI
 {
@@ -41,9 +44,25 @@ struct boss_moira_bronzebeardAI : public BossAI
     void JustEngagedWith(Unit* /*who*/) override
     {
         _JustEngagedWith();
-        events.ScheduleEvent(SPELL_MINDBLAST, TIMER_MINDBLAST / 2);
-        events.ScheduleEvent(SPELL_HEAL, TIMER_HEAL / 2);
-        events.ScheduleEvent(SPELL_RENEW, TIMER_RENEW / 2);
+        events.ScheduleEvent(SPELL_MINDBLAST, 0.5 * (int) TIMER_MINDBLAST);
+        events.ScheduleEvent(SPELL_HEAL, 0.5 * (int) TIMER_HEAL);
+        events.ScheduleEvent(SPELL_RENEW, 0.5 * (int) TIMER_RENEW);
+    }
+
+    void JustDied(Unit* /*killer*/) override
+    {
+        Map::PlayerList const& players = me->GetMap()->GetPlayers();
+        if (players.begin() != players.end())
+        {
+            uint32 baseRewardLevel = 1;
+            bool isDungeon = me->GetMap()->IsDungeon();
+
+            Player* player = players.begin()->GetSource();
+            if (player)
+            {
+                DistributeChallengeRewards(player, me, baseRewardLevel, isDungeon);
+            }
+        }
     }
 
     void UpdateAI(uint32 diff) override
@@ -64,7 +83,7 @@ struct boss_moira_bronzebeardAI : public BossAI
             {
                 case SPELL_MINDBLAST:
                     DoCastVictim(SPELL_MINDBLAST);
-                    events.ScheduleEvent(SPELL_MINDBLAST, TIMER_MINDBLAST - 2s, TIMER_MINDBLAST + 2s);
+                    events.ScheduleEvent(SPELL_MINDBLAST, urand(TIMER_MINDBLAST - 2000, TIMER_MINDBLAST + 2000));
                     break;
                 case SPELL_HEAL:
                     CastOnEmperorIfPossible(SPELL_HEAL, TIMER_HEAL);
@@ -79,7 +98,7 @@ struct boss_moira_bronzebeardAI : public BossAI
         DoMeleeAttackIfReady();
     }
 
-    void CastOnEmperorIfPossible(uint32 spell, Milliseconds timer)
+    void CastOnEmperorIfPossible(uint32 spell, uint32 timer)
     {
         Creature* emperor = ObjectAccessor::GetCreature(*me, instance->GetGuidData(DATA_EMPEROR));
         if (emperor && emperor->HealthBelowPct(90))
@@ -90,7 +109,7 @@ struct boss_moira_bronzebeardAI : public BossAI
         {
             DoCastSelf(spell);
         }
-        events.ScheduleEvent(spell, timer - 2s, timer + 2s);
+        events.ScheduleEvent(spell, urand(timer - 2000, timer + 2000));
     }
 };
 
@@ -104,10 +123,10 @@ struct boss_high_priestess_thaurissanAI : public boss_moira_bronzebeardAI
     {
         _JustEngagedWith();
         Talk(0);
-        events.ScheduleEvent(SPELL_WORDPAIN, TIMER_WORDPAIN / 2);
-        events.ScheduleEvent(SPELL_HEAL, TIMER_HEAL / 2);
-        events.ScheduleEvent(SPELL_RENEW, TIMER_RENEW / 2);
-        events.ScheduleEvent(SPELL_SHADOWBOLT, TIMER_SHADOWBOLT / 2);
+        events.ScheduleEvent(SPELL_WORDPAIN, 0.5 * (int)TIMER_WORDPAIN);
+        events.ScheduleEvent(SPELL_HEAL, 0.5 * (int) TIMER_HEAL);
+        events.ScheduleEvent(SPELL_RENEW, 0.5 * (int) TIMER_RENEW);
+        events.ScheduleEvent(SPELL_SHADOWBOLT, 0.5 * (int) TIMER_SHADOWBOLT);
     }
 
         void UpdateAI(uint32 diff) override
@@ -128,7 +147,7 @@ struct boss_high_priestess_thaurissanAI : public boss_moira_bronzebeardAI
             {
             case SPELL_WORDPAIN:
                 DoCastVictim(SPELL_WORDPAIN);
-                events.ScheduleEvent(SPELL_WORDPAIN, TIMER_WORDPAIN - 2s, TIMER_WORDPAIN + 2s);
+                events.ScheduleEvent(SPELL_WORDPAIN, urand(TIMER_WORDPAIN - 2000, TIMER_WORDPAIN + 2000));
                 break;
             case SPELL_HEAL:
                 CastOnEmperorIfPossible(SPELL_HEAL, TIMER_HEAL);
@@ -138,7 +157,7 @@ struct boss_high_priestess_thaurissanAI : public boss_moira_bronzebeardAI
                 break;
             case SPELL_SHADOWBOLT:
                 DoCastVictim(SPELL_SHADOWBOLT);
-                events.ScheduleEvent(SPELL_SHADOWBOLT, TIMER_SHADOWBOLT - 2s, TIMER_SHADOWBOLT + 2s);
+                events.ScheduleEvent(SPELL_SHADOWBOLT, urand(TIMER_SHADOWBOLT - 2000, TIMER_SHADOWBOLT + 2000));
                 break;
             default:
                 break;

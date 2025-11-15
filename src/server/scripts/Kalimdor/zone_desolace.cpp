@@ -1,19 +1,30 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
+
+/* ScriptData
+SDName: Desolace
+SD%Complete: 100
+SDComment: Quest support: 5561
+SDCategory: Desolace
+EndScriptData */
+
+/* ContentData
+npc_aged_dying_ancient_kodo
+EndContentData */
 
 #include "CreatureScript.h"
 #include "Player.h"
@@ -22,6 +33,7 @@
 #include "ScriptedGossip.h"
 #include "SpellInfo.h"
 
+// Ours
 enum Caravan
 {
     QUEST_BODYGUARD_FOR_HIRE            = 5821,
@@ -42,6 +54,9 @@ enum Caravan
 
     MAX_CARAVAN_SUMMONS                 = 3,
 
+    TIME_SHOP_STOP                      = 5 * MINUTE * IN_MILLISECONDS,
+    TIME_HIRE_STOP                      = 4 * MINUTE * IN_MILLISECONDS,
+
     // Ambush
     NPC_KOLKAR_WAYLAYER                 = 12976,
     NPC_KOLKAR_AMBUSHER                 = 12977,
@@ -49,9 +64,6 @@ enum Caravan
     NPC_DOOMWARDER                      = 4677,
     NPC_NETHER                          = 4684,
 };
-
-constexpr Milliseconds TIME_SHOP_STOP = 600s;
-constexpr Milliseconds TIME_HIRE_STOP = 240s;
 
 class npc_cork_gizelton : public CreatureScript
 {
@@ -121,7 +133,7 @@ public:
         {
             if (_playerGUID)
                 if (Player* player = ObjectAccessor::GetPlayer(*me, _playerGUID))
-                    if (me->IsWithinDist(player, 60.0f))
+                    if (me->IsWithinDist(player, 80.0f))
                         return;
 
             _playerGUID.Clear();
@@ -129,7 +141,7 @@ public:
             ImmuneFlagSet(false, _faction);
         }
 
-        void SetGUID(ObjectGuid const& playerGUID, int32 faction) override
+        void SetGUID(ObjectGuid playerGUID, int32 faction) override
         {
             _playerGUID = playerGUID;
             _faction = faction;
@@ -199,6 +211,16 @@ public:
             SummonsFollow();
         }
 
+        void RestartEscort()
+        {
+            CheckCaravan(); // Ensure caravan is intact.
+            SetDespawnAtEnd(false);
+            Start(true, true, ObjectGuid::Empty, 0, false, false, true);
+
+            // Explicitly command to follow right after restarting.
+            SummonsFollow();
+        }
+
         void SummonedCreatureDies(Creature* creature, Unit*) override
         {
             if (creature->GetGUID() == summons[0])
@@ -264,14 +286,14 @@ public:
             {
                 // Finished north path
                 case 52:
-                    me->SummonCreature(NPC_VENDOR_TRON, -694.61f, 1460.7f, 90.794f, 2.4f, TEMPSUMMON_TIMED_DESPAWN, 600000 + 15 * IN_MILLISECONDS);
+                    me->SummonCreature(NPC_VENDOR_TRON, -694.61f, 1460.7f, 90.794f, 2.4f, TEMPSUMMON_TIMED_DESPAWN, TIME_SHOP_STOP + 15 * IN_MILLISECONDS);
                     SetEscortPaused(true);
                     events.ScheduleEvent(EVENT_RESUME_PATH, TIME_SHOP_STOP);
                     CheckCaravan();
                     break;
                 // Finished south path
                 case 193:
-                    me->SummonCreature(NPC_SUPER_SELLER, -1905.5f, 2463.3f, 61.52f, 5.87f, TEMPSUMMON_TIMED_DESPAWN, 600000 + 15 * IN_MILLISECONDS);
+                    me->SummonCreature(NPC_SUPER_SELLER, -1905.5f, 2463.3f, 61.52f, 5.87f, TEMPSUMMON_TIMED_DESPAWN, TIME_SHOP_STOP + 15 * IN_MILLISECONDS);
                     SetEscortPaused(true);
                     events.ScheduleEvent(EVENT_RESUME_PATH, TIME_SHOP_STOP);
                     CheckCaravan();
@@ -293,24 +315,26 @@ public:
                     }
                     events.ScheduleEvent(EVENT_WAIT_FOR_ASSIST, TIME_HIRE_STOP);
                     break;
-                // North -> South - complete
+                // Dinkle: Simplified North -> South - complete
                 case 103:
                     if (Player* player = ObjectAccessor::GetPlayer(*me, _playerGUID))
                     {
-                        if (CheckCaravan())
-                            player->GroupEventHappens(QUEST_BODYGUARD_FOR_HIRE, player);
+                        // Check for the presence of summons as a completion criterion.
+                        if (summons[0] && summons[1] && summons[2])
+                            player->CompleteQuest(QUEST_BODYGUARD_FOR_HIRE);
                         else
                             player->FailQuest(QUEST_BODYGUARD_FOR_HIRE);
                     }
                     _playerGUID.Clear();
                     CheckPlayer();
                     break;
-                // South -> North - complete
+                // Dinkle: Simplified South -> North - complete
                 case 235:
                     if (Player* player = ObjectAccessor::GetPlayer(*me, _playerGUID))
                     {
-                        if (CheckCaravan())
-                            player->GroupEventHappens(QUEST_GIZELTON_CARAVAN, player);
+                        // Check for the presence of summons as a completion criterion.
+                        if (summons[0] && summons[1] && summons[2])
+                            player->CompleteQuest(QUEST_GIZELTON_CARAVAN);
                         else
                             player->FailQuest(QUEST_GIZELTON_CARAVAN);
                     }
@@ -394,9 +418,7 @@ public:
                         active->RemoveNpcFlag(UNIT_NPC_FLAG_QUESTGIVER);
                     break;
                 case EVENT_RESTART_ESCORT:
-                    CheckCaravan();
-                    SetDespawnAtEnd(false);
-                    Start(true, ObjectGuid::Empty, 0, false, false, true);
+                    RestartEscort();
                     break;
             }
 
@@ -408,6 +430,7 @@ public:
     };
 };
 
+// Theirs
 enum DyingKodo
 {
     SAY_SMEED_HOME                  = 0,
@@ -460,7 +483,7 @@ public:
         {
             if (spell->Id == SPELL_KODO_KOMBO_ITEM)
             {
-                if (!(caster->HasAura(SPELL_KODO_KOMBO_PLAYER_BUFF) || me->HasAura(SPELL_KODO_KOMBO_DESPAWN_BUFF))
+                if (!caster->HasAnyAuras(SPELL_KODO_KOMBO_PLAYER_BUFF, SPELL_KODO_KOMBO_DESPAWN_BUFF)
                         && (me->GetEntry() == NPC_AGED_KODO || me->GetEntry() == NPC_DYING_KODO || me->GetEntry() == NPC_ANCIENT_KODO))
                 {
                     me->UpdateEntry(NPC_TAMED_KODO, nullptr, false);
@@ -474,14 +497,14 @@ public:
             else if (spell->Id == SPELL_KODO_KOMBO_GOSSIP)
             {
                 me->SetNpcFlag(UNIT_NPC_FLAG_GOSSIP);
-                me->DespawnOrUnsummon(60s);
+                me->DespawnOrUnsummon(60000);
             }
         }
     };
 
     bool OnGossipHello(Player* player, Creature* creature) override
     {
-        if (player->HasAura(SPELL_KODO_KOMBO_PLAYER_BUFF) && creature->HasAura(SPELL_KODO_KOMBO_DESPAWN_BUFF))
+        if (player->HasAllAuras(SPELL_KODO_KOMBO_PLAYER_BUFF, SPELL_KODO_KOMBO_DESPAWN_BUFF))
         {
             player->TalkedToCreature(creature->GetEntry(), ObjectGuid::Empty);
             player->RemoveAurasDueToSpell(SPELL_KODO_KOMBO_PLAYER_BUFF);
@@ -499,6 +522,9 @@ public:
 
 void AddSC_desolace()
 {
+    // Ours
     new npc_cork_gizelton();
+
+    // Theirs
     new npc_aged_dying_ancient_kodo();
 }

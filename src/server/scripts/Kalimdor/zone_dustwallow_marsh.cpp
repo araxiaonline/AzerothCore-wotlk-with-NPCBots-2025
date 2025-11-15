@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -121,8 +121,57 @@ class spell_energize_aoe : public SpellScript
     }
 };
 
+class npc_thamore_guard : public CreatureScript
+{
+public:
+    npc_thamore_guard() : CreatureScript("npc_thamore_guard") { }
+
+    struct npc_thamore_guardAI : public ScriptedAI
+    {
+        npc_thamore_guardAI(Creature* creature) : ScriptedAI(creature), cleaveTimer(0) { } 
+
+        void Reset() override
+        {
+            me->SetReactState(REACT_AGGRESSIVE);
+            InitiateCombatWithDummy();
+            cleaveTimer = urand(5000, 7000); 
+        }
+
+        void UpdateAI(uint32 diff) override
+        {
+            if (!UpdateVictim())
+                return;
+
+            if (cleaveTimer <= diff)
+            {
+                me->CastSpell(me->GetVictim(), 845, true);
+                cleaveTimer = urand(5000, 7000); 
+            }
+            else
+                cleaveTimer -= diff;
+
+            DoMeleeAttackIfReady();
+        }
+
+        void InitiateCombatWithDummy()
+        {
+            if (Creature* dummy = GetClosestCreatureWithEntry(me, 4952, 5.0f))
+                AttackStart(dummy);
+        }
+
+    private:
+        uint32 cleaveTimer;
+    };
+
+    CreatureAI* GetAI(Creature* creature) const override
+    {
+        return new npc_thamore_guardAI(creature);
+    }
+};
+
 void AddSC_dustwallow_marsh()
 {
+    new npc_thamore_guard();
     RegisterSpellScript(spell_ooze_zap);
     RegisterSpellScript(spell_ooze_zap_channel_end);
     RegisterSpellScript(spell_energize_aoe);

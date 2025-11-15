@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -52,6 +52,11 @@ public:
             _conflagrateThreat = 0.0f;
         }
 
+        void Reset() override
+        {
+            events.Reset();
+        }
+
         void JustEngagedWith(Unit* /*who*/) override
         {
             _JustEngagedWith();
@@ -61,6 +66,24 @@ public:
             events.ScheduleEvent(EVENT_THUNDERCLAP, 17s);
             events.ScheduleEvent(EVENT_PIERCE_ARMOR, 5s);
             events.ScheduleEvent(EVENT_RAGE, 1s);
+        }
+
+        void JustDied(Unit* /*killer*/) override
+        {
+            Map::PlayerList const& players = me->GetMap()->GetPlayers();
+            if (!players.IsEmpty())
+            {
+                uint32 baseRewardLevel = 1;
+                bool isDungeon = me->GetMap()->IsDungeon();
+
+                for (auto const& playerPair : players)
+                {
+                    if (Player* player = playerPair.GetSource())
+                    {
+                        DistributeChallengeRewards(player, me, baseRewardLevel, isDungeon);
+                    }
+                }
+            }
         }
 
         void UpdateAI(uint32 diff) override

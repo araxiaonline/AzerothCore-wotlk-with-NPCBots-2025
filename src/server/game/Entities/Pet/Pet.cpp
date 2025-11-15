@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -16,7 +16,6 @@
  */
 
 #include "Pet.h"
-#include "AreaDefines.h"
 #include "ArenaSpectator.h"
 #include "CharmInfo.h"
 #include "Common.h"
@@ -38,7 +37,7 @@
 #include "WorldPacket.h"
 #include "WorldSession.h"
 
-Pet::Pet(Player* owner, PetType type) : Guardian(nullptr, owner ? owner->GetGUID() : ObjectGuid::Empty),
+Pet::Pet(Player* owner, PetType type) : Guardian(nullptr, owner ? owner->GetGUID() : ObjectGuid::Empty, true),
     m_usedTalentCount(0),
     m_removed(false),
     m_owner(owner),
@@ -48,7 +47,7 @@ Pet::Pet(Player* owner, PetType type) : Guardian(nullptr, owner ? owner->GetGUID
     m_auraRaidUpdateMask(0),
     m_loading(false),
     m_petRegenTimer(PET_FOCUS_REGEN_INTERVAL),
-    m_tempspellTarget(),
+    m_tempspellTarget(nullptr),
     m_tempoldTarget(),
     m_tempspellIsPositive(false),
     m_tempspell(0)
@@ -60,9 +59,9 @@ Pet::Pet(Player* owner, PetType type) : Guardian(nullptr, owner ? owner->GetGUID
     if (type == HUNTER_PET)
         m_unitTypeMask |= UNIT_MASK_HUNTER_PET;
 
-    if (!(m_unitTypeMask & UNIT_MASK_CONTROLLABLE_GUARDIAN))
+    if (!(m_unitTypeMask & UNIT_MASK_CONTROLABLE_GUARDIAN))
     {
-        m_unitTypeMask |= UNIT_MASK_CONTROLLABLE_GUARDIAN;
+        m_unitTypeMask |= UNIT_MASK_CONTROLABLE_GUARDIAN;
         InitCharmInfo();
     }
 
@@ -75,14 +74,14 @@ void Pet::AddToWorld()
     if (!IsInWorld())
     {
         ///- Register the pet for guid lookup
-        GetMap()->GetObjectsStore().Insert<Creature>(GetGUID(), this);
+        GetMap()->GetObjectsStore().Insert<Pet>(GetGUID(), this);
         Unit::AddToWorld();
         Motion_Initialize();
         AIM_Initialize();
     }
 
     // pussywizard: apply ICC buff to pets
-    if (GetOwnerGUID().IsPlayer() && GetMapId() == MAP_ICECROWN_CITADEL && FindMap() && FindMap()->ToInstanceMap() && FindMap()->ToInstanceMap()->GetInstanceScript() && FindMap()->ToInstanceMap()->GetInstanceScript()->GetData(251 /*DATA_BUFF_AVAILABLE*/))
+    if (GetOwnerGUID().IsPlayer() && GetMapId() == 631 && FindMap() && FindMap()->ToInstanceMap() && FindMap()->ToInstanceMap()->GetInstanceScript() && FindMap()->ToInstanceMap()->GetInstanceScript()->GetData(251 /*DATA_BUFF_AVAILABLE*/))
         if (Unit* owner = GetOwner())
             if (Player* plr = owner->ToPlayer())
             {
@@ -126,7 +125,7 @@ void Pet::RemoveFromWorld()
     {
         ///- Don't call the function for Creature, normal mobs + totems go in a different storage
         Unit::RemoveFromWorld();
-        GetMap()->GetObjectsStore().Remove<Creature>(GetGUID());
+        GetMap()->GetObjectsStore().Remove<Pet>(GetGUID());
     }
 }
 
@@ -238,7 +237,7 @@ bool Pet::LoadPetFromDB(Player* owner, uint32 petEntry, uint32 petnumber, bool c
         return false;
 
     bool forceLoadFromDB = false;
-    sScriptMgr->OnPlayerBeforeLoadPetFromDB(owner, petEntry, petnumber, current, forceLoadFromDB);
+    sScriptMgr->OnBeforeLoadPetFromDB(owner, petEntry, petnumber, current, forceLoadFromDB);
 
     if (!forceLoadFromDB && (owner->IsClass(CLASS_DEATH_KNIGHT, CLASS_CONTEXT_PET) && !owner->CanSeeDKPet())) // DK Pet exception
         return false;
@@ -692,7 +691,7 @@ void Pet::Update(uint32 diff)
                     }
                 }
 
-                if (m_duration > 0ms)
+                if (m_duration > 0s)
                 {
                     if (m_duration > _diff)
                         m_duration -= _diff;
@@ -708,7 +707,7 @@ void Pet::Update(uint32 diff)
                 if (getPowerType() == POWER_FOCUS)
                 {
                     m_petRegenTimer -= _diff;
-                    if (m_petRegenTimer <= 0ms)
+                    if (m_petRegenTimer <= 0s)
                     {
                         m_petRegenTimer += PET_FOCUS_REGEN_INTERVAL;
                         Regenerate(POWER_FOCUS);
@@ -717,11 +716,9 @@ void Pet::Update(uint32 diff)
 
                 if (m_tempspell)
                 {
-                    Unit* tempspellTarget = nullptr;
-                    if (!m_tempspellTarget.IsEmpty())
-                        tempspellTarget = ObjectAccessor::GetUnit(*this, m_tempspellTarget);
-
+                    Unit* tempspellTarget = m_tempspellTarget;
                     Unit* tempoldTarget = nullptr;
+
                     if (!m_tempoldTarget.IsEmpty())
                         tempoldTarget = ObjectAccessor::GetUnit(*this, m_tempoldTarget);
 
@@ -761,7 +758,7 @@ void Pet::Update(uint32 diff)
 
                                 CastSpell(tempspellTarget, tempspell, false);
                                 m_tempspell = 0;
-                                m_tempspellTarget = ObjectGuid::Empty;
+                                m_tempspellTarget = nullptr;
 
                                 if (tempspellIsPositive)
                                 {
@@ -801,7 +798,7 @@ void Pet::Update(uint32 diff)
                     else
                     {
                         m_tempspell = 0;
-                        m_tempspellTarget = ObjectGuid::Empty;
+                        m_tempspellTarget = nullptr;
                         m_tempoldTarget = ObjectGuid::Empty;
                         m_tempspellIsPositive = false;
 
@@ -1026,7 +1023,7 @@ bool Guardian::InitStatsForLevel(uint8 petlevel)
     Unit* owner = GetOwner();
     if (!owner) // just to be sure, asynchronous now
     {
-        DespawnOrUnsummon(1s);
+        DespawnOrUnsummon(1000);
         return false;
     }
 
@@ -1034,7 +1031,7 @@ bool Guardian::InitStatsForLevel(uint8 petlevel)
     PetType petType = MAX_PET_TYPE;
     if (owner->IsPlayer())
     {
-        sScriptMgr->OnPlayerBeforeGuardianInitStatsForLevel(owner->ToPlayer(), this, cinfo, petType);
+        sScriptMgr->OnBeforeGuardianInitStatsForLevel(owner->ToPlayer(), this, cinfo, petType);
 
         if (IsPet())
         {
@@ -1345,14 +1342,11 @@ bool Guardian::InitStatsForLevel(uint8 petlevel)
                                 SetCreateMana(28 + 10 * petlevel);
                                 SetCreateHealth(28 + 30 * petlevel);
                             }
-                            AddAura(SPELL_SUMMON_HEAL, this);
+
+                            AddAura(SPELL_HUNTER_PET_SCALING_04, this);
                             AddAura(SPELL_DK_PET_SCALING_01, this);
                             AddAura(SPELL_DK_PET_SCALING_02, this);
                             AddAura(SPELL_DK_PET_SCALING_03, this);
-                            AddAura(SPELL_NIGHT_OF_THE_DEAD_AVOIDANCE, this);
-                            AddAura(SPELL_ORC_RACIAL_COMMAND_DK, this);
-                            AddAura(SPELL_PET_SCALING_MASTER_03, this);
-                            AddAura(SPELL_PET_SCALING_MASTER_06, this);
                             break;
                         }
                     case NPC_BLOODWORM:
@@ -1404,9 +1398,9 @@ bool Guardian::InitStatsForLevel(uint8 petlevel)
         // 100% energy after summon
         SetPower(POWER_ENERGY, GetMaxPower(POWER_ENERGY));
 
-        AddAura(SPELL_ORC_RACIAL_COMMAND_DK, this);
-
-        AddAura(SPELL_RISEN_GHOUL_SELF_STUN, this);
+        // xinef: fixes orc death knight command racial
+        if (owner->getRace() == RACE_ORC)
+            CastSpell(this, SPELL_ORC_RACIAL_COMMAND_DK, true, nullptr, nullptr, owner->GetGUID());
 
         // Avoidance, Night of the Dead
         if (Aura* aur = AddAura(SPELL_NIGHT_OF_THE_DEAD_AVOIDANCE, this))
@@ -1414,16 +1408,13 @@ bool Guardian::InitStatsForLevel(uint8 petlevel)
                 if (aur->GetEffect(0))
                     aur->GetEffect(0)->SetAmount(-aurEff->GetSpellInfo()->Effects[EFFECT_2].CalcValue());
 
+        AddAura(SPELL_HUNTER_PET_SCALING_04, this);
         // Added to perm ghoul by default
         if (!IsPet())
         {
             AddAura(SPELL_DK_PET_SCALING_01, this);
             AddAura(SPELL_DK_PET_SCALING_02, this);
-            AddAura(SPELL_DK_PET_SCALING_03, this);
         }
-
-        AddAura(SPELL_PET_SCALING_MASTER_03, this);
-        AddAura(SPELL_PET_SCALING_MASTER_06, this);
     }
 
     sScriptMgr->OnInitStatsForLevel(this, petlevel);
@@ -1434,7 +1425,7 @@ bool Guardian::InitStatsForLevel(uint8 petlevel)
     SetPower(POWER_MANA, GetMaxPower(POWER_MANA));
 
     if (owner->IsPlayer())
-        sScriptMgr->OnPlayerAfterGuardianInitStatsForLevel(owner->ToPlayer(), this);
+        sScriptMgr->OnAfterGuardianInitStatsForLevel(owner->ToPlayer(), this);
 
     return true;
 }
@@ -1512,7 +1503,7 @@ void Pet::_LoadSpellCooldowns(PreparedQueryResult result)
         if (!cooldowns.empty() && GetOwner())
         {
             BuildCooldownPacket(data, SPELL_COOLDOWN_FLAG_NONE, cooldowns);
-            GetOwner()->SendDirectMessage(&data);
+            GetOwner()->GetSession()->SendPacket(&data);
         }
     }
 }
@@ -2250,7 +2241,9 @@ uint8 Pet::GetMaxTalentPointsForLevel(uint8 level)
     // Mod points from owner SPELL_AURA_MOD_PET_TALENT_POINTS
     if (Unit* owner = GetOwner())
         points += owner->GetTotalAuraModifier(SPELL_AURA_MOD_PET_TALENT_POINTS);
-
+    //Dinkle
+    points += sWorld->GetBonusPetTalentPoints(); 
+    //end Dinkle
     sScriptMgr->OnCalculateMaxTalentPointsForLevel(this, level, points);
 
     return uint8(points * sWorld->getRate(RATE_TALENT_PET));
@@ -2442,7 +2435,7 @@ void Pet::CastWhenWillAvailable(uint32 spellid, Unit* spellTarget, ObjectGuid ol
     if (!spellTarget)
         return;
 
-    m_tempspellTarget = spellTarget->GetGUID();
+    m_tempspellTarget = spellTarget;
     m_tempspell = spellid;
     m_tempspellIsPositive = spellIsPositive;
 
@@ -2454,7 +2447,7 @@ void Pet::ClearCastWhenWillAvailable()
 {
     m_tempspellIsPositive = false;
     m_tempspell = 0;
-    m_tempspellTarget = ObjectGuid::Empty;
+    m_tempspellTarget = nullptr;
     m_tempoldTarget = ObjectGuid::Empty;
 }
 

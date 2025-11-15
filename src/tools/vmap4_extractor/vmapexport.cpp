@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -316,6 +316,42 @@ bool fillArchiveNameVector(std::vector<std::string>& pArchiveNames)
     pArchiveNames.push_back(input_path + string("common-2.MPQ"));
     pArchiveNames.push_back(input_path + string("expansion.MPQ"));
     pArchiveNames.push_back(input_path + string("lichking.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch-2.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch-3.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch-4.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch-5.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch-6.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch-7.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch-8.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch-9.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch-A.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch-B.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch-C.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch-D.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch-E.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch-F.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch-G.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch-H.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch-I.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch-J.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch-K.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch-L.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch-M.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch-N.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch-O.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch-P.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch-Q.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch-R.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch-S.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch-T.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch-U.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch-V.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch-W.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch-X.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch-Y.MPQ"));
+    pArchiveNames.push_back(input_path + string("patch-Z.MPQ"));
+
 
     // now, scan for the patch levels in the core dir
     printf("Scanning patch levels from data directory.\n");

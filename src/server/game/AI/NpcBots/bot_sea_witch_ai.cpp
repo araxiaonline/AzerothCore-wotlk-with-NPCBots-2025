@@ -593,9 +593,9 @@ public:
             }
         }
 
-        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType, SpellSchoolMask damageSchoolMask) override
+        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType) override
         {
-            bot_ai::DamageDealt(victim, damage, damageType, damageSchoolMask);
+            bot_ai::DamageDealt(victim, damage, damageType);
         }
 
         void DamageTaken(Unit* u, uint32& damage, DamageEffectType /*damageType*/, SpellSchoolMask /*schoolMask*/) override
@@ -779,7 +779,7 @@ public:
         typedef std::set<Creature*> Summons;
         Summons _minions;
 
-        bool _spell_preact{};
+        bool _spell_preact;
 
         float _manaPerDamageMult() const
         {
@@ -793,7 +793,7 @@ public:
                 case 3: return 1.f /   2.50f;
                 case 2: return 1.f /   1.67f;
                 case 1: return 1.f /   1.25f;
-                default:return         1.00f;
+                default:return 1.f /   1.00f;
             }
         }
     };

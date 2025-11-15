@@ -1,21 +1,20 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "AreaDefines.h"
 #include "CreatureScript.h"
 #include "InstanceMapScript.h"
 #include "InstanceScript.h"
@@ -73,7 +72,7 @@ ObjectData const summonData[] =
 class instance_serpent_shrine : public InstanceMapScript
 {
 public:
-    instance_serpent_shrine() : InstanceMapScript("instance_serpent_shrine", MAP_COILFANG_SERPENTSHRINE_CAVERN) { }
+    instance_serpent_shrine() : InstanceMapScript("instance_serpent_shrine", 548) { }
 
     struct instance_serpentshrine_cavern_InstanceMapScript : public InstanceScript
     {
@@ -234,7 +233,7 @@ class spell_serpentshrine_cavern_serpentshrine_parasite_trigger : public SpellSc
     {
         PreventHitDefaultEffect(effIndex);
         if (Creature* target = GetHitCreature())
-            target->DespawnOrUnsummon(1ms);
+            target->DespawnOrUnsummon(1);
     }
 
     void Register() override
@@ -296,7 +295,7 @@ class spell_serpentshrine_cavern_coilfang_water : public AuraScript
     {
         PreventDefaultAction();
         InstanceScript* instance = GetUnitOwner()->GetInstanceScript();
-        if (!instance || GetUnitOwner()->GetMapId() != MAP_COILFANG_SERPENTSHRINE_CAVERN)
+        if (!instance || GetUnitOwner()->GetMapId() != 548)
         {
             SetDuration(0);
             return;

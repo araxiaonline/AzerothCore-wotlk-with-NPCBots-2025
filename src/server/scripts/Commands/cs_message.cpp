@@ -1,19 +1,26 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
+
+/* ScriptData
+Name: message_commandscript
+%Complete: 100
+Comment: All message related commands
+Category: commandscripts
+EndScriptData */
 
 #include "Channel.h"
 #include "Chat.h"
@@ -25,7 +32,6 @@
 #include "Player.h"
 #include "World.h"
 #include "WorldSession.h"
-#include "WorldSessionMgr.h"
 
 using namespace Acore::ChatCommands;
 
@@ -81,7 +87,7 @@ public:
         if (message.empty())
             return false;
 
-        sWorldSessionMgr->SendServerMessage(SERVER_MSG_STRING, Acore::StringFormat(handler->GetAcoreString(LANG_SYSTEMMESSAGE), message.data()));
+        sWorld->SendServerMessage(SERVER_MSG_STRING, Acore::StringFormat(handler->GetAcoreString(LANG_SYSTEMMESSAGE), message.data()));
         return true;
     }
 
@@ -106,7 +112,7 @@ public:
 
         WorldPacket data(SMSG_NOTIFICATION, (str.size() + 1));
         data << str;
-        sWorldSessionMgr->SendGlobalMessage(&data);
+        sWorld->SendGlobalMessage(&data);
 
         return true;
     }
@@ -122,7 +128,7 @@ public:
 
         WorldPacket data(SMSG_NOTIFICATION, (str.size() + 1));
         data << str;
-        sWorldSessionMgr->SendGlobalGMMessage(&data);
+        sWorld->SendGlobalGMMessage(&data);
 
         return true;
     }

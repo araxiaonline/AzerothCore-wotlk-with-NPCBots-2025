@@ -1,4 +1,5 @@
 #include "bot_ai.h"
+#include "Chat.h"
 #include "botmgr.h"
 #include "botspell.h"
 #include "bottext.h"
@@ -65,7 +66,8 @@ enum PriestBaseSpells
     POWER_INFUSION_1                    = 10060,
     HYMN_OF_HOPE_1                      = 64901,
 
-    LEVITATE_1                          = 1706
+    LEVITATE_1                          = 1706,
+    SPELL_ID_THORIUM_GRENADE            = 19769
 };
 enum PriestPassives
 {
@@ -125,6 +127,8 @@ enum PriestSpecial
     SHADOWFIEND_1                   = 34433
 };
 
+const uint32 THORIUM_GRENADE_SPELL_ID = 19769;
+
 static const uint32 Priest_spells_damage_arr[] =
 { DEVOURING_PLAGUE_1, HOLY_FIRE_1, MIND_BLAST_1, MIND_FLAY_1, MIND_SEAR_1, PENANCE_1, SMITE_1, SW_PAIN_1, SW_DEATH_1,
 VAMPIRIC_TOUCH_1 };
@@ -146,6 +150,40 @@ static const std::vector<uint32> Priest_spells_cc(FROM_ARRAY(Priest_spells_cc_ar
 static const std::vector<uint32> Priest_spells_heal(FROM_ARRAY(Priest_spells_heal_arr));
 static const std::vector<uint32> Priest_spells_support(FROM_ARRAY(Priest_spells_support_arr));
 
+//Dinkle
+const char* priesthealingMessages[] = {
+"|cFFFFFFFFHelp! I've fallen and I can't get up... oh, wait, I'm up! But I still need healing!|r",
+"|cFFFFFFFFI'm not a potato, but my health is mashed! Heal me, please!|r",
+"|cFFFFFFFFIf I had a gold coin for every hit point I'm missing, I could buy a mount!|r",
+"|cFFFFFFFFSomeone call a priest! Oh wait, I am one! Help, my health is plummeting!|r",
+"|cFFFFFFFFI'm about as sturdy as a gnome on a pogo stick right now. Send healing, please!|r",
+"|cFFFFFFFFI'm not a tank, but I'm taking a beating! Heal me, please!|r",
+"|cFFFFFFFFNeed heals!|r",
+"|cFFFFFFFFHeal please!|r"
+"|cFFFFFFFFThis is quite the test of faith... A little healing would be divine!|r",
+"|cFFFFFFFFMy spirit is willing, but the flesh is weak and wounded!|r",
+};
+
+const char* priestmanaMessages[] = {
+    "|cFFFFFFFFI'm not just thirsty, I'm mana-starved! Please, a sip of mana would be great!|r",
+    "|cFFFFFFFFMy mana is running on empty! Time to refuel the arcane tank!|r",
+    "|cFFFFFFFFI need to stop and drink after this!|r",
+    "|cFFFFFFFFI need an innervate please!|r",
+    "|cFFFFFFFFMy mana bar looks like a flat tire - definitely needs pumping!|r",
+    "|cFFFFFFFFCan someone lend me some mana? I promise I'll give it back... maybe!|r",
+    "|cFFFFFFFFLow on mana - mana break please!|r",
+    "|cFFFFFFFFMy mana is like a rollercoaster - it's on a downward spiral!|r"
+};
+
+const char* psychicScreamMessages[] = {
+    "|cFFFFFFFFI'm casting Psychic Scream, somebody stop me!|r",
+    "|cFFFFFFFFPrepare for some mind-bending fear!|r",
+    "|cFFFFFFFFFear not,  Psychic Scream is here!|r",
+    "|cFFFFFFFFGet ready to scream in terror!|r",
+    "|cFFFFFFFFLEEEEEEEEEEEEROOOOOOOOOOY!!!|r"
+};
+//end Dinkle
+
 class priest_bot : public CreatureScript
 {
 public:
@@ -158,6 +196,57 @@ public:
 
     bool OnGossipHello(Player* player, Creature* creature) override
     {
+        const char* greetings[] = {
+        "|cFFFFFFFFHello there!|r",
+        "|cFFFFFFFFHey good looking, wanna chat?|r",
+        "|cFFFFFFFFHey there!|r",
+        "|cFFFFFFFFYo!|r",
+        "|cFFFFFFFFWhat's on the agenda for today?|r",
+        "|cFFFFFFFFWe swapping out gear?|r",
+        "|cFFFFFFFFWhat's up?|r",
+        "|cFFFFFFFFWhy hello there!|r",
+        "|cFFFFFFFFThink I can heal better than QT Blue?|r",
+        "|cFFFFFFFFIf you need healing or damage, I've got you covered!|r",
+        "|cFFFFFFFFWant me to swap roles?|r",
+        "|cFFFFFFFFHow's it going?|r",
+        "|cFFFFFFFFHello! Been up to much lately?|r",
+        "|cFFFFFFFFHey there! Ready to kick some butt?|r",
+        "|cFFFFFFFFHey! Looking for something fun to do?|r",
+        "|cFFFFFFFFWhat's happening? Ready to dive in?|r",
+        "|cFFFFFFFFSup? Got any adventures on the horizon?|r",
+        "|cFFFFFFFFHowdy! How's the questing going?|r",
+        "|cFFFFFFFFGreetings! Any epic loot drops lately?|r",
+        "|cFFFFFFFFWhat's good? Keeping those enemies at bay?|r",
+        "|cFFFFFFFFHeya! How's the world treating you?|r",
+        "|cFFFFFFFFHi! Any tales of valor to share?|r",
+        "|cFFFFFFFFAhoy! Ready to set sail on a new quest?|r",
+        "|cFFFFFFFFSalutations! What mischief are we getting into today?|r",
+        "|cFFFFFFFFGood to see you! Ready for some action?|r",
+        "|cFFFFFFFFHey! How about we go make some history?|r",
+        "|cFFFFFFFFDid someone order a hero? Because I just found one!|r",
+        "|cFFFFFFFFI tried to catch some fog earlier. I mist.|r",
+        "|cFFFFFFFFEver tried to eat a clock? It's time-consuming.|r",
+        "|cFFFFFFFFI'd tell you a joke about the Void, but it's... endless.|r",
+        "|cFFFFFFFFI was going to tell you a joke about undead, but I decided to drop it. It was dead weight.|r",
+        "|cFFFFFFFFDo you know why I never play hide and seek with mountains? Because they always peak.|r",
+        "|cFFFFFFFFHave you heard about the rogue who stole a calendar? He got twelve months.|r",
+        "|cFFFFFFFFI'm reading a book about anti-gravity. It's impossible to put down.|r",
+        "|cFFFFFFFFWhy don't adventurers like to party in Dalaran? Because it's always up in the air.|r",
+        "|cFFFFFFFFWhy do druids never get lost? They always find the path of leaf resistance.|r",
+        "|cFFFFFFFFI bought some shoes from a drug dealer. I don't know what he laced them with, but I've been tripping all day.|r",
+        "|cFFFFFFFFIs it just the campfire, or is it getting hot in here when you're around?|r",
+        "|cFFFFFFFFYou're not just a sight for sore eyes, you're a sight for fully healed, buffed, and potion-enhanced eyes!|r",
+        "|cFFFFFFFFIs that a Divine Hymn? Because being with you feels utterly heavenly.|r",
+        "|cFFFFFFFFDo you specialize in Holy? Because being near you feels like a blessing.|r",
+        "|cFFFFFFFFYou must have cast Power Word: Shield, because nothing can hurt me when I'm with you.|r",
+        "|cFFFFFFFFDid you just cast Mind Control? Because you've taken over my thoughts completely.|r",
+        "|cFFFFFFFFWell, well, well, look who's here! What mischief are we up to today?|r",
+        "|cFFFFFFFFHey there! Do you have time to talk about our savior, Pimpgarth the Wise?|r",
+        };
+
+        int randomIndex = urand(0, sizeof(greetings) / sizeof(greetings[0]) - 1);
+        creature->Say(greetings[randomIndex], LANG_UNIVERSAL, creature->ToUnit());
+
         return creature->GetBotAI()->OnGossipHello(player, 0);
     }
 
@@ -283,17 +372,16 @@ public:
 
         bool ShieldGroup(uint32 diff)
         {
-            if (!IsSpellReady(PW_SHIELD_1, false, diff) || IsCasting() || Rand() > 65 + 100 * (me->GetMap()->IsRaid()))
+            if (!IsSpellReady(PW_SHIELD_1, false, diff) || IsCasting() || Rand() > 10 + 20 * (me->GetMap()->IsRaid()))
                 return false;
-            if (!IAmFree() && !(me->GetLevel() >= 30 && _spec == BOT_SPEC_PRIEST_DISCIPLINE) &&
-                master->GetBotMgr()->HasBotWithSpec(BOT_SPEC_PRIEST_DISCIPLINE))
+            if (!IAmFree() && !(me->GetLevel() >= 30 && _spec == BOT_SPEC_PRIEST_DISCIPLINE))
                 return false;
 
             Group const* gr = !IAmFree() ? master->GetGroup() : GetGroup();
             if (!gr)
             {
                 Unit* u = master;
-                if (u->IsAlive() && !u->getAttackers().empty() && (IsTank(u) || GetHealthPCT(u) < 75) && me->GetDistance(u) < 40 &&
+                if (u->IsAlive() && !u->getAttackers().empty() && (IsTank(u) || GetHealthPCT(u) < 80) && me->GetDistance(u) < 40 &&
                     ShieldTarget(u, diff))
                     return true;
                 if (!IAmFree())
@@ -344,7 +432,7 @@ public:
             if (!IsSpellReady(PW_SHIELD_1, diff) || IsCasting())
                 return false;
             if (target->HasAuraTypeWithFamilyFlags(SPELL_AURA_MECHANIC_IMMUNITY, SPELLFAMILY_PRIEST, 0x20000000) ||
-                target->HasAuraTypeWithFamilyFlags(SPELL_AURA_SCHOOL_ABSORB, SPELLFAMILY_PRIEST, 0x1))
+                target->HasAura(WEAKENED_SOUL_DEBUFF))
                 return false;
 
             if (doCast(target, GetSpell(PW_SHIELD_1)))
@@ -398,8 +486,55 @@ public:
 
         void UpdateAI(uint32 diff) override
         {
+            // Dinkle
+        if (!IsWanderer())
+            {
+            if (me->IsInCombat()) {
+                // Health check
+                float healthPercentage = (float)me->GetHealth() / (float)me->GetMaxHealth();
+                if (healthPercentage <= 0.30f && !needHealingFlag) {
+                    int randomIndex = urand(0, sizeof(priesthealingMessages) / sizeof(priesthealingMessages[0]) - 1);
+                    me->Say(priesthealingMessages[randomIndex], LANG_UNIVERSAL, me->ToUnit());
+                    needHealingFlag = true;
+                }
+                else if (healthPercentage >= 0.50f && needHealingFlag) {
+                    needHealingFlag = false;
+                }
+
+                // Mana check
+                float manaPercentage = (float)me->GetPower(POWER_MANA) / (float)me->GetMaxPower(POWER_MANA);
+                if (manaPercentage <= 0.25f && !needManaFlag) {
+                    int randomIndex = urand(0, sizeof(priestmanaMessages) / sizeof(priestmanaMessages[0]) - 1);
+                    me->Say(priestmanaMessages[randomIndex], LANG_UNIVERSAL, me->ToUnit());
+                    needManaFlag = true;
+                }
+                else if (manaPercentage >= 0.50f && needManaFlag) {
+                    needManaFlag = false;
+                }
+            }
+        }
+            //end Dinkle
             if (!GlobalUpdate(diff))
                 return;
+
+            if (IsSpellReady(THORIUM_GRENADE_SPELL_ID, diff))
+            {
+                std::list<Creature*> targets;
+                me->GetCreaturesWithEntryInRange(targets, 35.0f, 15555);
+
+                for (Creature* target : targets)
+                {
+                    if (!target->IsAlive() || me->IsFriendlyTo(target))
+                        continue;
+
+                    if (me->IsWithinDistInMap(target, 35.0f))
+                    {
+                        me->CastSpell(target, THORIUM_GRENADE_SPELL_ID, true);
+                        SetSpellCooldown(THORIUM_GRENADE_SPELL_ID, 3000);
+                        break;
+                    }
+                }
+            }
 
             DoVehicleActions(diff);
             if (!CanBotAttackOnVehicle())
@@ -494,7 +629,7 @@ public:
 
             if (GC_Timer > diff)
                 return;
-
+            
             //shadow skills range
             if (me->GetDistance(mytar) > CalcSpellMaxRange(MIND_FLAY_1))
                 return;
@@ -529,11 +664,11 @@ public:
             if (!HasRole(BOT_ROLE_HEAL) || GetManaPCT(me) > 35 || botPet)
             {
                 if (IsSpellReady(SW_DEATH_1, diff) && can_do_shadow && Rand() < 90 && GetHealthPCT(me) > 50 &&
-                    (me->GetMap()->IsRaid() || GetHealthPCT(mytar) < 15 || mytar->GetHealth() < me->GetMaxHealth()/8) &&
+                    (me->GetMap()->IsRaid() || GetHealthPCT(mytar) < 15 || mytar->GetHealth() < me->GetMaxHealth() / 8) &&
                     doCast(mytar, GetSpell(SW_DEATH_1)))
                     return;
                 if (IsSpellReady(VAMPIRIC_TOUCH_1, diff) && can_do_shadow && Rand() < 80 &&
-                    mytar->GetHealth() > me->GetMaxHealth()/4 * (1 + mytar->getAttackers().size()) &&
+                    mytar->GetHealth() > me->GetMaxHealth() / 4 * (1 + mytar->getAttackers().size()) &&
                     !mytar->GetAuraEffect(SPELL_AURA_PERIODIC_DAMAGE, SPELLFAMILY_PRIEST, 0x0, 0x400, 0x0, me->GetGUID()) &&
                     doCast(mytar, GetSpell(VAMPIRIC_TOUCH_1)))
                     return;
@@ -548,8 +683,8 @@ public:
                 }
                 if (IsSpellReady(DEVOURING_PLAGUE_1, diff) && can_do_shadow && !Devcheck && Rand() < 100 &&
                     (GetSpec() == BOT_SPEC_PRIEST_SHADOW || mytar->IsControlledByPlayer()) &&
-                    mytar->GetHealth() > me->GetMaxHealth()/2 * (1 + mytar->getAttackers().size()) &&
-                    !(mytar->GetTypeId() == TYPEID_UNIT && (mytar->ToCreature()->GetCreatureTemplate()->MechanicImmuneMask & (1<<(MECHANIC_INFECTED-1)))) &&
+                    mytar->GetHealth() > me->GetMaxHealth() / 2 * (1 + mytar->getAttackers().size()) &&
+                    !(mytar->GetTypeId() == TYPEID_UNIT && (mytar->ToCreature()->GetCreatureTemplate()->MechanicImmuneMask & (1 << (MECHANIC_INFECTED - 1)))) &&
                     !mytar->GetAuraEffect(SPELL_AURA_PERIODIC_LEECH, SPELLFAMILY_PRIEST, 0x02000000, 0x0, 0x0, me->GetGUID()) &&
                     doCast(mytar, GetSpell(DEVOURING_PLAGUE_1)))
                     return;
@@ -568,7 +703,7 @@ public:
                     doCast(mytar, GetSpell(HOLY_FIRE_1)))
                     return;
                 if (IsSpellReady(MIND_FLAY_1, diff) && can_do_shadow &&
-                    (!HasRole(BOT_ROLE_HEAL) || mytar->GetHealth() < me->GetMaxHealth()/2) &&
+                    (!HasRole(BOT_ROLE_HEAL) || mytar->GetHealth() < me->GetMaxHealth() / 2) &&
                     doCast(mytar, GetSpell(MIND_FLAY_1)))
                     return;
                 if (IsSpellReady(SMITE_1, diff) && can_do_holy && me->GetLevel() < 20 &&//MF is lvl 20, MB is lvl 10
@@ -588,7 +723,7 @@ public:
 
         bool HealTarget(Unit* target, uint32 diff) override
         {
-            if (!target || !target->IsAlive() || target->GetShapeshiftForm() == FORM_SPIRITOFREDEMPTION || me->GetDistance(target) > 40)
+            if (!target || !target->IsAlive() || target->GetShapeshiftForm() == FORM_SPIRITOFREDEMPTION || me->GetDistance(target) > 45)
                 return false;
 
             uint8 hp = GetHealthPCT(target);
@@ -664,14 +799,51 @@ public:
 
             Unit const* u = target->GetVictim();
             bool tanking = u && IsTank(target) && u->GetTypeId() == TYPEID_UNIT && u->ToCreature()->isWorldBoss();
+            //Power Word: Shield
+            if (me->getLevel() >= 30 && _spec == BOT_SPEC_PRIEST_DISCIPLINE) // Check if the priest bot is at least level 30 and is Discipline spec
+            {
+                uint32 PW_SHIELD_SPELL = GetSpell(PW_SHIELD_1); // Get the appropriate spell rank
+                if (PW_SHIELD_SPELL && IsSpellReady(PW_SHIELD_SPELL, diff) && // Check if PW_SHIELD is off cooldown
+                    !target->HasAura(WEAKENED_SOUL_DEBUFF)) // Check if the target doesn't have Weakened Soul
+                {
+                    if (doCast(target, PW_SHIELD_SPELL))
+                    {
+                        return true; // Spell was successfully cast
+                    }
+                }
+            }
+            //  Holy Priest Specific Renew Logic
+            if (_spec == BOT_SPEC_PRIEST_HOLY && IsSpellReady(RENEW_1, diff) &&
+                (hppctps < 10 || hp < 80) &&
+                !target->GetAuraEffect(SPELL_AURA_PERIODIC_HEAL, SPELLFAMILY_PRIEST, 0x40, 0x0, 0x0, me->GetGUID()) &&
+                (target->IsInCombat() || !target->getAttackers().empty() || me->GetMap()->IsDungeon())) {
+                if (doCast(target, GetSpell(RENEW_1)))
+                    return true;
+            }
 
+            // Additional conditions to dynamically use Renew based on anticipated incoming damage
+            if (_spec == BOT_SPEC_PRIEST_HOLY && hppctps < 0 &&
+                !target->GetAuraEffect(SPELL_AURA_PERIODIC_HEAL, SPELLFAMILY_PRIEST, 0x40, 0x0, 0x0, me->GetGUID())) {
+                if (doCast(target, GetSpell(RENEW_1)))
+                    return true;
+            }
+            // Renew for Discipline Priest, applied only to the tank
+            if (_spec == BOT_SPEC_PRIEST_DISCIPLINE && IsSpellReady(RENEW_1, diff) && IsTank(target) &&
+                !target->GetAuraEffect(SPELL_AURA_PERIODIC_HEAL, SPELLFAMILY_PRIEST, 0x40, 0x0, 0x0, me->GetGUID()))
+            {
+                if (doCast(target, GetSpell(RENEW_1)))
+                {
+                    return true; 
+                }
+            }
             //Penance
-            if (IsSpellReady(PENANCE_1, diff) && !target->IsCharmed() && !target->isPossessed() && hp <= 80 &&
-                Rand() < 90 && xphploss > _heals[PENANCE_1])
+            if (IsSpellReady(PENANCE_1, diff) && !target->IsCharmed() && !target->isPossessed() && hp <= 90 && 
+                xphploss > (_heals[PENANCE_1] * 0.75)) 
             {
                 if (doCast(target, GetSpell(PENANCE_1)))
                     return true;
             }
+
             //Big Heal
             if (IsSpellReady(HEAL, diff) && (xppct > 15 || !GetSpell(FLASH_HEAL_1)) && (tanking || xphploss > _heals[HEAL]))
             {
@@ -681,26 +853,69 @@ public:
                 if (doCast(target, GetSpell(HEAL)))
                     return true;
             }
-            //Renew
-            if (IsSpellReady(RENEW_1, diff) && (tanking || !target->getAttackers().empty() || me->GetMap()->IsDungeon()) &&
-                !target->GetAuraEffect(SPELL_AURA_PERIODIC_HEAL, SPELLFAMILY_PRIEST, 0x40, 0x0, 0x0, me->GetGUID())
-                /*!target->HasAura(GetSpell(RENEW_1), me->GetGUID())*/)
-            {
-                if (doCast(target, GetSpell(RENEW_1)))
-                    return true;
-            }
-            //Flash Heal
-            if (IsSpellReady(FLASH_HEAL_1, diff) && xphploss > _heals[FLASH_HEAL_1])
+            // More Aggressive Flash Heal
+            if (IsSpellReady(FLASH_HEAL_1, diff) &&
+                (hp <= 85 || xphploss > (_heals[FLASH_HEAL_1] * 0.75))) // Cast if health is below 85% or predicted healing is only slightly less than Flash Heal's capability
             {
                 if (doCast(target, GetSpell(FLASH_HEAL_1)))
                     return true;
             }
+            //Greater Heal
+            //if (IsSpellReady(GREATER_HEAL_1, diff) && hp <= 40 && !IsCasting() && !target->getAttackers().empty() &&
+            //    xphploss > _heals[GREATER_HEAL_1])
+           // {
+            //    if (doCast(target, GetSpell(GREATER_HEAL_1)))
+             //   {
+             //       return true; 
+             //   }
+            //}
 
             return false;
         }
 
         bool BuffTarget(Unit* target, uint32 diff) override
         {
+            // Dinkle: Periodic thoughtful dialogue
+            if (!IsWanderer())
+            {
+            if (urand(0, 1999) < 1)
+            {
+                if (!me->IsInCombat())
+                {
+                const char* thoughtfulMessages[] = {
+                    "|cFFFFFFFFSometimes, the heaviest burdens we carry are not our gear, but our thoughts.|r",
+                    "|cFFFFFFFFIn the calmest waters, the deepest reflections are found.|r",
+                    "|cFFFFFFFFHow do you make a tauren cry? Tell them a 'moo-ving' story!|r",
+                    "|cFFFFFFFFWhat do you call a tauren who can play the drums? A moo-sician!|r",
+                    "|cFFFFFFFFWhy did the Forsaken become a chef? Because they wanted to serve up some killer dishes!|r",
+                    "|cFFFFFFFFStrength is not always measured in battles won, but in the resilience of one's spirit.|r",
+                    "|cFFFFFFFFA moment of patience in a moment of anger saves a thousand moments of regret.|r",
+                    "|cFFFFFFFFWhat do you call a gnome priest? A mini-healer!|r",
+                    "|cFFFFFFFFHow does a druid make coffee in the morning? They use a bear-ista to brew it!|r",
+                    "|cFFFFFFFFWhy don't mages trust rogues? Because they always vanish!|r",
+                    "|cFFFFFFFFWhat's a demon hunter's favorite dessert? Eye scream!|r",
+                    "|cFFFFFFFFI told my friend she was drawing her eyebrows too high. She looked surprised.|r",
+                    "|cFFFFFFFFWhy do warriors never play cards? Too many rage quits!|r",
+                    "|cFFFFFFFFThe light does not abandon its champions; we merely forget to invoke it in our darkest times.|r",
+                    "|cFFFFFFFFIn the dance of battle, the most graceful steps are often those of retreat, a strategy well-known to the Silver Covenant.|r",
+                    "|cFFFFFFFFAn adventurer's best tool is not the weapon they wield, but the hope they hold, a sentiment echoed by every hero of Azeroth.|r",
+                    "|cFFFFFFFFLike the phoenix rises from ashes, so too can heroes rise from defeat.|r",
+                    "|cFFFFFFFFThe mightiest of mountains begin as mere stones. Every legend in Azeroth was once a simple tale.|r",
+                    "|cFFFFFFFFBooty Bay's defacto ruler is Baron Revilgaz. 'Revilgaz' is 'Zagliver' spelled backwards!|r",
+                    "|cFFFFFFFFEver noticed the critters in Dalaran? They're actually spies for the Kirin Tor, keeping an eye on things.|r",
+                    "|cFFFFFFFFAzeroth is home to many mysteries. Every stone turned and every leaf overturned brings us closer to understanding the true nature of this world.|r",
+                    "|cFFFFFFFFThe echo of the Titans' footsteps can still be heard if we listen closely to the stones of Ulduar.|r",
+                    "|cFFFFFFFFThe journey through the Emerald Dream is not for the faint of heart. It's a realm where reality and fantasy merge.|r",
+                    "|cFFFFFFFFDid you know the murlocs have a rich oral tradition, passed down through generations? If only we could understand their language.|r",
+                    "|cFFFFFFFFThe journey of a thousand miles begins with a single step, and every step brings us closer to our destination.|r",
+                    "|cFFFFFFFFThe true journey is not in seeking new landscapes, but in having new eyes.|r"
+                };
+                int randomIndex = urand(0, sizeof(thoughtfulMessages) / sizeof(thoughtfulMessages[0]) - 1);
+                me->Say(thoughtfulMessages[randomIndex], LANG_UNIVERSAL, target->ToUnit());
+                }
+            }
+            }
+            
             if (IsSpellReady(FEAR_WARD_1, diff) && (!IAmFree() || target == me) &&
                 !target->HasAuraTypeWithMiscvalue(SPELL_AURA_MECHANIC_IMMUNITY, MECHANIC_FEAR) &&
                 doCast(target, GetSpell(FEAR_WARD_1)))
@@ -717,7 +932,22 @@ public:
                     doCast(me, GetSpell(VAMPIRIC_EMBRACE_1)))
                     return true;
             }
-
+            // Casting Power Word: Shield by Discipline Priest bot
+            if (me->getLevel() >= 30 && _spec == BOT_SPEC_PRIEST_DISCIPLINE) // Check if the priest bot is at least level 30 and is Discipline spec
+            {
+                if (target->GetTypeId() == TYPEID_PLAYER) // Check if the target is a player to prevent shield spam out of combat
+                {
+                    uint32 PW_SHIELD_SPELL = GetSpell(PW_SHIELD_1); // Get the appropriate spell rank
+                    if (PW_SHIELD_SPELL && IsSpellReady(PW_SHIELD_SPELL, diff) && // Check if PW_SHIELD is off cooldown
+                        !target->HasAura(WEAKENED_SOUL_DEBUFF)) // Check if the target doesn't have Weakened Soul
+                    {
+                        if (doCast(target, PW_SHIELD_SPELL))
+                        {
+                            return true; // Spell was successfully cast
+                        }
+                    }
+                }
+            }
             if (me->IsInCombat() && !master->GetMap()->IsRaid())
                 return false;
 
@@ -725,20 +955,60 @@ public:
             {
                 if (!target->HasAuraTypeWithFamilyFlags(SPELL_AURA_MOD_STAT, SPELLFAMILY_PRIEST, 0x8) &&
                     doCast(target, PW_FORTITUDE))
+                {
+                    if (!IsWanderer() && urand(0, 100) < 10)
+                    {
+                        const char* fortitudeMessages[] = {
+                            "|cFFFFFFFFFortitude isn't just a buff, it's a state of mind.|r",
+                            "|cFFFFFFFFWrapped in fortitude, ready for what's to come.|r",
+                            "|cFFFFFFFFStrength flows from within to without.|r",
+                            "|cFFFFFFFFWho needs AoE buffs when you have personal affirmations?|r",
+                            "|cFFFFFFFFEmbracing the essence of resilience.|r"
+                        };
+                        int randomIndex = urand(0, sizeof(fortitudeMessages) / sizeof(fortitudeMessages[0]) - 1);
+                        me->Say(fortitudeMessages[randomIndex], LANG_UNIVERSAL, target->ToUnit());
+                    }
                     return true;
+                }
             }
             if (uint32 SHADOW_PROTECTION = GetSpell(SHADOW_PROTECTION_1))
             {
                 if (!target->HasAuraTypeWithFamilyFlags(SPELL_AURA_MOD_RESISTANCE_EXCLUSIVE, SPELLFAMILY_PRIEST, 0x100) &&
                     doCast(target, SHADOW_PROTECTION))
+                {
+                    if (!IsWanderer() && urand(0, 100) < 15)
+                    {
+                        const char* shadowProtectionMessages[] = {
+                             "|cFFFFFFFFShadows offer not just concealment, but protection.|r",
+                             "|cFFFFFFFFEnveloped in a cloak of shadows.|r",
+                             "|cFFFFFFFFDarkness, my old friend, shield me now.|r",
+                             "|cFFFFFFFFLet the shadows be a shield, not a shroud.|r"
+                        };
+                        int randomIndex = urand(0, sizeof(shadowProtectionMessages) / sizeof(shadowProtectionMessages[0]) - 1);
+                        me->Say(shadowProtectionMessages[randomIndex], LANG_UNIVERSAL, target->ToUnit());
+                    }
                     return true;
+                }
             }
             if (uint32 DIVINE_SPIRIT = GetSpell(DIVINE_SPIRIT_1))
             {
                 if ((target->GetMaxPower(POWER_MANA) > 1) &&
                     !target->HasAuraTypeWithFamilyFlags(SPELL_AURA_MOD_STAT, SPELLFAMILY_PRIEST, 0x20) &&
                     doCast(target, DIVINE_SPIRIT))
+                {
+                    if (!IsWanderer() && urand(0, 100) < 15)
+                    {
+                        const char* divineSpiritMessages[] = {
+                            "|cFFFFFFFFSpirit uplifted, ready to face the world.|r",
+                            "|cFFFFFFFFInfused with divine essence, we stand stronger.|r",
+                            "|cFFFFFFFFDivinity touches the soul, lightening the burden.|r",
+                            "|cFFFFFFFFGuided by a divine spirit, moving forward.|r"
+                        };
+                        int randomIndex = urand(0, sizeof(divineSpiritMessages) / sizeof(divineSpiritMessages[0]) - 1);
+                        me->Say(divineSpiritMessages[randomIndex], LANG_UNIVERSAL, target->ToUnit());
+                    }
                     return true;
+                }
             }
 
             return false;
@@ -760,11 +1030,28 @@ public:
                     {
                         Player* pl = ref->GetSource();
                         if (pl && pl->IsAlive() && pl->FindMap() == me->GetMap() && pl->GetDistance(me) < 30 &&
-                            pl->IsFalling() && pl->m_movementInfo.fallTime > 1000 &&
+                            pl->IsFalling() && pl->m_movementInfo.fallTime > 3000 &&
                             !pl->HasAuraType(SPELL_AURA_HOVER))
                         {
                             if (doCast(pl, GetSpell(LEVITATE_1)))
+                            {
+                                // Dinkle: Add a random chat message for Levitate
+                                const char* levitateMessages[] = {
+                                    "|cFFFFFFFFLevitating for safety!|r",
+                                    "|cFFFFFFFFUp, up, and away with Levitate!|r",
+                                    "|cFFFFFFFFEnjoy the flight with Levitate!|r",
+                                    "|cFFFFFFFFLevitating for a smooth landing!|r",
+                                    "|cFFFFFFFFFloating gracefully with Levitate!|r",
+                                    "|cFFFFFFFFEmbrace the airborne adventure!!|r",
+                                    "|cFFFFFFFFLevitate activated for a safe landing!|r",
+                                    "|cFFFFFFFFSoaring to new heights with Levitate!|r",
+                                };
+
+                                int randomIndex = urand(0, sizeof(levitateMessages) / sizeof(levitateMessages[0]) - 1);
+                                me->Say(levitateMessages[randomIndex], LANG_UNIVERSAL, me->ToUnit());
+
                                 return;
+                            }
                         }
                     }
                 }
@@ -772,7 +1059,24 @@ public:
                     master->m_movementInfo.fallTime > 1000 && !master->HasAuraType(SPELL_AURA_HOVER))
                 {
                     if (doCast(master, GetSpell(LEVITATE_1)))
+                    {
+                        // Dinkle: Add a random chat message for Levitate
+                        const char* levitateMessages[] = {
+                                    "|cFFFFFFFFLevitating for safety!|r",
+                                    "|cFFFFFFFFUp, up, and away with Levitate!|r",
+                                    "|cFFFFFFFFEnjoy the flight with Levitate!|r",
+                                    "|cFFFFFFFFLevitating for a smooth landing!|r",
+                                    "|cFFFFFFFFFloating gracefully with Levitate!|r",
+                                    "|cFFFFFFFFEmbrace the airborne adventure!!|r",
+                                    "|cFFFFFFFFLevitate activated for a safe landing!|r",
+                                    "|cFFFFFFFFSoaring to new heights with Levitate!|r",
+                        };
+
+                        int randomIndex = urand(0, sizeof(levitateMessages) / sizeof(levitateMessages[0]) - 1);
+                        me->Say(levitateMessages[randomIndex], LANG_UNIVERSAL, me->ToUnit());
+
                         return;
+                    }
                 }
             }
         }
@@ -842,7 +1146,7 @@ public:
                 }
             }
         }
-
+        //Dinkle
         void CheckShackles(uint32 diff)
         {
             if (Shackle_Timer > diff || !IsSpellReady(SHACKLE_UNDEAD_1, diff) || IsCasting() || Rand() > 50)
@@ -854,9 +1158,28 @@ public:
                 return;
             Unit* target = FindUndeadCCTarget(CalcSpellMaxRange(SHACKLE_UNDEAD_1), SHACKLE_UNDEAD_1);
             if (target && doCast(target, GetSpell(SHACKLE_UNDEAD_1)))
-            {}
-        }
+            {
+                if (!IsWanderer()) // Check if not a wanderer before speaking
+                {
+                    const char* shackleMessages[] = {
+                        "|cFFFFFFFFHolding %s in place. Let's focus on the others!|r",
+                        "|cFFFFFFFFGot %s shacked up! Let's keep the pressure on the rest.|r",
+                        "|cFFFFFFFF%s won't bother us for a while. Shackled!|r",
+                        "|cFFFFFFFFOne less to worry about, I've got %s shackled.|r",
+                        "|cFFFFFFFFEnforced a time-out on %s. It's shackled!|r",
+                    };
 
+                    int randomIndex = urand(0, sizeof(shackleMessages) / sizeof(char*) - 1);
+                    const char* selectedMessage = shackleMessages[randomIndex];
+
+                    char messageBuffer[256];
+                    snprintf(messageBuffer, sizeof(messageBuffer), selectedMessage, target->GetName().c_str());
+
+                    me->Say(messageBuffer, LANG_UNIVERSAL, me->ToUnit());
+                }
+            }
+        }
+        //Dinkle
         void CheckSilence(uint32 diff)
         {
             if (IsCasting() || Rand() > 40)
@@ -865,27 +1188,92 @@ public:
             if (IsSpellReady(SILENCE_1, diff, false))
             {
                 if (Unit* target = FindCastingTarget(CalcSpellMaxRange(SILENCE_1), 0, SILENCE_1))
+                {
                     if (doCast(target, GetSpell(SILENCE_1)))
+                    {
+                        if (!IsWanderer()) 
+                        {
+                            const char* silenceMessages[] = {
+                                "|cFFFFFFFF%s has been silenced! No spells for a bit.|r",
+                                "|cFFFFFFFFCutting %s's casting short with a swift Silence!|r",
+                                "|cFFFFFFFF%s, you shall not cast!|r",
+                                "|cFFFFFFFFSilenced %s! Perfect timing.|r",
+                                "|cFFFFFFFF%s's spellcasting is temporarily on hold.|r",
+                            };
+
+                            int randomIndex = urand(0, sizeof(silenceMessages) / sizeof(char*) - 1);
+                            const char* selectedMessage = silenceMessages[randomIndex];
+
+                            char messageBuffer[256];
+                            snprintf(messageBuffer, sizeof(messageBuffer), selectedMessage, target->GetName().c_str());
+
+                            me->Say(messageBuffer, LANG_UNIVERSAL, me->ToUnit());
+                        }
                         return;
+                    }
+                }
             }
+
             if (IsSpellReady(PSYCHIC_HORROR_1, diff))
             {
                 if (Unit* target = FindCastingTarget(CalcSpellMaxRange(PSYCHIC_HORROR_1), 0, PSYCHIC_HORROR_1))
+                {
                     if (doCast(target, GetSpell(PSYCHIC_HORROR_1)))
+                    {
+                        if (!IsWanderer()) 
+                        {
+                            const char* horrorMessages[] = {
+                                "|cFFFFFFFF%s is gripped by Psychic Horror! No casting for them.|r",
+                                "|cFFFFFFFF%s's mind is terrorized, halting their spells!|r",
+                                "|cFFFFFFFFInstilling a Psychic Horror in %s, they're locked down!|r",
+                                "|cFFFFFFFF%s is stunned with fear, spells interrupted!|r",
+                                "|cFFFFFFFFPsychic Horror paralyzes %s, stopping their cast.|r",
+                            };
+
+                            int randomIndex = urand(0, sizeof(horrorMessages) / sizeof(char*) - 1);
+                            const char* selectedMessage = horrorMessages[randomIndex];
+
+                            char messageBuffer[256];
+                            snprintf(messageBuffer, sizeof(messageBuffer), selectedMessage, target->GetName().c_str());
+
+                            me->Say(messageBuffer, LANG_UNIVERSAL, me->ToUnit());
+                        }
                         return;
+                    }
+                }
             }
         }
-
         void CheckPowerInfusion(uint32 diff)
         {
             if (!IsSpellReady(POWER_INFUSION_1, diff, false) || IsCasting() || Rand() > 25)
                 return;
 
+            const char* powerInfusionSelfMessages[] = {
+                "|cFFFFFFFFFeeling the need for speed!|r",
+                "|cFFFFFFFFLet's kick things up a notch!|r",
+                "|cFFFFFFFFPower Infusion, don't fail me now!|r",
+                "|cFFFFFFFFSupercharge incomming!|r"
+            };
+
+            const char* powerInfusionOtherMessages[] = {
+                "|cFFFFFFFFYou're about to feel a power surge!|r",
+                "|cFFFFFFFFLet's get you moving faster!|r",
+                "|cFFFFFFFFInjecting a bit of extra oomph!|r",
+                "|cFFFFFFFFPower infusion coming right up!|r"
+            };
+
             if (IAmFree())
             {
-                if (me->GetVictim() && GetManaPCT(me) < 95 &&
-                    doCast(me, GetSpell(POWER_INFUSION_1)))
+                if (me->GetVictim() && GetManaPCT(me) < 95)
+                {
+                    if (!IsWanderer()) 
+                    {
+                        int randomIndex = urand(0, sizeof(powerInfusionSelfMessages) / sizeof(powerInfusionSelfMessages[0]) - 1);
+                        me->Say(powerInfusionSelfMessages[randomIndex], LANG_UNIVERSAL, me->ToUnit());
+                    }
+                    doCast(me, GetSpell(POWER_INFUSION_1));
                     return;
+                }
 
                 return;
             }
@@ -932,9 +1320,16 @@ public:
                 u = itr->GetSource();
                 if (u && u->IsAlive() && u->IsInWorld() && u->GetPowerType() == POWER_MANA && u->GetVictim() && !IsTank(u) &&
                     GetManaPCT(u) < 70 && me->IsWithinDistInMap(u, 30) &&
-                    !u->HasAuraTypeWithFamilyFlags(SPELL_AURA_MOD_CASTING_SPEED_NOT_STACK, SPELLFAMILY_PRIEST, 0x80000000) &&
-                    doCast(u, GetSpell(POWER_INFUSION_1)))
+                    !u->HasAuraTypeWithFamilyFlags(SPELL_AURA_MOD_CASTING_SPEED_NOT_STACK, SPELLFAMILY_PRIEST, 0x80000000))
+                {
+                    if (!IsWanderer()) 
+                    {
+                        int randomIndex = urand(0, sizeof(powerInfusionOtherMessages) / sizeof(powerInfusionOtherMessages[0]) - 1);
+                        me->Say(powerInfusionOtherMessages[randomIndex], LANG_UNIVERSAL, u->ToUnit());
+                    }
+                    doCast(u, GetSpell(POWER_INFUSION_1));
                     return;
+                }
             }
             for (GroupReference const* itr = gr->GetFirstMember(); itr != nullptr; itr = itr->next())
             {
@@ -997,7 +1392,14 @@ public:
                             ++tCount;
                     }
                     if (tCount > 1 && doCast(me, GetSpell(PSYCHIC_SCREAM_1)))
+                    {
+                        if (!IsWanderer()) 
+                        {
+                            int randomIndex = urand(0, sizeof(psychicScreamMessages) / sizeof(psychicScreamMessages[0]) - 1);
+                            me->Say(psychicScreamMessages[randomIndex], LANG_UNIVERSAL, me->ToUnit());
+                        }
                         return;
+                    }
                 }
 
                 // Defend myself (psychic horror)
@@ -1705,9 +2107,9 @@ public:
             OnSpellHit(caster, spell);
         }
 
-        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType, SpellSchoolMask damageSchoolMask) override
+        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType) override
         {
-            bot_ai::DamageDealt(victim, damage, damageType, damageSchoolMask);
+            bot_ai::DamageDealt(victim, damage, damageType);
         }
 
         void DamageTaken(Unit* u, uint32& /*damage*/, DamageEffectType /*damageType*/, SpellSchoolMask /*schoolMask*/) override
@@ -2017,6 +2419,10 @@ public:
         }
 
     private:
+        //Dinkle
+        bool needHealingFlag;
+        bool needManaFlag;
+        //end Dinkle
         uint32 HEAL;
         uint32 Shackle_Timer, Mend_Timer, DispelcheckTimer, DevcheckTimer, ShackcheckTimer;
 /*Misc*/bool Devcheck, Shackcheck;

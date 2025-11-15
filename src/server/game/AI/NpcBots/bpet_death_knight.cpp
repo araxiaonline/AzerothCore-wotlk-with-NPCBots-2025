@@ -58,6 +58,18 @@ public:
 
         void UpdateAI(uint32 diff) override
         {
+
+            // Set ghoul duration based on spec
+            uint32 ghoulDuration = petOwner->GetBotClass() == BOT_CLASS_DEATH_KNIGHT && petOwner->GetBotAI()->GetSpec() == BOT_SPEC_DK_UNHOLY ? (10 * HOUR * IN_MILLISECONDS) : (60 * IN_MILLISECONDS);
+
+            if ((gliveTimer += diff) >= ghoulDuration)
+            {
+                canUpdate = false;
+                me->ToTempSummon()->UnSummon(1);
+                return;
+            }
+
+
             if (!GlobalUpdate(diff))
                 return;
 
@@ -141,9 +153,9 @@ public:
         {
         }
 
-        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType, SpellSchoolMask damageSchoolMask) override
+        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType) override
         {
-            bot_pet_ai::DamageDealt(victim, damage, damageType, damageSchoolMask);
+            bot_pet_ai::DamageDealt(victim, damage, damageType);
         }
 
         void DamageTaken(Unit* u, uint32& /*damage*/, DamageEffectType /*damageType*/, SpellSchoolMask /*schoolMask*/) override
@@ -164,6 +176,7 @@ public:
 
         void Reset() override
         {
+            gliveTimer = 0;
         }
 
         void InitPetSpells() override
@@ -181,6 +194,7 @@ public:
         }
 
     private:
+    uint32 gliveTimer;
     };
 };
 

@@ -1,24 +1,26 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "AreaDefines.h"
 #include "CreatureScript.h"
 #include "PetDefines.h"
 #include "Player.h"
+#include "ScriptMgr.h"
+#include "Spell.h"
+#include "SpellAuras.h"
 #include "SpellAuraEffects.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
@@ -26,6 +28,15 @@
 #include "SpellScriptLoader.h"
 #include "Totem.h"
 #include "UnitAI.h"
+#include "Item.h"
+#include <unordered_set>
+#include <ctime>
+#include <chrono>
+ /*
+  * Scripts for spells with SPELLFAMILY_DEATHKNIGHT and SPELLFAMILY_GENERIC spells used by deathknight players.
+  * Ordered alphabetically using scriptname.
+  * Scriptnames of files in this file should be prefixed with "spell_dk_".
+  */
 
 //npcbot
 #include "botmgr.h"
@@ -79,13 +90,19 @@ enum DeathKnightSpells
     SPELL_DK_UNHOLY_PRESENCE_TRIGGERED          = 49772,
     SPELL_DK_WILL_OF_THE_NECROPOLIS_TALENT_R1   = 49189,
     SPELL_DK_WILL_OF_THE_NECROPOLIS_AURA_R1     = 52284,
-    SPELL_DK_ICY_TALONS_TALENT_R1               = 50880,
-    SPELL_DK_CRYPT_FEVER_R1                     = 50508,
-    SPELL_DK_EBON_PLAGUE_R1                     = 51726,
     // Risen Ally
     SPELL_DK_RAISE_ALLY                         = 46619,
     SPELL_DK_THRASH                             = 47480,
     SPELL_GHOUL_FRENZY                          = 62218,
+    SPELL_DK_AURA_1 = 80043,
+    SPELL_DK_AURA_2 = 80044,
+    SPELL_DK_HAS_AURA = 59327,
+    SPELL_DK_SPELL_1 = 48982,
+    SPELL_DK_SPELL_2 = 48707,
+    SPELL_DK_BONUS_SPELL_1 = 80042,
+    SPELL_DK_BONUS_SPELL_2 = 80046,
+    SPELL_DK_EXTRA_SPELL = 80027,
+    SPELL_DK_GLACIAL_ECHOES_DAMAGE = 84061,
 };
 
 enum DeathKnightSpellIcons
@@ -98,6 +115,147 @@ enum Misc
     NPC_DK_GHOUL                                = 26125,
     NPC_RISEN_ALLY                              = 30230
 };
+
+enum Spells
+{
+    SPELL_SOUL_ESSENCE_STACK = 940020,
+    SPELL_WAVE_OF_ENERGY = 940737
+};
+
+class spell_death_knight_soul_of_ebon_blade : public AuraScript
+{
+    PrepareAuraScript(spell_death_knight_soul_of_ebon_blade);
+
+    void HandleStackApply(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/)
+    {
+        Unit* caster = GetCaster();
+        if (!caster || caster->IsNPCBot())  // Exclude NPC bots
+            return;
+
+        // Check if 8 stacks are reached
+        if (GetStackAmount() >= 8)
+        {
+            // Cast the wave of energy spell
+            caster->CastSpell(caster, SPELL_WAVE_OF_ENERGY, true);
+
+            // Remove the stacks
+            Remove(AURA_REMOVE_BY_DEFAULT);
+        }
+    }
+
+    void Register() override
+    {
+        AfterEffectApply += AuraEffectApplyFn(spell_death_knight_soul_of_ebon_blade::HandleStackApply, EFFECT_0, SPELL_AURA_DUMMY, AURA_EFFECT_HANDLE_REAL_OR_REAPPLY_MASK);
+    }
+};
+
+void AddSC_death_knight_soul_of_ebon_blade()
+{
+    RegisterSpellScript(spell_death_knight_soul_of_ebon_blade);
+}
+
+class spell_dk_tier_two_setbonus : public SpellScript
+{
+    PrepareSpellScript(spell_dk_tier_two_setbonus);
+
+    static constexpr uint32 kRequiredAura = 80043;
+    static constexpr uint32 kAdditionalSpellId = 80042;
+
+    void HandleOnCast()
+    {
+        Unit* caster = GetCaster();
+        if (!caster || !caster->IsPlayer())
+            return;
+
+        // Check if the player has the required aura
+        if (caster->HasAura(kRequiredAura))
+        {
+            // Cast the additional spell
+            caster->CastSpell(caster, kAdditionalSpellId, true);
+        }
+    }
+
+    void Register() override
+    {
+        OnCast += SpellCastFn(spell_dk_tier_two_setbonus::HandleOnCast);
+    }
+};
+
+void AddSC_spell_dk_tier_two_setbonus()
+{
+    RegisterSpellScript(spell_dk_tier_two_setbonus);
+}
+
+class spell_death_knight_dnd : public SpellScript
+{
+    PrepareSpellScript(spell_death_knight_dnd);
+
+    const uint32 AURA_ID_TO_CAST = 80019;
+    const uint32 REQUIRED_AURA_ID = 80018;
+
+    void HandleOnCast()
+    {
+        Unit* caster = GetCaster();
+        if (!caster || caster->GetTypeId() != TYPEID_PLAYER)
+            return;
+
+        Player* player = caster->ToPlayer();
+        if (!player || !player->HasAura(REQUIRED_AURA_ID))
+            return;
+
+        Position const* spellPos = GetExplTargetDest();
+        if (!spellPos)
+            return;
+
+        float x = spellPos->GetPositionX();
+        float y = spellPos->GetPositionY();
+        float z = spellPos->GetPositionZ();
+
+        player->CastSpell(x, y, z, AURA_ID_TO_CAST, true);
+    }
+
+    void Register() override
+    {
+        OnCast += SpellCastFn(spell_death_knight_dnd::HandleOnCast);
+    }
+};
+
+void AddSC_DeathKnightDnD()
+{
+    RegisterSpellScript(spell_death_knight_dnd);
+}
+
+class spell_strength_of_will : public SpellScript
+{
+    PrepareSpellScript(spell_strength_of_will);
+
+    static constexpr float kHealthThreshold = 70.0f;
+
+    SpellCastResult CheckHealth()
+    {
+        Unit* caster = GetCaster();
+        if (!caster || caster->IsNPCBot()) // Exclude NPC bots
+            return SPELL_CAST_OK;
+
+        if (caster->GetHealthPct() < kHealthThreshold)
+        {
+            return SPELL_FAILED_CANT_DO_THAT_RIGHT_NOW;
+        }
+
+        return SPELL_CAST_OK;
+    }
+
+    void Register() override
+    {
+        OnCheckCast += SpellCheckCastFn(spell_strength_of_will::CheckHealth);
+    }
+};
+
+void AddSC_spell_strength_of_will()
+{
+    RegisterSpellScript(spell_strength_of_will);
+}
+
 
 // 50526 - Wandering Plague
 class spell_dk_wandering_plague : public SpellScript
@@ -328,7 +486,7 @@ class spell_dk_death_and_decay : public SpellScript
 
         // Xinef: include AOE damage reducing auras
         if (target)
-            damage = target->CalculateAOEDamageReduction(damage, GetSpellInfo()->SchoolMask, false);
+            damage = target->CalculateAOEDamageReduction(damage, GetSpellInfo()->SchoolMask, caster);
 
         SetHitDamage(damage);
     }
@@ -542,25 +700,31 @@ class spell_dk_rune_of_the_fallen_crusader : public SpellScript
     }
 };
 
+#include <chrono>  // Required for std::chrono
+
 // 49222 - Bone Shield
 class spell_dk_bone_shield : public AuraScript
 {
     PrepareAuraScript(spell_dk_bone_shield);
 
-    uint32 lastChargeUsedTime = 0;
+    std::chrono::milliseconds lastProcTime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());  // Member variable to store the last proc time
 
     void HandleProc(ProcEventInfo& eventInfo)
     {
         PreventDefaultAction();
-        uint32 currentTime = getMSTime();
-        // Checks for 2 seconds between uses of bone shield charges
-        if ((currentTime - lastChargeUsedTime) < 2000)
-            return;
 
+        auto currentTime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()); // Get the current time in milliseconds
+
+        // Check if at least 5 seconds (5000 ms) has passed since the last proc
+        if ((currentTime - lastProcTime).count() < 5000)
+            return; // If less than 5 seconds have passed since the last proc, return without doing anything
+
+        // The following condition checks if the event's SpellInfo exists and if it is not targeting an area.
+        // If both conditions are met, a charge is dropped.
         if (!eventInfo.GetSpellInfo() || !eventInfo.GetSpellInfo()->IsTargetingArea())
         {
             DropCharge();
-            lastChargeUsedTime = currentTime;
+            lastProcTime = currentTime;  // Update the last proc time
         }
     }
 
@@ -827,19 +991,19 @@ class spell_dk_pet_scaling : public AuraScript
 
     void CalculateSPAmount(AuraEffect const*  /*aurEff*/, int32& amount, bool& /*canBeRecalculated*/)
     {
+        // xinef: dk gargoyle inherits 33% of SP
         if (GetUnitOwner()->GetEntry() != NPC_EBON_GARGOYLE)
             return;
 
         if (Unit* owner = GetUnitOwner()->GetOwner())
         {
-            // Percentage of the owner's attack power to be inherited as spell power
-            // This value was chosen based on experimental damage of Gargoyle Strike
-            int32 modifier = 75;
+            int32 modifier = 33;
 
-            if (AuraEffect* impurityEff = owner->GetDummyAuraEffect(SPELLFAMILY_DEATHKNIGHT, 1986, EFFECT_0))
-                AddPct(modifier, impurityEff->GetAmount());
+            // xinef: impurity
+            if (owner->GetDummyAuraEffect(SPELLFAMILY_DEATHKNIGHT, 1986, 0))
+                modifier = 40;
 
-            amount = CalculatePct(std::max<int32>(0, static_cast<int32>(owner->GetTotalAttackPowerValue(BASE_ATTACK))), modifier);
+            amount = CalculatePct(std::max<int32>(0, owner->GetTotalAttackPowerValue(BASE_ATTACK)), modifier);
 
             // xinef: Update appropriate player field
             if (owner->IsPlayer())
@@ -851,11 +1015,8 @@ class spell_dk_pet_scaling : public AuraScript
     {
         // xinef: scale haste with owners melee haste
         if (Unit* owner = GetUnitOwner()->GetOwner())
-        {
-            float modSpeed = owner->m_modAttackSpeedPct[BASE_ATTACK];
-            modSpeed = std::ranges::clamp(modSpeed, 1e-6f, 1.0f);
-            amount = static_cast<int32>(((1.0f / modSpeed) - 1.0f) * 100.0f);
-        }
+            if (owner->m_modAttackSpeedPct[BASE_ATTACK] < 1.0f) // inherit haste only
+                amount = std::min<int32>(100, int32(((1.0f / owner->m_modAttackSpeedPct[BASE_ATTACK]) - 1.0f) * 100.0f));
     }
 
     void HandleEffectApply(AuraEffect const* aurEff, AuraEffectHandleModes /*mode*/)
@@ -914,13 +1075,13 @@ class spell_dk_pet_scaling : public AuraScript
 
     void Register() override
     {
-        if (m_scriptSpellId == SPELL_DK_PET_SCALING_01)
+        if (m_scriptSpellId == 54566)
         {
             DoEffectCalcAmount += AuraEffectCalcAmountFn(spell_dk_pet_scaling::CalculateStatAmount, EFFECT_ALL, SPELL_AURA_MOD_STAT);
             DoEffectCalcAmount += AuraEffectCalcAmountFn(spell_dk_pet_scaling::CalculateSPAmount, EFFECT_ALL, SPELL_AURA_MOD_DAMAGE_DONE);
         }
 
-        if (m_scriptSpellId == SPELL_DK_PET_SCALING_02)
+        if (m_scriptSpellId == 51996)
             DoEffectCalcAmount += AuraEffectCalcAmountFn(spell_dk_pet_scaling::CalculateHasteAmount, EFFECT_ALL, SPELL_AURA_MELEE_SLOW);
 
         OnEffectApply += AuraEffectApplyFn(spell_dk_pet_scaling::HandleEffectApply, EFFECT_ALL, SPELL_AURA_ANY, AURA_EFFECT_HANDLE_REAL);
@@ -1012,10 +1173,16 @@ class spell_dk_anti_magic_shell_self : public AuraScript
         GetTarget()->CastCustomSpell(SPELL_DK_RUNIC_POWER_ENERGIZE, SPELLVALUE_BASE_POINT0, bp, GetTarget(), true, nullptr, aurEff);
     }
 
-    void HandleEffectApply(AuraEffect const*  /*aurEff*/, AuraEffectHandleModes /*mode*/)
+    void HandleEffectApply(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/)
     {
         Unit* target = GetTarget();
         target->ApplySpellImmune(GetId(), IMMUNITY_ID, 33786, true); // cyclone
+
+        // Check for the specific aura and cast the additional spell
+        if (target->HasAura(80044))
+        {
+            target->CastSpell(target, 80046, true);
+        }
     }
 
     void HandleEffectRemove(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/)
@@ -1105,6 +1272,12 @@ class spell_dk_blood_boil : public SpellScript
 
         _executed = true;
         GetCaster()->CastSpell(GetCaster(), SPELL_DK_BLOOD_BOIL_TRIGGERED, true);
+
+        // Check for the Potentiated Blood Boil effect
+        if (GetCaster()->HasAura(880012))
+        {
+            GetCaster()->CastSpell(GetCaster(), 848721, true);
+        }
     }
 
     void Register() override
@@ -1339,7 +1512,10 @@ class spell_dk_death_gate : public SpellScript
 
     SpellCastResult CheckClass()
     {
-        if (!GetCaster()->IsClass(CLASS_DEATH_KNIGHT, CLASS_CONTEXT_ABILITY))
+        if (!GetCaster()->IsPlayer())
+            return SPELL_FAILED_DONT_REPORT;
+
+        if (!GetCaster()->ToPlayer()->IsClass(CLASS_DEATH_KNIGHT))
         {
             SetCustomCastResultMessage(SPELL_CUSTOM_ERROR_MUST_BE_DEATH_KNIGHT);
             return SPELL_FAILED_CUSTOM_ERROR;
@@ -1350,9 +1526,21 @@ class spell_dk_death_gate : public SpellScript
 
     void HandleScript(SpellEffIndex effIndex)
     {
+        //Dinkle
         PreventHitDefaultEffect(effIndex);
-        if (Unit* target = GetHitUnit())
-            target->CastSpell(target, GetEffectValue(), false);
+        if (Player* player = GetHitPlayer())
+        {
+            if (player->HasQuest(13165))
+            {
+                player->TeleportTo(0, 2353.5300292969f, -5665.8198242188f, 382.24899291992f, 0.59600001573563f);
+                player->SetPhaseMask(448, true);
+            }
+            else
+        //end Dinkle
+            {
+                player->CastSpell(player, GetEffectValue(), false);
+            }
+        }
     }
 
     void Register() override
@@ -1463,7 +1651,7 @@ class spell_dk_death_grip : public SpellScript
                         target->InterruptNonMeleeSpells(false, 0, false);
                 }
 
-                if (target->GetMapId() == MAP_THE_RING_OF_VALOR)
+                if (target->GetMapId() == 618) // for Ring of Valor
                     gripPos.m_positionZ = std::max(casterZ + 0.2f, 28.5f);
 
                 target->CastSpell(gripPos.GetPositionX(), gripPos.GetPositionY(), gripPos.GetPositionZ(), 57604, true);
@@ -1671,6 +1859,26 @@ class spell_dk_icebound_fortitude : public AuraScript
                     value = valMax;
             }
             amount = value;
+
+            // Custom effect: trigger spell 840459 if player has aura 84058
+            if (caster->HasAura(84058))
+            {
+                caster->CastSpell(caster, 840459, true);
+            }
+        }
+    }
+
+    //This is a placeholder for something later in TBC
+    void HandleApplyEffect(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/)
+    {
+        if (Unit* caster = GetCaster())
+        {
+            // Check if the caster has the tier set bonus aura (80560)
+            if (caster->HasAura(80560))
+            {
+                // Cast the Glacial Echoes spell (80561)
+                caster->CastSpell(caster, 80561, true);
+            }
         }
     }
 
@@ -1807,17 +2015,6 @@ class spell_dk_pestilence : public SpellScript
 {
     PrepareSpellScript(spell_dk_pestilence);
 
-    bool Validate(SpellInfo const* /*spellInfo*/) override
-    {
-        return ValidateSpellInfo(
-        {
-            SPELL_DK_GLYPH_OF_DISEASE,
-            SPELL_DK_BLOOD_PLAGUE,
-            SPELL_DK_FROST_FEVER,
-            SPELL_DK_ICY_TALONS_TALENT_R1
-        });
-    }
-
     void HandleScriptEffect(SpellEffIndex /*effIndex*/)
     {
         Unit* caster = GetCaster();
@@ -1826,36 +2023,19 @@ class spell_dk_pestilence : public SpellScript
         if (!target)
             return;
 
-        // Spread on others
-        if (target != hitUnit)
+        if (target != hitUnit || caster->GetAura(SPELL_DK_GLYPH_OF_DISEASE))
         {
+            // xinef: checked in target selection
+            //if (!m_targets.GetUnitTarget()->IsWithinLOSInMap(unitTarget))
+            //  return;
+
+            // And spread them on target
             // Blood Plague
             if (target->GetAura(SPELL_DK_BLOOD_PLAGUE, caster->GetGUID()))
                 caster->CastSpell(hitUnit, SPELL_DK_BLOOD_PLAGUE, true);
-
             // Frost Fever
             if (target->GetAura(SPELL_DK_FROST_FEVER, caster->GetGUID()))
                 caster->CastSpell(hitUnit, SPELL_DK_FROST_FEVER, true);
-        }
-        // Refresh on target
-        else if (caster->GetAura(SPELL_DK_GLYPH_OF_DISEASE))
-        {
-            // Blood Plague
-            if (Aura* disease = target->GetAura(SPELL_DK_BLOOD_PLAGUE, caster->GetGUID()))
-                disease->RefreshDuration();
-
-            // Frost Fever
-            if (Aura* disease = target->GetAura(SPELL_DK_FROST_FEVER, caster->GetGUID()))
-            {
-                disease->RefreshDuration();
-                if (Aura const* talons = caster->GetAuraOfRankedSpell(SPELL_DK_ICY_TALONS_TALENT_R1))
-                    caster->CastSpell(caster, talons->GetSpellInfo()->Effects[EFFECT_0].TriggerSpell, true);
-            }
-
-            if (Aura* disease = target->GetAuraOfRankedSpell(SPELL_DK_EBON_PLAGUE_R1, caster->GetGUID()))
-                disease->RefreshDuration();
-            else if (Aura* disease = target->GetAuraOfRankedSpell(SPELL_DK_CRYPT_FEVER_R1, caster->GetGUID()))
-                disease->RefreshDuration();
         }
     }
 
@@ -2390,6 +2570,8 @@ class spell_dk_army_of_the_dead_passive : public AuraScript
 
 void AddSC_deathknight_spell_scripts()
 {
+    RegisterSpellScript(spell_death_knight_soul_of_ebon_blade);
+    RegisterSpellScript(spell_dk_tier_two_setbonus);
     RegisterSpellScript(spell_dk_wandering_plague);
     RegisterSpellScript(spell_dk_raise_ally);
     RegisterSpellScript(spell_dk_raise_ally_trigger);
@@ -2434,6 +2616,8 @@ void AddSC_deathknight_spell_scripts()
     RegisterSpellScript(spell_dk_spell_deflection);
     RegisterSpellScript(spell_dk_vampiric_blood);
     RegisterSpellScript(spell_dk_will_of_the_necropolis);
+    RegisterSpellScript(spell_death_knight_dnd);
+    RegisterSpellScript(spell_strength_of_will);
     RegisterSpellScript(spell_dk_ghoul_thrash);
     RegisterSpellScript(spell_dk_army_of_the_dead_passive);
 }

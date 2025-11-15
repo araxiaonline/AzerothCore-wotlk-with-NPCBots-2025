@@ -1,32 +1,35 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "CreatureScript.h"
-#include "GridNotifiers.h"
-#include "SpellAuraEffects.h"
-#include "SpellMgr.h"
-#include "SpellScript.h"
-#include "SpellScriptLoader.h"
-#include "Unit.h"
 /*
  * Scripts for spells with SPELLFAMILY_SHAMAN and SPELLFAMILY_GENERIC spells used by shaman players.
  * Ordered alphabetically using scriptname.
  * Scriptnames of files in this file should be prefixed with "spell_sha_".
  */
+
+#include "CreatureScript.h"
+#include "GridNotifiers.h"
+#include "ScriptMgr.h"
+#include "SpellAuraEffects.h"
+#include "SpellMgr.h"
+#include "SpellScript.h"
+#include "SpellScriptLoader.h"
+#include "Unit.h"
+#include "Player.h"
 
 enum ShamanSpells
 {
@@ -61,6 +64,10 @@ enum ShamanSpells
     SPELL_SHAMAN_STORMSTRIKE                    = 17364,
     SPELL_SHAMAN_LAVA_LASH                      = 60103,
     SPELL_SHAMAN_LIGHTNING_BOLT_OVERLOAD        = 45284,
+    SPELL_SHAMAN_LAVA_BURST_R1                  = 100131,
+    SPELL_SHAMAN_LAVA_BURST_R2                  = 100132,
+    SPELL_SHAMAN_LAVA_BURST_R3                  = 51505,
+    SPELL_SHAMAN_LAVA_BURST_R4                  = 60043,
 };
 
 enum ShamanSpellIcons
@@ -68,6 +75,89 @@ enum ShamanSpellIcons
     SHAMAN_ICON_ID_RESTORATIVE_TOTEMS           = 338,
     SHAMAN_ICON_ID_SHAMAN_LAVA_FLOW             = 3087
 };
+
+// Dinkle T2 Enhance
+class spell_sha_feral_spirit : public SpellScript
+{
+    PrepareSpellScript(spell_sha_feral_spirit);
+
+    void HandleOnHit()
+    {
+        if (Unit* caster = GetCaster())
+        {
+            if (caster->HasAura(870830))
+            {
+                caster->CastSpell(caster, 870831, true);
+            }
+        }
+    }
+
+    void Register() override
+    {
+        OnHit += SpellHitFn(spell_sha_feral_spirit::HandleOnHit);
+    }
+};
+
+void AddSC_custom_spell_scripts()
+{
+    RegisterSpellScript(spell_sha_feral_spirit);
+}
+
+class spell_sha_stormstrike : public SpellScript
+{
+    PrepareSpellScript(spell_sha_stormstrike);
+
+    void HandleOnHit()
+    {
+        Unit* caster = GetCaster();
+        if (caster && caster->IsPlayer() && !caster->ToPlayer()->IsNPCBotOrPet() && caster->HasAura(838432))
+        {
+            // 50% chance to cast the spell
+            if (urand(0, 1)) 
+            {
+                caster->CastSpell(caster, 838430, true);
+            }
+        }
+    }
+
+    void Register() override
+    {
+        OnHit += SpellHitFn(spell_sha_stormstrike::HandleOnHit);
+    }
+};
+
+void AddSC_custom_spell_stormstrike()
+{
+    RegisterSpellScript(spell_sha_stormstrike);
+}
+
+class spell_sham_earth_shock : public SpellScript
+{
+    PrepareSpellScript(spell_sham_earth_shock);
+
+    void HandleAfterCast()
+    {
+        Unit* caster = GetCaster();
+        // Check if the caster is a player and not an NPC bot
+        if (caster && caster->IsPlayer() && !caster->ToPlayer()->IsNPCBotOrPet() && caster->HasAura(890013))
+        {
+            if (Unit* target = GetExplTargetUnit())
+            {
+                caster->CastSpell(target, 37548, true);
+            }
+        }
+    }
+
+    void Register() override
+    {
+        AfterCast += SpellCastFn(spell_sham_earth_shock::HandleAfterCast);
+    }
+};
+
+void AddSC_custom_spell_earth_shock()
+{
+    RegisterSpellScript(spell_sham_earth_shock);
+}
 
 class spell_sha_totem_of_wrath : public SpellScript
 {
@@ -152,7 +242,7 @@ class spell_sha_totemic_mastery : public AuraScript
     {
         PreventDefaultAction();
 
-        for (uint8 i = SUMMON_SLOT_TOTEM_FIRE; i < MAX_TOTEM_SLOT; ++i)
+        for (uint8 i = SUMMON_SLOT_TOTEM; i < MAX_TOTEM_SLOT; ++i)
             if (!GetTarget()->m_SummonSlot[i])
                 return;
 
@@ -473,12 +563,19 @@ class spell_sha_chain_heal : public SpellScript
             // Check if the target has Riptide
             if (AuraEffect* aurEff = GetHitUnit()->GetAuraEffect(SPELL_AURA_PERIODIC_HEAL, SPELLFAMILY_SHAMAN, 0, 0, 0x10, GetCaster()->GetGUID()))
             {
-                riptide = true;
-                // Consume it
-                GetHitUnit()->RemoveAura(aurEff->GetBase());
+                riptide = true; // Set riptide to true for increased healing
+
+                // Check if the caster does NOT have the aura 888888
+                if (!GetCaster()->HasAura(888888))
+                {
+                    // Consume Riptide
+                    GetHitUnit()->RemoveAura(aurEff->GetBase());
+                }
+                // If the caster has the aura 888888, Riptide will not be consumed due to the above check
             }
             firstHeal = false;
         }
+
         // Riptide increases the Chain Heal effect by 25%
         if (riptide)
             SetHitHeal(GetHitHeal() * 1.25f);
@@ -705,6 +802,38 @@ class spell_sha_fire_nova : public SpellScript
 {
     PrepareSpellScript(spell_sha_fire_nova);
 
+    SpellCastResult CheckCast()
+    {
+        if (Unit* caster = GetCaster())
+        {
+            // Find all units within 60 yd
+            std::list<Unit*> targets;
+            float range = 60.0f;
+            Acore::AnyUnitInObjectRangeCheck fsu_check(caster, range);
+            Acore::UnitListSearcher<Acore::AnyUnitInObjectRangeCheck> searcher(caster, targets, fsu_check);
+            CellCoord pair(Acore::ComputeCellCoord(caster->GetPositionX(), caster->GetPositionY()));
+            Cell cell(pair);
+            cell.SetNoCreate();
+            cell.VisitAllObjects(caster, searcher, range);
+
+            // Check for Flame Shock targets
+            for (Unit* target : targets)
+            {
+                if (target->HasAuraTypeWithFamilyFlags(SPELL_AURA_PERIODIC_DAMAGE, 11, 0x10000000))
+                {
+                    return SPELL_CAST_OK;
+                }
+            }
+
+            if (Player* player = caster->ToPlayer())
+            {
+                player->GetSession()->SendAreaTriggerMessage("No target in range is affected by Flame Shock.");
+            }
+            return SPELL_FAILED_BAD_TARGETS;
+        }
+        return SPELL_CAST_OK;
+    }
+
     bool Validate(SpellInfo const* spellInfo) override
     {
         SpellInfo const* firstRankSpellInfo = sSpellMgr->GetSpellInfo(SPELL_SHAMAN_FIRE_NOVA_R1);
@@ -717,37 +846,63 @@ class spell_sha_fire_nova : public SpellScript
         return true;
     }
 
-    SpellCastResult CheckFireTotem()
-    {
-        // fire totem
-        Unit* caster = GetCaster();
-        if (Creature* totem = caster->GetMap()->GetCreature(caster->m_SummonSlot[1]))
-        {
-            if (!caster->IsWithinDistInMap(totem, caster->GetSpellMaxRangeForTarget(totem, GetSpellInfo())))
-                return SPELL_FAILED_OUT_OF_RANGE;
-            return SPELL_CAST_OK;
-        }
-        else
-        {
-            SetCustomCastResultMessage(SPELL_CUSTOM_ERROR_MUST_HAVE_FIRE_TOTEM);
-            return SPELL_FAILED_CUSTOM_ERROR;
-        }
-    }
-
     void HandleDummy(SpellEffIndex /*effIndex*/)
     {
         Unit* caster = GetCaster();
-        if (Creature* totem = caster->GetMap()->GetCreature(caster->m_SummonSlot[1]))
+        if (!caster)
+            return;
+
+        uint8 rank = GetSpellInfo()->GetRank();
+        uint32 fireNovaSpellId = sSpellMgr->GetSpellWithRank(SPELL_SHAMAN_FIRE_NOVA_TRIGGERED_R1, rank);
+
+        // Find all units within 60 yd
+        std::list<Unit*> targets;
+        float range = 60.0f;
+
+        Acore::AnyUnitInObjectRangeCheck fsu_check(caster, range);
+        Acore::UnitListSearcher<Acore::AnyUnitInObjectRangeCheck> searcher(caster, targets, fsu_check);
+
+        CellCoord pair(Acore::ComputeCellCoord(caster->GetPositionX(), caster->GetPositionY()));
+        Cell cell(pair);
+        cell.SetNoCreate();
+
+        cell.VisitAllObjects(caster, searcher, range);
+
+        bool hasFlameShockTarget = false;
+
+        // Check if any unit is affected by Flame Shock
+        for (Unit* target : targets)
         {
-            uint8 rank = GetSpellInfo()->GetRank();
-            if (totem->IsTotem())
-                caster->CastSpell(totem, sSpellMgr->GetSpellWithRank(SPELL_SHAMAN_FIRE_NOVA_TRIGGERED_R1, rank), true);
+            if (target->HasAuraTypeWithFamilyFlags(SPELL_AURA_PERIODIC_DAMAGE, 11, 0x10000000))
+            {
+                hasFlameShockTarget = true;
+                break;
+            }
+        }
+
+        // If no unit is affected by Flame Shock, send error message and prevent casting
+        if (!hasFlameShockTarget)
+        {
+            if (Player* player = caster->ToPlayer())
+            {
+                ChatHandler(player->GetSession()).SendSysMessage("No target in range is affected by Flame Shock.");
+            }
+            return;
+        }
+
+        // Apply Fire Nova to all units affected by Flame Shock (using spell family flags)
+        for (Unit* target : targets)
+        {
+            if (target->HasAuraTypeWithFamilyFlags(SPELL_AURA_PERIODIC_DAMAGE, 11, 0x10000000))
+            {
+                caster->CastSpell(target, fireNovaSpellId, true);
+            }
         }
     }
 
     void Register() override
     {
-        OnCheckCast += SpellCheckCastFn(spell_sha_fire_nova::CheckFireTotem);
+        OnCheckCast += SpellCheckCastFn(spell_sha_fire_nova::CheckCast);
         OnEffectHitTarget += SpellEffectFn(spell_sha_fire_nova::HandleDummy, EFFECT_0, SPELL_EFFECT_DUMMY);
     }
 };
@@ -759,27 +914,73 @@ class spell_sha_flame_shock : public AuraScript
 
     bool Validate(SpellInfo const* /*spell*/) override
     {
-        return ValidateSpellInfo({ SPELL_SHAMAN_LAVA_FLOWS_R1, SPELL_SHAMAN_LAVA_FLOWS_TRIGGERED_R1 });
+        return ValidateSpellInfo({ SPELL_SHAMAN_LAVA_FLOWS_R1, SPELL_SHAMAN_LAVA_FLOWS_TRIGGERED_R1, 821121, 844471, 822231, SPELL_SHAMAN_LAVA_BURST_R1, SPELL_SHAMAN_LAVA_BURST_R2, SPELL_SHAMAN_LAVA_BURST_R3, SPELL_SHAMAN_LAVA_BURST_R4 });
     }
 
     void HandleDispel(DispelInfo* /*dispelInfo*/)
     {
         if (Unit* caster = GetCaster())
+        {
             // Lava Flows
             if (AuraEffect const* aurEff = caster->GetDummyAuraEffect(SPELLFAMILY_SHAMAN, SHAMAN_ICON_ID_SHAMAN_LAVA_FLOW, EFFECT_0))
             {
                 if (SpellInfo const* firstRankSpellInfo = sSpellMgr->GetSpellInfo(SPELL_SHAMAN_LAVA_FLOWS_R1))
+                {
                     if (!aurEff->GetSpellInfo()->IsRankOf(firstRankSpellInfo))
                         return;
 
-                uint8 rank = aurEff->GetSpellInfo()->GetRank();
-                caster->CastSpell(caster, sSpellMgr->GetSpellWithRank(SPELL_SHAMAN_LAVA_FLOWS_TRIGGERED_R1, rank), true);
+                    uint8 rank = aurEff->GetSpellInfo()->GetRank();
+                    caster->CastSpell(caster, sSpellMgr->GetSpellWithRank(SPELL_SHAMAN_LAVA_FLOWS_TRIGGERED_R1, rank), true);
+                }
             }
+        }
+    }
+
+    void AfterRemove(AuraEffect const* aurEff, AuraEffectHandleModes /*mode*/)
+    {
+        AuraRemoveMode removeMode = GetTargetApplication()->GetRemoveMode();
+        if (removeMode != AURA_REMOVE_BY_ENEMY_SPELL && removeMode != AURA_REMOVE_BY_EXPIRE)
+            return;
+
+        if (Unit* caster = GetCaster())
+        {
+            // Relic
+            if (caster->HasAura(821121))
+            {
+                if (Unit* target = GetTarget())
+                {
+                    caster->CastSpell(target, 844471, true, nullptr, aurEff);
+                }
+            }
+        }
+    }
+
+    void OnPeriodic(AuraEffect const* aurEff)
+    {
+        //PreventDefaultAction();
+        if (Unit* caster = GetCaster())
+        {
+            if (caster->HasAura(822231))
+            {
+                if (roll_chance_i(10)) // 10% chance
+                {
+                    Player* playerCaster = caster->ToPlayer();
+                    // Cata Lava Surge, basically
+                    playerCaster->RemoveSpellCooldown(SPELL_SHAMAN_LAVA_BURST_R1, true);
+                    playerCaster->RemoveSpellCooldown(SPELL_SHAMAN_LAVA_BURST_R2, true);
+                    playerCaster->RemoveSpellCooldown(SPELL_SHAMAN_LAVA_BURST_R3, true);
+                    playerCaster->RemoveSpellCooldown(SPELL_SHAMAN_LAVA_BURST_R4, true);
+
+                }
+            }
+        }
     }
 
     void Register() override
     {
         AfterDispel += AuraDispelFn(spell_sha_flame_shock::HandleDispel);
+        AfterEffectRemove += AuraEffectRemoveFn(spell_sha_flame_shock::AfterRemove, EFFECT_1, SPELL_AURA_PERIODIC_DAMAGE, AURA_EFFECT_HANDLE_REAL);
+        OnEffectPeriodic += AuraEffectPeriodicFn(spell_sha_flame_shock::OnPeriodic, EFFECT_1, SPELL_AURA_PERIODIC_DAMAGE);
     }
 };
 
@@ -887,10 +1088,11 @@ class spell_sha_item_lightning_shield_trigger : public AuraScript
     {
         return ValidateSpellInfo({ SPELL_SHAMAN_ITEM_MANA_SURGE });
     }
-    void HandleProc(AuraEffect const* aurEff, ProcEventInfo& eventInfo)
+
+    void HandleProc(AuraEffect const* aurEff, ProcEventInfo& /*eventInfo*/)
     {
         PreventDefaultAction();
-        GetTarget()->CastSpell(eventInfo.GetProcTarget(), SPELL_SHAMAN_ITEM_LIGHTNING_SHIELD_DAMAGE, true, nullptr, aurEff);
+        GetTarget()->CastSpell(GetTarget(), SPELL_SHAMAN_ITEM_LIGHTNING_SHIELD_DAMAGE, true, nullptr, aurEff);
     }
 
     void Register() override
@@ -969,9 +1171,9 @@ class spell_sha_lava_lash : public SpellScript
         {
             int32 damage = GetEffectValue();
             int32 hitDamage = GetHitDamage();
-            if (caster->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_OFFHAND))
+            if (caster->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_MAINHAND))
             {
-                // Damage is increased by 25% if your off-hand weapon is enchanted with Flametongue.
+                // Damage is increased by 25% if your DINKLE main-hand weapon is enchanted with Flametongue.
                 if (caster->GetAuraEffect(SPELL_AURA_DUMMY, SPELLFAMILY_SHAMAN, 0x200000, 0, 0))
                     AddPct(hitDamage, damage);
                 SetHitDamage(hitDamage);
@@ -1185,4 +1387,7 @@ void AddSC_shaman_spell_scripts()
     RegisterSpellScript(spell_sha_thunderstorm);
     RegisterSpellScript(spell_sha_flurry_proc);
     RegisterSpellScript(spell_sha_t8_electrified);
+    RegisterSpellScript(spell_sham_earth_shock);
+    RegisterSpellScript(spell_sha_stormstrike);
+    RegisterSpellScript(spell_sha_feral_spirit);
 }

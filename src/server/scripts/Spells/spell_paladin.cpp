@@ -1,32 +1,37 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "Group.h"
-#include "Player.h"
-#include "SpellAuraEffects.h"
-#include "SpellMgr.h"
-#include "SpellScript.h"
-#include "SpellScriptLoader.h"
-#include "UnitAI.h"
 /*
  * Scripts for spells with SPELLFAMILY_PALADIN and SPELLFAMILY_GENERIC spells used by paladin players.
  * Ordered alphabetically using scriptname.
  * Scriptnames of files in this file should be prefixed with "spell_pal_".
  */
+
+#include "CreatureScript.h"
+#include "Group.h"
+#include "Player.h"
+#include "ScriptMgr.h"
+#include "SpellAuraEffects.h"
+#include "SpellMgr.h"
+#include "SpellScript.h"
+#include "SpellScriptLoader.h"
+#include "UnitAI.h"
+#include "Spell.h"
+
 
 //npcbot
 #include "Creature.h"
@@ -48,6 +53,7 @@ enum PaladinSpells
     SPELL_PALADIN_BLESSING_OF_LOWER_CITY_SHAMAN  = 37881,
 
     SPELL_PALADIN_DIVINE_STORM                   = 53385,
+    SPELL_PALADIN_DIVINE_STORM_SECOND            = 800026,
     SPELL_PALADIN_DIVINE_STORM_DUMMY             = 54171,
     SPELL_PALADIN_DIVINE_STORM_HEAL              = 54172,
 
@@ -105,6 +111,49 @@ enum PaladinSpells
 enum PaladinSpellIcons
 {
     PALADIN_ICON_ID_RETRIBUTION_AURA             = 555
+};
+
+class dual_crusader : public PlayerScript
+{
+public:
+    dual_crusader() : PlayerScript("dual_crusader") { }
+
+    uint32 CRUSADER_STRIKE_SPELL_ID = 35395;
+    uint32 DIVINE_STORM_SPELL_ID = 53385;
+    uint32 CRUSADER_STRIKE_ADDITIONAL_SPELL_ID = 8000025;
+    uint32 DIVINE_STORM_ADDITIONAL_SPELL_ID = 800026;
+
+    void OnSpellCast(Player* player, Spell* spell, bool skipCheck) override
+    {
+        if (player->getClass() != CLASS_PALADIN)
+        {
+            return;
+        }
+
+        uint32 spellId = spell->GetSpellInfo()->Id;
+        if (spellId != CRUSADER_STRIKE_SPELL_ID && spellId != DIVINE_STORM_SPELL_ID)
+        {
+            return;
+        }
+
+        // Check if the player has both mainhand and offhand weapons equipped
+        Item* mainhandItem = player->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_MAINHAND);
+        Item* offhandItem = player->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_OFFHAND);
+
+        if (mainhandItem && mainhandItem->GetTemplate()->Class == ITEM_CLASS_WEAPON &&
+            offhandItem && offhandItem->GetTemplate()->Class == ITEM_CLASS_WEAPON)
+        {
+            // Get the player's target
+            if (Unit* target = player->GetSelectedUnit())
+            {
+                // Determine the additional spell to cast based on the main spell cast
+                uint32 additionalSpellId = (spellId == CRUSADER_STRIKE_SPELL_ID) ? CRUSADER_STRIKE_ADDITIONAL_SPELL_ID : DIVINE_STORM_ADDITIONAL_SPELL_ID;
+
+                // Cast the additional spell on the target as a triggered (free and instant) cast
+                player->CastSpell(target, additionalSpellId, true);
+            }
+        }
+    }
 };
 
 class spell_pal_seal_of_command_aura : public AuraScript
@@ -433,16 +482,35 @@ class spell_pal_avenging_wrath : public AuraScript
     void HandleApply(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/)
     {
         Unit* target = GetTarget();
+        Unit* caster = GetCaster();
+
+        // Apply Sanctified Wrath effect if the talent is present
         if (AuraEffect const* aurEff = target->GetAuraEffectOfRankedSpell(SPELL_PALADIN_SANCTIFIED_WRATH_TALENT_R1, EFFECT_2))
         {
             int32 basepoints = aurEff->GetAmount();
             target->CastCustomSpell(target, SPELL_PALADIN_SANCTIFIED_WRATH, &basepoints, &basepoints, nullptr, true, nullptr, aurEff);
         }
+
+        // Dinkle: T3
+        if (caster == target && caster->GetGUID() == GetCasterGUID() && caster->HasAura(888054)) // Required aura
+        {
+            caster->AddAura(838425, caster); // Custom aura to be applied
+        }
     }
 
     void HandleRemove(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/)
     {
-        GetTarget()->RemoveAurasDueToSpell(SPELL_PALADIN_SANCTIFIED_WRATH);
+        Unit* target = GetTarget();
+        Unit* caster = GetCaster();
+
+        // Remove Sanctified Wrath effect
+        target->RemoveAurasDueToSpell(SPELL_PALADIN_SANCTIFIED_WRATH);
+
+        // Remove T3 aura
+        if (caster == target && caster->GetGUID() == GetCasterGUID())
+        {
+            caster->RemoveAura(838425);
+        }
     }
 
     void Register() override
@@ -611,6 +679,7 @@ class spell_pal_divine_sacrifice : public AuraScript
 };
 
 // 53385 - Divine Storm
+
 class spell_pal_divine_storm : public SpellScript
 {
     PrepareSpellScript(spell_pal_divine_storm);
@@ -625,7 +694,9 @@ class spell_pal_divine_storm : public SpellScript
     bool Load() override
     {
         healPct = GetSpellInfo()->Effects[EFFECT_1].CalcValue(GetCaster());
-        return true;
+
+        // Ensure the script applies to both Divine Storm spell IDs
+        return GetSpellInfo()->Id == SPELL_PALADIN_DIVINE_STORM || GetSpellInfo()->Id == SPELL_PALADIN_DIVINE_STORM_SECOND;
     }
 
     void TriggerHeal()
@@ -640,6 +711,7 @@ class spell_pal_divine_storm : public SpellScript
         AfterHit += SpellHitFn(spell_pal_divine_storm::TriggerHeal);
     }
 };
+
 
 // 54171 - Divine Storm (Dummy)
 class spell_pal_divine_storm_dummy : public SpellScript
@@ -739,9 +811,8 @@ class spell_pal_glyph_of_holy_light : public SpellScript
 
     void FilterTargets(std::list<WorldObject*>& targets)
     {
-        targets.remove(GetExplTargetUnit());
-
         uint32 const maxTargets = GetSpellInfo()->MaxAffectedTargets;
+
         if (targets.size() > maxTargets)
         {
             targets.sort(Acore::HealthPctOrderPred());
@@ -1123,6 +1194,52 @@ class spell_pal_righteous_defense : public SpellScript
     }
 };
 
+// 35395 - Crusader Strike
+class spell_pal_crusader_strike : public SpellScript
+{
+    PrepareSpellScript(spell_pal_crusader_strike);
+
+    void HandleOnHit()
+    {
+        Unit* caster = GetCaster();
+        if (!caster)
+            return;
+
+        Unit* target = GetHitUnit();
+        if (!target)
+            return;
+
+        int32 damage = GetHitDamage();
+
+        // Tier 1: Apply DoT if caster has aura 888051
+        if (caster->HasAura(888051))
+        {
+            int32 dotDamage = CalculatePct(damage, 6.25); // 6.25% of damage for each tick
+            caster->CastCustomSpell(target, 888050, &dotDamage, nullptr, nullptr, true);
+        }
+
+        // Tier 3: Deal additional Shadow damage if caster has aura 888052
+        if (caster->HasAura(888052))
+        {
+            int32 shadowDamage = CalculatePct(damage, 25); // 25% of the damage dealt as Shadow damage
+            caster->CastCustomSpell(target, 810947, &shadowDamage, nullptr, nullptr, true);
+        }
+
+        // Tier 3: Heal for 15% of the damage dealt
+        if (caster->HasAura(888053))
+        {
+        int32 healAmount = CalculatePct(damage, 15);
+        int32 manaAmount = CalculatePct(damage, 5);
+        caster->CastCustomSpell(caster, 845470, &healAmount, nullptr, &manaAmount, true); // 45470 is the heal spell for Death Strike
+        }
+    }
+
+    void Register() override
+    {
+        OnHit += SpellHitFn(spell_pal_crusader_strike::HandleOnHit);
+    }
+};
+
 // 20154, 21084 - Seal of Righteousness - melee proc dummy (addition ${$MWS*(0.022*$AP+0.044*$SPH)} damage)
 class spell_pal_seal_of_righteousness : public AuraScript
 {
@@ -1213,36 +1330,6 @@ class spell_pal_seal_of_vengeance : public SpellScript
     }
 };
 
-// 1022 - Hand of Protection
-class spell_pal_hand_of_protection : public SpellScript
-{
-    PrepareSpellScript(spell_pal_hand_of_protection);
-
-    SpellCastResult CheckCast()
-    {
-        Unit* caster = GetCaster();
-
-        if (!caster->GetTarget() || caster->GetTarget() == caster->GetGUID())
-            return SPELL_CAST_OK;
-
-        if (caster->HasStunAura())
-            return SPELL_FAILED_STUNNED;
-
-        if (caster->HasConfuseAura())
-            return SPELL_FAILED_CONFUSED;
-
-        if (caster->GetUnitFlags() & UNIT_FLAG_FLEEING)
-            return SPELL_FAILED_FLEEING;
-
-        return SPELL_CAST_OK;
-    }
-
-    void Register() override
-    {
-        OnCheckCast += SpellCheckCastFn(spell_pal_hand_of_protection::CheckCast);
-    }
-};
-
 void AddSC_paladin_spell_scripts()
 {
     RegisterSpellAndAuraScriptPair(spell_pal_seal_of_command, spell_pal_seal_of_command_aura);
@@ -1270,6 +1357,7 @@ void AddSC_paladin_spell_scripts()
     RegisterSpellScript(spell_pal_lay_on_hands);
     RegisterSpellScript(spell_pal_righteous_defense);
     RegisterSpellScript(spell_pal_seal_of_righteousness);
+    RegisterSpellScript(spell_pal_crusader_strike);
     RegisterSpellScript(spell_pal_seal_of_vengeance);
-    RegisterSpellScript(spell_pal_hand_of_protection);
+    new dual_crusader();
 }

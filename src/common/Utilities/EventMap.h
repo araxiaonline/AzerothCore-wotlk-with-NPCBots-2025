@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -24,31 +24,18 @@
 
 class EventMap
 {
-    using EventId = uint16;
-    using GroupIndex = uint8;
-    using GroupMask = uint8;
-    using PhaseIndex = uint8;
-    using PhaseMask = uint8;
-    struct Event
-    {
-        Event() = default;
-        Event(EventId id, GroupIndex groupIndex, PhaseIndex phaseIndex) :
-            _id(id),
-            _groupMask(groupIndex ? GroupMask(1u << (groupIndex - 1u)) : 0u),
-            _phaseMask(phaseIndex ? PhaseMask(1u << (phaseIndex - 1u)) : 0u)
-        {
-        }
-
-        EventId _id          = 0u;
-        GroupMask _groupMask = 0u;
-        PhaseMask _phaseMask = 0u;
-    };
-
     /**
-     * Internal storage type.
-     * Key: Time as TimePoint when the event should occur.
-     */
-    using EventStore = std::multimap<TimePoint, Event>;
+    * Internal storage type.
+    * Key: Time as TimePoint when the event should occur.
+    * Value: The event data as uint32.
+    *
+    * Structure of event data:
+    * - Bit  0 - 15: Event Id.
+    * - Bit 16 - 23: Group
+    * - Bit 24 - 31: Phase
+    * - Pattern: 0xPPGGEEEE
+    */
+    typedef std::multimap<uint32, uint32> EventStore;
 
 public:
     EventMap() { }
@@ -60,13 +47,13 @@ public:
     void Reset();
 
     /**
-    * @name Update
-    * @brief Updates the timer of the event map.
-    * @param time Value to be added to time.
-    */
+     * @name Update
+     * @brief Updates the timer of the event map.
+     * @param time Value to be added to time.
+     */
     void Update(uint32 time)
     {
-        Update(Milliseconds(time));
+        _time += time;
     }
 
     /**
@@ -76,23 +63,37 @@ public:
     */
     void Update(Milliseconds time)
     {
-        _time += time;
+        _time += static_cast<uint32>(time.count());
+    }
+
+    /**
+    * @name GetTimer
+    * @return Current timer value.
+    */
+    [[nodiscard]] uint32 GetTimer() const
+    {
+        return _time;
+    }
+
+    void SetTimer(uint32 time)
+    {
+        _time = time;
     }
 
     /**
     * @name GetPhaseMask
     * @return Active phases as mask.
     */
-    PhaseMask GetPhaseMask() const
+    [[nodiscard]] uint8 GetPhaseMask() const
     {
-        return _phaseMask;
+        return _phase;
     }
 
     /**
     * @name Empty
     * @return True, if there are no events scheduled.
     */
-    bool Empty() const
+    [[nodiscard]] bool Empty() const
     {
         return _eventMap.empty();
     }
@@ -102,21 +103,31 @@ public:
     * @brief Sets the phase of the map (absolute).
     * @param phase Phase which should be set. Values: 1 - 8. 0 resets phase.
     */
-    void SetPhase(PhaseIndex phase);
+    void SetPhase(uint8 phase);
 
     /**
     * @name AddPhase
-    * @brief Activates the given phase (absolute).
+    * @brief Activates the given phase (bitwise).
     * @param phase Phase which should be activated. Values: 1 - 8
     */
-    void AddPhase(PhaseIndex phase);
+    void AddPhase(uint8 phase);
 
     /**
     * @name RemovePhase
-    * @brief Deactivates the given phase (absolute).
+    * @brief Deactivates the given phase (bitwise).
     * @param phase Phase which should be deactivated. Values: 1 - 8.
     */
-    void RemovePhase(PhaseIndex phase);
+    void RemovePhase(uint8 phase);
+
+    /**
+    * @name ScheduleEvent
+    * @brief Creates new event entry in map.
+    * @param eventId The id of the new event.
+    * @param time The time in milliseconds until the event occurs.
+    * @param group The group which the event is associated to. Has to be between 1 and 8. 0 means it has no group.
+    * @param phase The phase in which the event can occur. Has to be between 1 and 8. 0 means it can occur in all phases.
+    */
+    void ScheduleEvent(uint32 eventId, uint32 time, uint32 group = 0, uint32 phase = 0);
 
     /**
     * @name ScheduleEvent
@@ -126,7 +137,7 @@ public:
     * @param group The group which the event is associated to. Has to be between 1 and 8. 0 means it has no group.
     * @param phase The phase in which the event can occur. Has to be between 1 and 8. 0 means it can occur in all phases.
     */
-    void ScheduleEvent(EventId eventId, Milliseconds time, GroupIndex group = 0u, PhaseIndex phase = 0u);
+    void ScheduleEvent(uint32 eventId, Milliseconds time, uint32 group = 0, uint8 phase = 0);
 
     /**
     * @name ScheduleEvent
@@ -137,7 +148,17 @@ public:
     * @param group The group which the event is associated to. Has to be between 1 and 8. 0 means it has no group.
     * @param phase The phase in which the event can occur. Has to be between 1 and 8. 0 means it can occur in all phases.
     */
-    void ScheduleEvent(EventId eventId, Milliseconds minTime, Milliseconds maxTime, GroupIndex group = 0u, PhaseIndex phase = 0u);
+    void ScheduleEvent(uint32 eventId, Milliseconds minTime, Milliseconds maxTime, uint32 group = 0, uint32 phase = 0);
+
+    /**
+    * @name RescheduleEvent
+    * @brief Cancels the given event and reschedules it.
+    * @param eventId The id of the event.
+    * @param time The time in milliseconds until the event occurs.
+    * @param group The group which the event is associated to. Has to be between 1 and 8. 0 means it has no group.
+    * @param phase The phase in which the event can occur. Has to be between 1 and 8. 0 means it can occur in all phases.
+    */
+    void RescheduleEvent(uint32 eventId, uint32 time, uint32 groupId = 0, uint32 phase = 0);
 
     /**
     * @name RescheduleEvent
@@ -147,7 +168,7 @@ public:
     * @param group The group which the event is associated to. Has to be between 1 and 8. 0 means it has no group.
     * @param phase The phase in which the event can occur. Has to be between 1 and 8. 0 means it can occur in all phases.
     */
-    void RescheduleEvent(EventId eventId, Milliseconds time, GroupIndex group = 0u, PhaseIndex phase = 0u);
+    void RescheduleEvent(uint32 eventId, Milliseconds time, uint32 group = 0, uint8 phase = 0);
 
     /**
     * @name RescheduleEvent
@@ -158,17 +179,25 @@ public:
     * @param group The group which the event is associated to. Has to be between 1 and 8. 0 means it has no group.
     * @param phase The phase in which the event can occur. Has to be between 1 and 8. 0 means it can occur in all phases.
     */
-    void RescheduleEvent(EventId eventId, Milliseconds minTime, Milliseconds maxTime, GroupIndex group = 0u, PhaseIndex phase = 0u);
+    void RescheduleEvent(uint32 eventId, Milliseconds minTime, Milliseconds maxTime, uint32 group = 0, uint32 phase = 0);
 
     /**
-    * @name Repeat
+    * @name RepeatEvent
+    * @brief Repeats the most recently executed event.
+    * @param time Time until the event occurs as std::chrono type.
+    */
+    void RepeatEvent(uint32 time);
+
+    /**
+    * @name RepeatEvent
     * @brief Repeats the most recently executed event.
     * @param time Time until the event occurs as std::chrono type.
     */
     void Repeat(Milliseconds time);
 
     /**
-    * @name Repeat
+
+    * @name RepeatEvent
     * @brief Repeats the most recently executed event.
     * @param minTime The minimum time until the event occurs as std::chrono type.
     * @param maxTime The maximum time until the event occurs as std::chrono type.
@@ -180,7 +209,14 @@ public:
     * @brief Returns the next event to execute and removes it from map.
     * @return Id of the event to execute.
     */
-    EventId ExecuteEvent();
+    uint32 ExecuteEvent();
+
+    /**
+    * @name DelayEvents
+    * @brief Delays all events in the map. If delay is greater than or equal internal timer, delay will be 0.
+    * @param delay Amount of delay.
+    */
+    void DelayEvents(uint32 delay);
 
     /**
     * @name DelayEvents
@@ -192,57 +228,62 @@ public:
     /**
     * @name DelayEvents
     * @brief Delay all events of the same group.
-    * @param delay Amount of delay as std::chrono type.
+    * @param delay Amount of delay.
     * @param group Group of the events.
     */
-    void DelayEvents(Milliseconds delay, GroupIndex group);
+    void DelayEvents(uint32 delay, uint32 group);
 
     /**
     * @name EventsEvents
     * @brief Delay all events of the same group.
-    * @param delay Amount of delay as std::chrono type.
+    * @param delay Amount of delay.
     * @param group Group of the events.
     */
-    void DelayEventsToMax(Milliseconds delay, GroupIndex group);
+    void DelayEventsToMax(uint32 delay, uint32 group);
 
     /**
     * @name CancelEvent
     * @brief Cancels all events of the specified id.
     * @param eventId Event id to cancel.
     */
-    void CancelEvent(EventId eventId);
+    void CancelEvent(uint32 eventId);
 
     /**
     * @name CancelEventGroup
     * @brief Cancel events belonging to specified group.
     * @param group Group to cancel.
     */
-    void CancelEventGroup(GroupIndex group);
+    void CancelEventGroup(uint32 group);
+
+    /**
+    * @name GetNextEventTime
+    * @brief Returns closest occurence of specified event.
+    * @param eventId Wanted event id.
+    * @return Time of found event.
+    */
+    [[nodiscard]] uint32 GetNextEventTime(uint32 eventId) const;
+
+    /**
+     * @name GetNextEventTime
+     * @return Time of next event.
+     */
+    [[nodiscard]] uint32 GetNextEventTime() const;
 
     /**
     * @name IsInPhase
-    * @brief Returns whether event map is in specified phase or not.
+    * @brief Returns wether event map is in specified phase or not.
     * @param phase Wanted phase.
     * @return True, if phase of event map contains specified phase.
     */
-    bool IsInPhase(PhaseIndex phase) const;
+    bool IsInPhase(uint8 phase);
 
     /**
     * @name GetTimeUntilEvent
     * @brief Returns time as std::chrono type until next event.
-    * @param eventId The id of the event.
+    * @param eventId of the event.
     * @return Time of next event. If event is not scheduled returns Milliseconds::max()
-    * @return Time of next event.
     */
-    Milliseconds GetTimeUntilEvent(EventId eventId) const;
-
-    /**
-     * @name HasTimeUntilEvent
-     * @brief Returns whether an event is scheduled
-     * @param eventId The id of the event.
-     * @return True if event is scheduled
-     */
-    bool HasTimeUntilEvent(EventId eventId) const;
+    Milliseconds GetTimeUntilEvent(uint32 eventId) const;
 
 private:
     /**
@@ -255,23 +296,23 @@ private:
     * has reached their time value. Its value is changed in the
     * Update method.
     */
-    TimePoint _time{ TimePoint::min() };
+    uint32 _time{ 0 };
 
     /**
-    * @name _phaseMask
+    * @name _phase
     * @brief Phase mask of the event map.
     *
     * Contains the phases the event map is in. Multiple
     * phases from 1 to 8 can be set with SetPhase or
     * AddPhase. RemovePhase deactives a phase.
     */
-    PhaseMask _phaseMask{ 0 };
+    uint32 _phase{0};
 
     /**
     * @name _lastEvent
     * @brief Stores information on the most recently executed event
     */
-    Event _lastEvent;
+    uint32 _lastEvent{0};
 
     /**
     * @name _eventMap

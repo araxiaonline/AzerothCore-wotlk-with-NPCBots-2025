@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -18,7 +18,6 @@
 #include "InstanceMapScript.h"
 #include "InstanceScript.h"
 #include "Player.h"
-#include "WorldStateDefines.h"
 #include "the_black_morass.h"
 
 const Position PortalLocation[4] =
@@ -38,7 +37,7 @@ ObjectData const creatureData[] =
 class instance_the_black_morass : public InstanceMapScript
 {
 public:
-    instance_the_black_morass() : InstanceMapScript("instance_the_black_morass", MAP_OPENING_OF_THE_DARK_PORTAL) { }
+    instance_the_black_morass() : InstanceMapScript("instance_the_black_morass", 269) { }
 
     InstanceScript* GetInstanceScript(InstanceMap* map) const override
     {
@@ -75,6 +74,7 @@ public:
             // prevent getting stuck if event fails during boss break
             _noBossSpawnDelay = true;
 
+            instance->LoadGrid(-2023.0f, 7121.0f);
             if (Creature* medivh = GetCreature(DATA_MEDIVH))
             {
                 medivh->Respawn();
@@ -143,7 +143,7 @@ public:
                                     case NPC_INFINITE_EXECUTIONER_2:
                                     case NPC_INFINITE_VANQUISHER:
                                     case NPC_INFINITE_VANQUISHER_2:
-                                        creature->DespawnOrUnsummon(1ms);
+                                        creature->DespawnOrUnsummon(1);
                                         break;
                                     default:
                                         break;
@@ -181,9 +181,9 @@ public:
                 CleanupInstance();
             }
 
-            player->SendUpdateWorldState(WORLD_STATE_BLACK_MORASS, _eventStatus);
-            player->SendUpdateWorldState(WORLD_STATE_BLACK_MORASS_SHIELD, _shieldPercent);
-            player->SendUpdateWorldState(WORLD_STATE_BLACK_MORASS_RIFT, _currentRift);
+            player->SendUpdateWorldState(WORLD_STATE_BM, _eventStatus);
+            player->SendUpdateWorldState(WORLD_STATE_BM_SHIELD, _shieldPercent);
+            player->SendUpdateWorldState(WORLD_STATE_BM_RIFT, _currentRift);
         }
 
         void ScheduleNextPortal(Milliseconds time, Position lastPosition)
@@ -206,12 +206,10 @@ public:
                     {
                         if (_availableRiftPositions.size() > 1)
                         {
-                            auto spawnPosItr = Acore::Containers::SelectRandomContainerElementIf(_availableRiftPositions, [&](Position const& pos) -> bool
+                            spawnPos = Acore::Containers::SelectRandomContainerElementIf(_availableRiftPositions, [&](Position pos) -> bool
                             {
                                 return pos != lastPosition;
                             });
-                            if (spawnPosItr != _availableRiftPositions.end())
-                                spawnPos = *spawnPosItr;
                         }
                         else
                         {
@@ -220,7 +218,7 @@ public:
 
                         _availableRiftPositions.remove(spawnPos);
 
-                        DoUpdateWorldState(WORLD_STATE_BLACK_MORASS_RIFT, ++_currentRift);
+                        DoUpdateWorldState(WORLD_STATE_BM_RIFT, ++_currentRift);
 
                         instance->SummonCreature(NPC_TIME_RIFT, spawnPos);
 
@@ -319,9 +317,9 @@ public:
                 {
                     _eventStatus = EVENT_IN_PROGRESS;
 
-                    DoUpdateWorldState(WORLD_STATE_BLACK_MORASS, _eventStatus);
-                    DoUpdateWorldState(WORLD_STATE_BLACK_MORASS_SHIELD, _shieldPercent);
-                    DoUpdateWorldState(WORLD_STATE_BLACK_MORASS_RIFT, _currentRift);
+                    DoUpdateWorldState(WORLD_STATE_BM, _eventStatus);
+                    DoUpdateWorldState(WORLD_STATE_BM_SHIELD, _shieldPercent);
+                    DoUpdateWorldState(WORLD_STATE_BM_RIFT, _currentRift);
 
                     ScheduleNextPortal(3s, Position(0.0f, 0.0f, 0.0f, 0.0f));
 
@@ -340,7 +338,7 @@ public:
                         _shieldPercent = 0;
                     }
 
-                    DoUpdateWorldState(WORLD_STATE_BLACK_MORASS_SHIELD, _shieldPercent);
+                    DoUpdateWorldState(WORLD_STATE_BM_SHIELD, _shieldPercent);
 
                     if (!_shieldPercent)
                     {
@@ -422,9 +420,9 @@ public:
                                             {
                                                 CleanupInstance();
 
-                                                DoUpdateWorldState(WORLD_STATE_BLACK_MORASS, _eventStatus);
-                                                DoUpdateWorldState(WORLD_STATE_BLACK_MORASS_SHIELD, _shieldPercent);
-                                                DoUpdateWorldState(WORLD_STATE_BLACK_MORASS_RIFT, _currentRift);
+                                                DoUpdateWorldState(WORLD_STATE_BM, _eventStatus);
+                                                DoUpdateWorldState(WORLD_STATE_BM_SHIELD, _shieldPercent);
+                                                DoUpdateWorldState(WORLD_STATE_BM_RIFT, _currentRift);
                                             });
                                         });
                                     });

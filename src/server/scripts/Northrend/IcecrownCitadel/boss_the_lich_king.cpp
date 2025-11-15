@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -16,7 +16,6 @@
  */
 
 #include "AchievementCriteriaScript.h"
-#include "AreaDefines.h"
 #include "Cell.h"
 #include "CellImpl.h"
 #include "CreatureScript.h"
@@ -141,6 +140,7 @@ enum Spells
     SPELL_SOUL_REAPER                   = 69409, // instant
     SPELL_SOUL_REAPER_BUFF              = 69410,
     SPELL_SUMMON_VALKYR                 = 69037, // instant
+    SPELL_SUMMON_VALKYR_PERIODIC        = 74361,
     SPELL_WINGS_OF_THE_DAMNED           = 74352,
     SPELL_VALKYR_TARGET_SEARCH          = 69030,
     SPELL_HARVEST_SOUL_VALKYR           = 68985, // vehicle aura used by Val'kyr Shadowguard and Strangulate Vehicle
@@ -186,6 +186,14 @@ enum Spells
     SPELL_ENRAGE                        = 72143,
     SPELL_FRENZY                        = 28747,
 };
+
+#define NECROTIC_PLAGUE_LK   RAID_MODE<uint32>(70337, 73912, 73913, 73914)
+#define NECROTIC_PLAGUE_PLR  RAID_MODE<uint32>(70338, 73785, 73786, 73787)
+#define REMORSELESS_WINTER_1 RAID_MODE<uint32>(68981, 74270, 74271, 74272)
+#define REMORSELESS_WINTER_2 RAID_MODE<uint32>(72259, 74273, 74274, 74275)
+#define SUMMON_VALKYR        RAID_MODE<uint32>(69037, 74361, 69037, 74361)
+//#define HARVEST_SOUL         RAID_MODE<uint32>(68980, 74325, 74296, 74297)
+#define HARVESTED_SOUL_BUFF  RAID_MODE<uint32>(72679, 74318, 74319, 74320)
 
 enum Events
 {
@@ -366,7 +374,7 @@ void SendPacketToPlayers(WorldPacket const* data, Unit* source)
         for (Map::PlayerList::const_iterator itr = players.begin(); itr != players.end(); ++itr)
             if (Player* player = itr->GetSource())
                 if (player->GetAreaId() == AREA_THE_FROZEN_THRONE)
-                    player->SendDirectMessage(data);
+                    player->GetSession()->SendPacket(data);
 }
 
 struct ShadowTrapLKTargetSelector
@@ -543,7 +551,7 @@ public:
 
         if (--_counter)
         {
-            _owner->m_Events.AddEventAtOffset(this, 3s);
+            _owner->m_Events.AddEvent(this, _owner->m_Events.CalculateTime(3000));
             return false;
         }
 
@@ -664,7 +672,7 @@ public:
             // Reset The Frozen Throne gameobjects
             FrozenThroneResetWorker reset;
             Acore::GameObjectWorker<FrozenThroneResetWorker> worker(me, reset);
-            Cell::VisitObjects(me, worker, 333.0f);
+            Cell::VisitGridObjects(me, worker, 333.0f);
 
             me->AddAura(SPELL_EMOTE_SIT_NO_SHEATH, me);
             me->SetImmuneToPC(true);
@@ -817,12 +825,12 @@ public:
                     me->SetDisableGravity(false);
                     me->GetMotionMaster()->MoveFall();
                     if (Creature* frostmourne = me->FindNearestCreature(NPC_FROSTMOURNE_TRIGGER, 50.0f))
-                        frostmourne->DespawnOrUnsummon(1ms);
+                        frostmourne->DespawnOrUnsummon(1);
                     if (Creature* terenas = me->FindNearestCreature(NPC_TERENAS_MENETHIL_OUTRO, 50.0f))
-                        terenas->DespawnOrUnsummon(1ms);
+                        terenas->DespawnOrUnsummon(1);
 
-                    me->m_Events.AddEventAtOffset(new LichKingDeathEvent(*me), 2500ms); // die after spinning anim is over, so death anim is visible
-                    me->m_Events.AddEventAtOffset(new LichKingMovieEvent(*me), 11500ms);
+                    me->m_Events.AddEvent(new LichKingDeathEvent(*me), me->m_Events.CalculateTime(2500)); // die after spinning anim is over, so death anim is visible
+                    me->m_Events.AddEvent(new LichKingMovieEvent(*me), me->m_Events.CalculateTime(11500));
                 }
 
                 if (!_bFordringMustFallYell && me->GetHealth() < 500000)
@@ -853,7 +861,7 @@ public:
                     summon->CastSpell(summon, SPELL_RISEN_WITCH_DOCTOR_SPAWN, true);
                     summon->SetReactState(REACT_PASSIVE);
                     summon->HandleEmoteCommand(EMOTE_ONESHOT_EMERGE);
-                    summon->m_Events.AddEventAtOffset(new StartMovementEvent(me, summon), 5s);
+                    summon->m_Events.AddEvent(new StartMovementEvent(me, summon), summon->m_Events.CalculateTime(5000));
                     break;
                 case NPC_RAGING_SPIRIT:
                     summon->SetHomePosition(CenterPosition);
@@ -863,7 +871,7 @@ public:
                         summon->SetReactState(REACT_PASSIVE);
                         summon->GetMotionMaster()->MoveRandom(10.0f);
                         if (_phase == PHASE_THREE)
-                            summon->m_Events.AddEventAtOffset(new VileSpiritActivateEvent(summon), 15s);
+                            summon->m_Events.AddEvent(new VileSpiritActivateEvent(summon), summon->m_Events.CalculateTime(15000));
                         break;
                     }
                 case NPC_STRANGULATE_VEHICLE:
@@ -876,8 +884,8 @@ public:
                     summon->StopMovingOnCurrentPos();
                     break;
                 case NPC_VALKYR_SHADOWGUARD:
-                    if (_phase == PHASE_THREE || events.HasTimeUntilEvent(EVENT_QUAKE_2))
-                        summon->DespawnOrUnsummon(1ms);
+                    if (_phase == PHASE_THREE || events.GetNextEventTime(EVENT_QUAKE_2))
+                        summon->DespawnOrUnsummon(1);
                     break;
                 default:
                     break;
@@ -906,7 +914,7 @@ public:
 
         void SpellHit(Unit* /*caster*/, SpellInfo const* spell) override
         {
-            if (spell->Id == sSpellMgr->GetSpellIdForDifficulty(SPELL_HARVESTED_SOUL_LK_BUFF, me) && me->IsInCombat() && !IsHeroic() && _phase != PHASE_OUTRO && _lastTalkTimeBuff + 5 <= GameTime::GetGameTime().count())
+            if (spell->Id == HARVESTED_SOUL_BUFF && me->IsInCombat() && !IsHeroic() && _phase != PHASE_OUTRO && _lastTalkTimeBuff + 5 <= GameTime::GetGameTime().count())
             {
                 _lastTalkTimeBuff = GameTime::GetGameTime().count();
                 Talk(SAY_LK_FROSTMOURNE_KILL);
@@ -915,7 +923,7 @@ public:
 
         void SpellHitTarget(Unit* /*target*/, SpellInfo const* spell) override
         {
-            if (spell->Id == sSpellMgr->GetSpellIdForDifficulty(SPELL_REMORSELESS_WINTER_1, me) || spell->Id == sSpellMgr->GetSpellIdForDifficulty(SPELL_REMORSELESS_WINTER_2, me))
+            if (spell->Id == REMORSELESS_WINTER_1 || spell->Id == REMORSELESS_WINTER_2)
             {
                 me->GetMap()->SetZoneOverrideLight(AREA_THE_FROZEN_THRONE, LIGHT_SNOWSTORM, 5s);
                 me->GetMap()->SetZoneWeather(AREA_THE_FROZEN_THRONE, WEATHER_STATE_LIGHT_SNOW, 0.5f);
@@ -935,7 +943,7 @@ public:
                     Talk(SAY_LK_REMORSELESS_WINTER);
                     me->GetMap()->SetZoneMusic(AREA_THE_FROZEN_THRONE, MUSIC_SPECIAL);
                     me->CastSpell(me, SPELL_REMORSELESS_WINTER_1, false);
-                    //events.DelayEvents(62500ms, EVENT_GROUP_BERSERK); // delay berserk timer, its not ticking during phase transitions, 15mins on movies
+                    //events.DelayEvents(62500, EVENT_GROUP_BERSERK); // delay berserk timer, its not ticking during phase transitions, 15mins on movies
                     events.ScheduleEvent(EVENT_QUAKE, 62s + 500ms);
                     events.ScheduleEvent(EVENT_PAIN_AND_SUFFERING, 3500ms, EVENT_GROUP_ABILITIES);
                     events.ScheduleEvent(EVENT_SUMMON_ICE_SPHERE, 8s, EVENT_GROUP_ABILITIES);
@@ -947,7 +955,7 @@ public:
                     me->GetMap()->SetZoneMusic(AREA_THE_FROZEN_THRONE, MUSIC_SPECIAL);
                     me->CastSpell(me, SPELL_REMORSELESS_WINTER_2, false);
                     summons.DespawnEntry(NPC_VALKYR_SHADOWGUARD);
-                    //events.DelayEvents(62500ms, EVENT_GROUP_BERSERK); // delay berserk timer, its not ticking during phase transitions, 15 mins on movies
+                    //events.DelayEvents(62500, EVENT_GROUP_BERSERK); // delay berserk timer, its not ticking during phase transitions, 15 mins on movies
                     events.ScheduleEvent(EVENT_QUAKE_2, 62s + 500ms);
                     events.ScheduleEvent(EVENT_PAIN_AND_SUFFERING, 3500ms, EVENT_GROUP_ABILITIES);
                     events.ScheduleEvent(EVENT_SUMMON_ICE_SPHERE, 8s, EVENT_GROUP_ABILITIES);
@@ -1055,7 +1063,7 @@ public:
                     events.ScheduleEvent(EVENT_INFEST, 22s + 500ms, EVENT_GROUP_ABILITIES);
                     break;
                 case EVENT_NECROTIC_PLAGUE:
-                    if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, NecroticPlagueTargetCheck(me, sSpellMgr->GetSpellIdForDifficulty(SPELL_NECROTIC_PLAGUE, me), sSpellMgr->GetSpellIdForDifficulty(SPELL_NECROTIC_PLAGUE_JUMP, me))))
+                    if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, NecroticPlagueTargetCheck(me, NECROTIC_PLAGUE_LK, NECROTIC_PLAGUE_PLR)))
                     {
                         Talk(EMOTE_NECROTIC_PLAGUE_WARNING, target);
                         me->CastSpell(target, SPELL_NECROTIC_PLAGUE, false);
@@ -1072,11 +1080,11 @@ public:
                 case EVENT_PAIN_AND_SUFFERING:
                     if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, 0.0f, true))
                     {
-                        //events.DelayEventsToMax(500ms, EVENT_GROUP_ABILITIES);
+                        //events.DelayEventsToMax(500, EVENT_GROUP_ABILITIES);
                         me->SetFacingTo(me->GetAngle(target));
                         me->CastSpell(target, SPELL_PAIN_AND_SUFFERING, false);
                     }
-                    events.Repeat((IsHeroic() ? randtime(1250ms, 1750ms) : randtime(1750ms, 2250ms)));
+                    events.ScheduleEvent(EVENT_PAIN_AND_SUFFERING, (IsHeroic() ? urand(1250, 1750) : urand(1750, 2250)), EVENT_GROUP_ABILITIES);
                     break;
                 case EVENT_SUMMON_ICE_SPHERE:
                     me->CastSpell((Unit*)nullptr, SPELL_SUMMON_ICE_SPHERE, false);
@@ -1089,21 +1097,21 @@ public:
                     break;
                 case EVENT_DEFILE:
                     {
-                        Milliseconds evTime = events.GetTimeUntilEvent(EVENT_SUMMON_VALKYR);
+                        uint32 evTime = events.GetNextEventTime(EVENT_SUMMON_VALKYR);
                         // if defile (cast time 2sec) is less than 3 before valkyr appears
                         // we've to decide
-                        if (evTime < 5s)
+                        if (evTime && (events.GetTimer() > evTime || evTime - events.GetTimer() < 5000))
                         {
                             // if valkyr is less than 1.5 secs after defile (cast time 2 sec) then we've a sync issue, so
                             // we need to cancel it (break) and schedule a defile to be casted 5 or 4 seconds after valkyr
-                            if (evTime < 3500ms)
+                            if (events.GetTimer() > evTime || evTime - events.GetTimer() < 3500)
                             {
-                                Milliseconds t = evTime > 0ms ? evTime : 0ms;
-                                events.ScheduleEvent(EVENT_DEFILE, t + (Is25ManRaid() ? 5s : 4s), EVENT_GROUP_ABILITIES);
+                                uint32 t = events.GetTimer() > evTime ? 0 : evTime - events.GetTimer();
+                                events.ScheduleEvent(EVENT_DEFILE, t + (Is25ManRaid() ? 5000 : 4000), EVENT_GROUP_ABILITIES);
                                 break;
                             }
 
-                            // if valkyr is coming within 2,5 seconds after defile then we've to
+                            // if valkyr is coming between 1.5 and 3 seconds after defile then we've to
                             // delay valkyr just a bit
                             events.RescheduleEvent(EVENT_SUMMON_VALKYR, 5s, EVENT_GROUP_ABILITIES);
                         }
@@ -1136,14 +1144,17 @@ public:
                     {
                         me->GetMap()->SetZoneMusic(AREA_THE_FROZEN_THRONE, MUSIC_SPECIAL);
                         Talk(SAY_LK_SUMMON_VALKYR);
-                        me->CastSpell((Unit*)nullptr, SPELL_SUMMON_VALKYR, false);
+                        me->CastSpell((Unit*)nullptr, SUMMON_VALKYR, false);
                         events.ScheduleEvent(EVENT_SUMMON_VALKYR, 45s, EVENT_GROUP_ABILITIES);
 
                         // schedule a defile (or reschedule it) if next defile event
                         // doesn't exist ( now > next defile ) or defile is coming too soon
-                        Milliseconds minTime = (Is25ManRaid() ? 5s : 4s);
-                        if (events.GetTimeUntilEvent(EVENT_DEFILE) < minTime)
-                            events.RescheduleEvent(EVENT_DEFILE, minTime, EVENT_GROUP_ABILITIES);
+                        uint32 minTime = (Is25ManRaid() ? 5000 : 4000);
+                        if (uint32 evTime = events.GetNextEventTime(EVENT_DEFILE))
+                            if (events.GetTimer() > evTime || evTime - events.GetTimer() < minTime)
+                            {
+                                events.RescheduleEvent(EVENT_DEFILE, minTime, EVENT_GROUP_ABILITIES);
+                            }
                     }
                     break;
                 case EVENT_VILE_SPIRITS:
@@ -1168,7 +1179,7 @@ public:
                     me->SetReactState(REACT_PASSIVE);
                     me->AttackStop();
                     events.ScheduleEvent(EVENT_START_ATTACK, 55s);
-                    events.DelayEvents(52500ms, EVENT_GROUP_VILE_SPIRITS);
+                    events.DelayEvents(52500, EVENT_GROUP_VILE_SPIRITS);
                     events.CancelEvent(EVENT_DEFILE);
                     events.CancelEvent(EVENT_SOUL_REAPER);
                     events.ScheduleEvent(EVENT_FROSTMOURNE_HEROIC, 6s, EVENT_GROUP_ABILITIES);
@@ -1180,7 +1191,7 @@ public:
                             if (summon->GetEntry() == NPC_VILE_SPIRIT)
                             {
                                 summon->m_Events.KillAllEvents(true);
-                                summon->m_Events.AddEventAtOffset(new VileSpiritActivateEvent(summon), 55s);
+                                summon->m_Events.AddEvent(new VileSpiritActivateEvent(summon), summon->m_Events.CalculateTime(55000));
                                 summon->GetMotionMaster()->Clear(true);
                                 summon->StopMoving();
                                 summon->SetReactState(REACT_PASSIVE);
@@ -1204,7 +1215,7 @@ public:
                         {
                             spawner->CastSpell(spawner, SPELL_SUMMON_SPIRIT_BOMB_1, true);  // summons bombs randomly
                             spawner->CastSpell(spawner, SPELL_SUMMON_SPIRIT_BOMB_2, true);  // summons bombs on players
-                            spawner->m_Events.AddEventAtOffset(new TriggerWickedSpirit(spawner), 3s);
+                            spawner->m_Events.AddEvent(new TriggerWickedSpirit(spawner), spawner->m_Events.CalculateTime(3000));
                             terenas->SetImmuneToAll(true); // to avoid being healed by player trinket procs. terenas' health doesn't matter on heroic
                         }
                     }
@@ -1496,9 +1507,9 @@ public:
                         theLichKing->GetMotionMaster()->MovePoint(0, CenterPosition);
                         uint32 travelTime = 1000 * theLichKing->GetExactDist(&CenterPosition) / theLichKing->GetSpeed(MOVE_WALK) + 1000;
 
-                        _events.ScheduleEvent(EVENT_OUTRO_LK_TALK_4, Milliseconds(1 + travelTime));
-                        _events.ScheduleEvent(EVENT_OUTRO_LK_RAISE_DEAD, Milliseconds(1000 + travelTime));
-                        _events.ScheduleEvent(EVENT_OUTRO_LK_TALK_5, Milliseconds(29000 + travelTime));
+                        _events.ScheduleEvent(EVENT_OUTRO_LK_TALK_4, 1 + travelTime);
+                        _events.ScheduleEvent(EVENT_OUTRO_LK_RAISE_DEAD, 1000 + travelTime);
+                        _events.ScheduleEvent(EVENT_OUTRO_LK_TALK_5, 29000 + travelTime);
                     }
                     break;
                 case EVENT_OUTRO_LK_TALK_4:
@@ -2069,7 +2080,7 @@ class spell_the_lich_king_shadow_trap_periodic : public SpellScript
         if (Aura* a = GetCaster()->GetAura(SPELL_SHADOW_TRAP_AURA))
             a->SetDuration(0);
         if (GetCaster()->IsCreature())
-            GetCaster()->ToCreature()->DespawnOrUnsummon(3s);
+            GetCaster()->ToCreature()->DespawnOrUnsummon(3000);
     }
 
     void Register() override
@@ -2125,7 +2136,7 @@ public:
             {
                 me->RemoveAllAuras();
                 me->CastSpell(me, SPELL_ICE_BURST, true);
-                me->DespawnOrUnsummon(1s);
+                me->DespawnOrUnsummon(1000);
                 targetGUID.Clear();
                 timer = 9999;
                 me->InterruptNonMeleeSpells(true);
@@ -2229,7 +2240,7 @@ public:
                 if (Player* plr = ScriptedAI::SelectTargetFromPlayerList(100.0f, 0, true))
                     plr->CastSpell(me, SPELL_RAGING_SPIRIT_VISUAL_CLONE, true);
                 else
-                    me->DespawnOrUnsummon(1ms);
+                    me->DespawnOrUnsummon(1);
             }
         }
 
@@ -2343,7 +2354,8 @@ class spell_the_lich_king_defile : public SpellScript
     {
         targets.remove_if(VehicleCheck());
         targets.remove_if(Acore::AllWorldObjectsInExactRange(GetCaster(), 10.0f * GetCaster()->GetFloatValue(OBJECT_FIELD_SCALE_X), true));
-        targets.remove_if(Acore::UnitAuraCheck(true, sSpellMgr->GetSpellIdForDifficulty(SPELL_HARVEST_SOUL, GetCaster())));
+        uint32 strangulatedAura[4] = {68980, 74325, 74296, 74297};
+        targets.remove_if(Acore::UnitAuraCheck(true, strangulatedAura[GetCaster()->GetMap()->GetDifficulty()]));
     }
 
     void ChangeDamageAndGrow()
@@ -2439,7 +2451,7 @@ public:
             if (IsHeroic())
                 GoSiphon();
             else
-                me->DespawnOrUnsummon(1s);
+                me->DespawnOrUnsummon(1000);
         }
 
         void DamageTaken(Unit*, uint32& damage, DamageEffectType, SpellSchoolMask) override
@@ -2509,7 +2521,7 @@ public:
                         if (IsHeroic())
                             GoSiphon();
                         else
-                            me->DespawnOrUnsummon(1s);
+                            me->DespawnOrUnsummon(1000);
                     }
                     break;
                 case POINT_START_SIPHON:
@@ -2526,7 +2538,7 @@ public:
             }
         }
 
-        void SetGUID(ObjectGuid const& guid, int32 /* = 0*/) override
+        void SetGUID(ObjectGuid guid, int32 /* = 0*/) override
         {
             _grabbedPlayer = guid;
         }
@@ -2555,8 +2567,8 @@ public:
                     me->AddUnitState(UNIT_STATE_NO_ENVIRONMENT_UPD);
                     me->SetCanFly(false);
                     me->SetDisableGravity(false);
-                    me->GetMotionMaster()->MovePoint(POINT_DROP_PLAYER, _destPoint, FORCED_MOVEMENT_NONE, 0.f, false);
-                    me->SetDisableGravity(true);
+                    me->GetMotionMaster()->MovePoint(POINT_DROP_PLAYER, _destPoint, false);
+                    me->SetDisableGravity(true, true);
                     me->RemoveUnitFlag(UNIT_FLAG_NON_ATTACKABLE);
                     break;
                 case EVENT_MOVE_TO_SIPHON_POS:
@@ -2607,7 +2619,7 @@ public:
             me->GetMotionMaster()->Clear();
             me->StopMovingOnCurrentPos();
 
-            _events.ScheduleEvent(EVENT_MOVE_TO_DROP_POS, 0ms);
+            _events.ScheduleEvent(EVENT_MOVE_TO_DROP_POS, 0);
         }
     };
 
@@ -2725,7 +2737,7 @@ class spell_the_lich_king_valkyr_target_search : public SpellScript
         if (Unit* target = GetHitUnit())
         {
             GetCaster()->GetMotionMaster()->MoveCharge(target->GetPositionX(), target->GetPositionY(), target->GetPositionZ() + 4.0f, 42.0f, EVENT_CHARGE);
-            GetCaster()->SetDisableGravity(true);
+            GetCaster()->SetDisableGravity(true, true);
         }
     }
 
@@ -2876,7 +2888,7 @@ class spell_the_lich_king_vile_spirit_damage_target_search : public SpellScript
             c->GetMotionMaster()->Clear(true);
             c->StopMoving();
             c->CastSpell((Unit*)nullptr, SPELL_SPIRIT_BURST, true);
-            c->DespawnOrUnsummon(3s);
+            c->DespawnOrUnsummon(3000);
             c->SetUnitFlag(UNIT_FLAG_NOT_SELECTABLE);
         }
     }
@@ -2992,7 +3004,7 @@ public:
 
             _events.Reset();
             me->RemoveAllAuras();
-            me->DespawnOrUnsummon(500ms);
+            me->DespawnOrUnsummon(500);
 
             if (Creature* lichKing = ObjectAccessor::GetCreature(*me, _instance->GetGuidData(DATA_THE_LICH_KING)))
                 lichKing->AI()->SummonedCreatureDespawn(me);
@@ -3043,7 +3055,7 @@ public:
                 case EVENT_DESPAWN_SELF:
                     if (Creature* lichKing = ObjectAccessor::GetCreature(*me, _instance->GetGuidData(DATA_THE_LICH_KING)))
                         lichKing->AI()->SummonedCreatureDespawn(me);
-                    me->DespawnOrUnsummon(1ms);
+                    me->DespawnOrUnsummon(1);
                     break;
                 default:
                     break;
@@ -3091,7 +3103,7 @@ public:
                     {
                         _events.Reset();
                         me->CastSpell((Unit*)nullptr, SPELL_RESTORE_SOUL, false);
-                        me->DespawnOrUnsummon(3s);
+                        me->DespawnOrUnsummon(3000);
                     }
                     break;
             }
@@ -3111,14 +3123,14 @@ public:
                     if (Creature* warden = me->FindNearestCreature(NPC_SPIRIT_WARDEN, 20.0f))
                     {
                         warden->CastSpell((Unit*)nullptr, SPELL_DESTROY_SOUL, false);
-                        warden->DespawnOrUnsummon(2s);
+                        warden->DespawnOrUnsummon(2000);
                     }
                     me->CastSpell(me, SPELL_TERENAS_LOSES_INSIDE, false);
                     me->SetDisplayId(16946);
                     me->SetReactState(REACT_PASSIVE);
                     me->AttackStop();
                     me->SetUnitFlag(UNIT_FLAG_NOT_SELECTABLE);
-                    me->DespawnOrUnsummon(2s);
+                    me->DespawnOrUnsummon(2000);
                 }
             }
         }
@@ -3407,7 +3419,7 @@ public:
         npc_lk_spirit_bombAI(Creature* creature) : NullCreatureAI(creature)
         {
             me->SetReactState(REACT_PASSIVE);
-            me->DespawnOrUnsummon(45s); // for safety
+            me->DespawnOrUnsummon(45000); // for safety
             timer = 0;
         }
 
@@ -3440,7 +3452,7 @@ public:
                     timer = 0;
                     me->RemoveAllAuras();
                     me->CastSpell((Unit*)nullptr, SPELL_EXPLOSION, false);
-                    me->DespawnOrUnsummon(1s);
+                    me->DespawnOrUnsummon(1000);
                 }
                 else
                     timer -= diff;

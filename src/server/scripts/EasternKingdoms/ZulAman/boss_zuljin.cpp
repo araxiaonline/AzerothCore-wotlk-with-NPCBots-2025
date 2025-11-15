@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -205,7 +205,7 @@ struct boss_zuljin : public BossAI
                 if (me->HasAura(SPELL_LYNX_RUSH_HASTE))
                     return;
 
-                DoCastRandomTarget(SPELL_CLAW_RAGE_CHARGE, 0, 0.0f, true, false, true);
+                DoCastRandomTarget(SPELL_CLAW_RAGE_CHARGE, 1);
             }, 15s, 20s);
 
             ScheduleTimedEvent(14s, [&] {
@@ -285,7 +285,10 @@ struct boss_zuljin : public BossAI
         instance->SetBossState(DATA_ZULJIN, DONE);
         Talk(SAY_DEATH);
         summons.DespawnEntry(CREATURE_COLUMN_OF_FIRE);
-        summons.DespawnAll(3s);
+
+        me->m_Events.AddEventAtOffset( [this] {
+            summons.DespawnAll();
+        }, 3s);
     }
 
     void SpawnAdds()
@@ -378,17 +381,12 @@ struct npc_zuljin_vortex : public ScriptedAI
         me->SetSpeed(MOVE_RUN, 1.0f);
         me->SetUnitFlag(UNIT_FLAG_NOT_SELECTABLE);
         DoZoneInCombat();
-        // Start attacking random target
-        ChangeToNewPlayer();
     }
 
-    void ChangeToNewPlayer()
+    void SpellHit(Unit* caster, SpellInfo const* spell) override
     {
-        DoResetThreatList();
-        if (WorldObject* summoner = GetSummoner())
-            if (Creature* zuljin = summoner->ToCreature())
-                if (Unit* target = zuljin->AI()->SelectTarget(SelectTargetMethod::Random, 0, 80.0f, true))
-                    me->AddThreat(target, 10000000.0f);
+        if (spell->Id == SPELL_ZAP_INFORM)
+            DoCast(caster, SPELL_ZAP_DAMAGE, true);
     }
 
     void UpdateAI(uint32 /*diff*/) override
@@ -397,7 +395,7 @@ struct npc_zuljin_vortex : public ScriptedAI
 
         //if the vortex reach the target, it change his target to another player
         if (me->IsWithinMeleeRange(me->GetVictim()))
-            ChangeToNewPlayer();
+            AttackStart(SelectTarget(SelectTargetMethod::Random, 0));
     }
 };
 
@@ -433,33 +431,9 @@ class spell_claw_rage_aura : public AuraScript
     }
 };
 
-// 42577 - Zap
-class spell_zuljin_zap : public SpellScript
-{
-    PrepareSpellScript(spell_zuljin_zap);
-
-    bool Validate(SpellInfo const* /*spell*/) override
-    {
-        return ValidateSpellInfo({ SPELL_ZAP_DAMAGE });
-    }
-
-    void HandleScript(SpellEffIndex effIndex)
-    {
-        PreventHitDefaultEffect(effIndex);
-        if (Unit* victim = GetHitUnit())
-            victim->CastSpell(GetCaster(), SPELL_ZAP_DAMAGE, true);
-    }
-
-    void Register() override
-    {
-        OnEffectHitTarget += SpellEffectFn(spell_zuljin_zap::HandleScript, EFFECT_0, SPELL_EFFECT_SCRIPT_EFFECT);
-    }
-};
-
 void AddSC_boss_zuljin()
 {
     RegisterZulAmanCreatureAI(boss_zuljin);
     RegisterZulAmanCreatureAI(npc_zuljin_vortex);
     RegisterSpellScript(spell_claw_rage_aura);
-    RegisterSpellScript(spell_zuljin_zap);
 }

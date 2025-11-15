@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -29,8 +29,8 @@
 #include "bpet_ai.h"
 //end npcbot
 
-TempSummon::TempSummon(SummonPropertiesEntry const* properties, ObjectGuid owner) :
-    Creature(), m_Properties(properties), m_type(TEMPSUMMON_MANUAL_DESPAWN),
+TempSummon::TempSummon(SummonPropertiesEntry const* properties, ObjectGuid owner, bool isWorldObject) :
+    Creature(isWorldObject), m_Properties(properties), m_type(TEMPSUMMON_MANUAL_DESPAWN),
     m_timer(0), m_lifetime(0), _visibleBySummonerOnly(false)
 {
     if (owner)
@@ -209,7 +209,7 @@ void TempSummon::InitStats(uint32 duration)
     Unit* owner = GetSummonerUnit();
     if (owner)
         if (Player* player = owner->ToPlayer())
-            sScriptMgr->OnPlayerBeforeTempSummonInitStats(player, this, duration);
+            sScriptMgr->OnBeforeTempSummonInitStats(player, this, duration);
 
     m_timer = duration;
     m_lifetime = duration;
@@ -282,14 +282,6 @@ void TempSummon::InitSummon()
 
         if (IsAIEnabled)
             AI()->IsSummonedBy(owner);
-
-        //npcbot
-        if (IsTempBot())
-        {
-            m_summonerGUID = ObjectGuid::Empty;
-            SetCreatorGUID(m_summonerGUID);
-        }
-        //end npcbot
     }
 }
 
@@ -303,12 +295,13 @@ void TempSummon::SetTempSummonType(TempSummonType type)
     m_type = type;
 }
 
-void TempSummon::UnSummon(Milliseconds msTime)
+void TempSummon::UnSummon(uint32 msTime)
 {
-    if (msTime > 0ms)
+    if (msTime)
     {
         ForcedUnsummonDelayEvent* pEvent = new ForcedUnsummonDelayEvent(*this);
-        m_Events.AddEventAtOffset(pEvent, msTime);
+
+        m_Events.AddEvent(pEvent, m_Events.CalculateTime(msTime));
         return;
     }
 
@@ -336,9 +329,13 @@ void TempSummon::UnSummon(Milliseconds msTime)
     if (WorldObject* owner = GetSummoner())
     {
         if (owner->IsCreature() && owner->ToCreature()->IsAIEnabled)
+        {
             owner->ToCreature()->AI()->SummonedCreatureDespawn(this);
+        }
         else if (owner->IsGameObject() && owner->ToGameObject()->AI())
+        {
             owner->ToGameObject()->AI()->SummonedCreatureDespawn(this);
+        }
     }
 
     AddObjectToRemoveList();
@@ -376,7 +373,7 @@ std::string TempSummon::GetDebugInfo() const
     return sstr.str();
 }
 
-Minion::Minion(SummonPropertiesEntry const* properties, ObjectGuid owner) : TempSummon(properties, owner)
+Minion::Minion(SummonPropertiesEntry const* properties, ObjectGuid owner, bool isWorldObject) : TempSummon(properties, owner, isWorldObject)
     , m_owner(owner)
 {
     ASSERT(m_owner);
@@ -452,12 +449,12 @@ std::string Minion::GetDebugInfo() const
     return sstr.str();
 }
 
-Guardian::Guardian(SummonPropertiesEntry const* properties, ObjectGuid owner) : Minion(properties, owner)
+Guardian::Guardian(SummonPropertiesEntry const* properties, ObjectGuid owner, bool isWorldObject) : Minion(properties, owner, isWorldObject)
 {
     m_unitTypeMask |= UNIT_MASK_GUARDIAN;
     if (properties && (properties->Type == SUMMON_TYPE_PET || properties->Category == SUMMON_CATEGORY_PET))
     {
-        m_unitTypeMask |= UNIT_MASK_CONTROLLABLE_GUARDIAN;
+        m_unitTypeMask |= UNIT_MASK_CONTROLABLE_GUARDIAN;
         InitCharmInfo();
     }
 }
@@ -470,7 +467,7 @@ void Guardian::InitStats(uint32 duration)
     {
         InitStatsForLevel(m_owner->GetLevel());
 
-        if (m_owner->IsPlayer() && HasUnitTypeMask(UNIT_MASK_CONTROLLABLE_GUARDIAN))
+        if (m_owner->IsPlayer() && HasUnitTypeMask(UNIT_MASK_CONTROLABLE_GUARDIAN))
             m_charmInfo->InitCharmCreateSpells();
     }
 
@@ -497,7 +494,7 @@ std::string Guardian::GetDebugInfo() const
     return sstr.str();
 }
 
-Puppet::Puppet(SummonPropertiesEntry const* properties, ObjectGuid owner) : Minion(properties, owner), m_owner(owner)
+Puppet::Puppet(SummonPropertiesEntry const* properties, ObjectGuid owner) : Minion(properties, owner, false), m_owner(owner) //maybe true?
 {
     ASSERT(owner.IsPlayer());
     m_unitTypeMask |= UNIT_MASK_PUPPET;

@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -72,7 +72,7 @@ public:
             context.Repeat();
         }).Schedule(12s, 18s, [this](TaskContext context)
         {
-            if (SelectTarget(SelectTargetMethod::Random, 0, 12.f))
+            if (SelectRandomPlayerOrNPCBot(12.f))
             {
                 DoCastAOE(SPELL_WAR_STOMP);
                 context.Repeat(15s, 30s);
@@ -81,7 +81,7 @@ public:
                 context.Repeat(1200ms);
         }).Schedule(15s, [this](TaskContext context)
         {
-            DoCastRandomTarget(SPELL_CRIPPLE, 0, 20.f);
+            CastSpellOnRandomTarget(SPELL_CRIPPLE, 20.f);
             context.Repeat(12s, 20s);
         }).Schedule(45s, [this](TaskContext context)
         {
@@ -94,9 +94,9 @@ public:
     Milliseconds GetMarkRepeatTimer()
     {
         ++_markCounter;
-        Milliseconds timer = 45s - (5s * _markCounter);
-        if (timer <= 10s)
-            return 10s;
+        Milliseconds timer = 45000ms - (5000ms * _markCounter);
+        if (timer <= 10000ms)
+            return 10000ms;
         else
             return timer;
     }
@@ -106,7 +106,7 @@ public:
         Talk(SAY_ONSPAWN, 1200ms);
 
         if (action == DATA_KAZROGAL)
-            me->GetMotionMaster()->MoveWaypoint(HORDE_BOSS_PATH, false);
+            me->GetMotionMaster()->MovePath(HORDE_BOSS_PATH, false);
     }
 
     void KilledUnit(Unit * victim) override
@@ -127,6 +127,41 @@ public:
     {
         me->PlayDirectSound(SOUND_ONDEATH);
         BossAI::JustDied(killer);
+    }
+
+    Unit* SelectRandomPlayerOrNPCBot(float range)
+    {
+        std::list<Unit*> targets;
+        Acore::AnyUnitInObjectRangeCheck check(me, range);
+        Acore::UnitListSearcher<Acore::AnyUnitInObjectRangeCheck> searcher(me, targets, check);
+        Cell::VisitAllObjects(me, searcher, range);
+
+        targets.remove_if([this](Unit* unit) -> bool {
+            return !unit->IsAlive() || !(unit->GetTypeId() == TYPEID_PLAYER || (unit->GetTypeId() == TYPEID_UNIT && static_cast<Creature*>(unit)->IsNPCBot()));
+            });
+
+        if (targets.empty())
+            return nullptr;
+
+        return Acore::Containers::SelectRandomContainerElement(targets);
+    }
+
+    void CastSpellOnRandomTarget(uint32 spellId, float range)
+    {
+        std::list<Unit*> targets;
+        Acore::AnyUnitInObjectRangeCheck check(me, range);
+        Acore::UnitListSearcher<Acore::AnyUnitInObjectRangeCheck> searcher(me, targets, check);
+        Cell::VisitAllObjects(me, searcher, range);
+
+        targets.remove_if([this](Unit* unit) -> bool {
+            return !unit->IsAlive() || !(unit->GetTypeId() == TYPEID_PLAYER || (unit->GetTypeId() == TYPEID_UNIT && static_cast<Creature*>(unit)->IsNPCBot()));
+            });
+
+        if (!targets.empty())
+        {
+            Unit* target = Acore::Containers::SelectRandomContainerElement(targets);
+            DoCast(target, spellId);
+        }
     }
 
 private:

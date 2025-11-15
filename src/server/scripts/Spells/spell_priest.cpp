@@ -1,33 +1,37 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "CreatureScript.h"
-#include "GridNotifiers.h"
-#include "Player.h"
-#include "SpellAuraEffects.h"
-#include "SpellMgr.h"
-#include "SpellScript.h"
-#include "SpellScriptLoader.h"
-#include "TemporarySummon.h"
+
 /*
  * Scripts for spells with SPELLFAMILY_PRIEST and SPELLFAMILY_GENERIC spells used by priest players.
  * Ordered alphabetically using scriptname.
  * Scriptnames of files in this file should be prefixed with "spell_pri_".
  */
+
+#include "CreatureScript.h"
+#include "GridNotifiers.h"
+#include "Player.h"
+#include "ScriptMgr.h"
+#include "Spell.h"
+#include "SpellAuraEffects.h"
+#include "SpellMgr.h"
+#include "SpellScript.h"
+#include "SpellScriptLoader.h"
+#include "TemporarySummon.h"
 
 enum PriestSpells
 {
@@ -49,8 +53,6 @@ enum PriestSpells
     SPELL_PRIEST_T9_HEALING_2P                      = 67201,
     SPELL_PRIEST_VAMPIRIC_TOUCH_DISPEL              = 64085,
     SPELL_PRIEST_T4_4P_FLEXIBILITY                  = 37565,
-    SPELL_PRIEST_GLYPH_OF_SHADOWFIEND               = 58228,
-    SPELL_PRIEST_GLYPH_OF_SHADOWFIEND_MANA          = 58227,
 
     SPELL_GENERIC_ARENA_DAMPENING                   = 74410,
     SPELL_GENERIC_BATTLEGROUND_DAMPENING            = 74411,
@@ -75,6 +77,26 @@ enum Mics
     PRIEST_LIGHTWELL_NPC_5                          = 31893,
     PRIEST_LIGHTWELL_NPC_6                          = 31883
 };
+
+
+//class SurgeOfLight : public PlayerScript
+//{
+//public:
+//    SurgeOfLight() : PlayerScript("SurgeOfLight") { }
+
+//    void OnSpellCast(Player* player, Spell* spell, bool /*skipCheck*/) override
+//    {
+//        if (spell->GetSpellInfo()->Id == 33151) // SURGE_OF_LIGHT_1
+//        {
+//            player->CastSpell(player, 100205, true); // CUSTOM
+//       }
+//    }
+//};
+
+//void AddSC_SurgeOfLight()
+//{
+//    new SurgeOfLight();
+//}
 
 class spell_pri_shadowfiend_scaling : public AuraScript
 {
@@ -579,6 +601,8 @@ class spell_pri_penance : public SpellScript
 
         return true;
     }
+    // Dinkle: Holy Fire IDs
+    const std::vector<uint32> auraIdsToSpread = { 25384, 15267, 15266, 15265, 15264, 48134, 14914, 15262, 15261, 15263, 48135 };
 
     void HandleDummy(SpellEffIndex /*effIndex*/)
     {
@@ -590,10 +614,32 @@ class spell_pri_penance : public SpellScript
 
             uint8 rank = GetSpellInfo()->GetRank();
 
+            // Heal if friendly, damage otherwise
             if (caster->IsFriendlyTo(unitTarget))
                 caster->CastSpell(unitTarget, sSpellMgr->GetSpellWithRank(SPELL_PRIEST_PENANCE_R1_HEAL, rank), false);
             else
                 caster->CastSpell(unitTarget, sSpellMgr->GetSpellWithRank(SPELL_PRIEST_PENANCE_R1_DAMAGE, rank), false);
+            //Holy Fire dot spread
+            for (uint32 auraId : auraIdsToSpread)
+            {
+                if (Aura* aura = unitTarget->GetAura(auraId, caster->GetGUID()))  // Ensure the aura is from the caster
+                {
+                    // Spread the aura to nearby unfriendly units within 10 yards
+                    std::list<Unit*> unfriendlyUnits;
+                    Acore::AnyUnfriendlyUnitInObjectRangeCheck checker(unitTarget, caster, 10.0f);  // Unfriendly units in 10-yard range
+                    Acore::UnitListSearcher<Acore::AnyUnfriendlyUnitInObjectRangeCheck> searcher(unitTarget, unfriendlyUnits, checker);
+                    Cell::VisitAllObjects(unitTarget, searcher, 10.0f);
+
+                    // Spread the aura to nearby units
+                    for (Unit* nearbyUnit : unfriendlyUnits)
+                    {
+                        if (nearbyUnit && nearbyUnit->IsAlive() && nearbyUnit != unitTarget)  // Exclude the original target
+                        {
+                            caster->AddAura(auraId, nearbyUnit);  // Add the aura to nearby unfriendly units
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -822,20 +868,49 @@ class spell_pri_renew : public AuraScript
     }
 };
 
-// -32379 - Shadow Word Death
 class spell_pri_shadow_word_death : public SpellScript
 {
     PrepareSpellScript(spell_pri_shadow_word_death);
 
     void HandleDamage()
     {
+        Unit* target = GetHitUnit();
+        Unit* caster = GetCaster();
+
+        if (!target || !caster)
+            return;
+
+        // Get the base damage done by Shadow Word: Death
         int32 damage = GetHitDamage();
 
         // Pain and Suffering reduces damage
-        if (AuraEffect* aurEff = GetCaster()->GetDummyAuraEffect(SPELLFAMILY_PRIEST, PRIEST_ICON_ID_PAIN_AND_SUFFERING, EFFECT_1))
+        if (AuraEffect* aurEff = caster->GetDummyAuraEffect(SPELLFAMILY_PRIEST, PRIEST_ICON_ID_PAIN_AND_SUFFERING, EFFECT_1))
+        {
             AddPct(damage, aurEff->GetAmount());
+        }
 
-        GetCaster()->CastCustomSpell(GetCaster(), SPELL_PRIEST_SHADOW_WORD_DEATH, &damage, 0, 0, true);
+        // Check if target is below 35% health and caster has aura 855682
+        if (target->HealthBelowPct(35) && caster->HasAura(855682))
+        {
+            // Increase damage by 30%
+            AddPct(damage, 30);
+        }
+
+        SpellInfo const* spellInfo = GetSpellInfo();
+        int32 totalDamage = caster->SpellDamageBonusDone(target, spellInfo, damage, SPELL_DIRECT_DAMAGE, EFFECT_0);
+        totalDamage = target->SpellDamageBonusTaken(caster, spellInfo, totalDamage, SPELL_DIRECT_DAMAGE);
+
+        SetHitDamage(totalDamage);
+
+        // Dinkle Tier 2.5: Shadow Word: Death deals 50% additional damage over time
+        if (caster->HasAura(854058))
+        {
+            int32 customSpellDamage = CalculatePct(totalDamage, 7);
+            caster->CastCustomSpell(target, 842379, &customSpellDamage, &customSpellDamage, nullptr, true);
+        }
+
+        // Re-cast Shadow Word: Death with the new damage values
+        caster->CastCustomSpell(caster, SPELL_PRIEST_SHADOW_WORD_DEATH, &totalDamage, nullptr, nullptr, true);
     }
 
     void Register() override
@@ -891,12 +966,39 @@ class spell_pri_vampiric_touch : public AuraScript
             actor->CastSpell(actor, 57669, true, nullptr, aurEff);
         }
     }
+    //Dinkle: Tier 2.5: Vampiric Touch instantly deals 50% of its total periodic damage when applied to a target.
+    void HandleEffect(AuraEffect const* aurEff, AuraEffectHandleModes mode)
+    {
+        Unit* target = GetTarget();
+        Unit* caster = GetCaster();
+
+        if (!target || !caster)
+            return;
+
+        if (!caster->HasAura(854055))
+            return;
+
+        SpellInfo const* spellInfo = aurEff->GetSpellInfo();
+
+        int32 tickAmount = aurEff->GetAmount();
+        uint32 maxTicks = spellInfo->GetMaxTicks();
+
+        int32 totalDotDamage = tickAmount * maxTicks;
+
+        int32 totalDamage = caster->SpellDamageBonusDone(target, spellInfo, totalDotDamage, SPELL_DIRECT_DAMAGE, EFFECT_0);
+        totalDamage = target->SpellDamageBonusTaken(caster, spellInfo, totalDamage, SPELL_DIRECT_DAMAGE);
+
+        int32 instantDamage = totalDamage / 2;
+
+        caster->CastCustomSpell(target, 867783, &instantDamage, nullptr, nullptr, true);
+    }
 
     void Register() override
     {
         AfterDispel += AuraDispelFn(spell_pri_vampiric_touch::HandleDispel);
         DoCheckProc += AuraCheckProcFn(spell_pri_vampiric_touch::CheckProc);
         OnEffectProc += AuraEffectProcFn(spell_pri_vampiric_touch::HandleProc, EFFECT_0, SPELL_AURA_DUMMY);
+        AfterEffectApply += AuraEffectApplyFn(spell_pri_vampiric_touch::HandleEffect, EFFECT_1, SPELL_AURA_PERIODIC_DAMAGE, AURA_EFFECT_HANDLE_REAL_OR_REAPPLY_MASK);
     }
 };
 
@@ -904,6 +1006,17 @@ class spell_pri_vampiric_touch : public AuraScript
 class spell_pri_mind_control : public AuraScript
 {
     PrepareAuraScript(spell_pri_mind_control);
+    // Dinkle - Do not mind control specified races, UD, Eredar, Worgen
+    bool CheckRaceMask(Unit* target)
+    {
+        uint32 racemask = 65536 | 16 | 32768; // Combine all the racemasks
+        if (Player* player = target->ToPlayer())
+        {
+            if ((1 << (player->getRace() - 1)) & racemask)
+                return false; // Target race is in the specified racemasks, do not apply effect
+        }
+        return true;
+    }
 
     void HandleApplyEffect(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/)
     {
@@ -911,6 +1024,9 @@ class spell_pri_mind_control : public AuraScript
         {
             if (Unit* target = GetTarget())
             {
+                if (!CheckRaceMask(target))
+                    return; // Do not apply effect if target is of specified race
+
                 uint32 duration = static_cast<uint32>(GetDuration());
                 caster->SetInCombatWith(target, duration);
                 target->SetInCombatWith(caster, duration);
@@ -924,6 +1040,9 @@ class spell_pri_mind_control : public AuraScript
         {
             if (Unit* target = GetTarget())
             {
+                if (!CheckRaceMask(target))
+                    return; // Do not remove effect if target is of specified race
+
                 caster->SetCombatTimer(0);
                 target->SetCombatTimer(0);
             }
@@ -959,38 +1078,6 @@ class spell_pri_t4_4p_bonus : public AuraScript
     }
 };
 
-// 57989 - Shadowfiend Death
-class spell_pri_shadowfiend_death : public AuraScript
-{
-    PrepareAuraScript(spell_pri_shadowfiend_death);
-
-    bool Validate(SpellInfo const* /*spellInfo*/) override
-    {
-        return ValidateSpellInfo({ SPELL_PRIEST_GLYPH_OF_SHADOWFIEND_MANA });
-    }
-
-    bool AfterCheckProc(ProcEventInfo& eventInfo, bool isTriggeredAtSpellProcEvent)
-    {
-        if (!isTriggeredAtSpellProcEvent)
-            return false;
-        return eventInfo.GetTypeMask() & PROC_FLAG_KILLED;
-    }
-
-    void HandleProc(AuraEffect const* /*aurEff*/, ProcEventInfo& /*eventInfo*/)
-    {
-        PreventDefaultAction();
-        if (Unit* owner = GetTarget()->GetOwner())
-            if (owner->HasAura(SPELL_PRIEST_GLYPH_OF_SHADOWFIEND))
-                owner->CastSpell(owner, SPELL_PRIEST_GLYPH_OF_SHADOWFIEND_MANA, true);
-    }
-
-    void Register() override
-    {
-        DoAfterCheckProc += AuraAfterCheckProcFn(spell_pri_shadowfiend_death::AfterCheckProc);
-        OnEffectProc += AuraEffectProcFn(spell_pri_shadowfiend_death::HandleProc, EFFECT_0, SPELL_AURA_DUMMY);
-    }
-};
-
 void AddSC_priest_spell_scripts()
 {
     RegisterSpellScript(spell_pri_shadowfiend_scaling);
@@ -1014,6 +1101,6 @@ void AddSC_priest_spell_scripts()
     RegisterSpellScript(spell_pri_shadow_word_death);
     RegisterSpellScript(spell_pri_vampiric_touch);
     RegisterSpellScript(spell_pri_mind_control);
+//    new SurgeOfLight();
     RegisterSpellScript(spell_pri_t4_4p_bonus);
-    RegisterSpellScript(spell_pri_shadowfiend_death);
 }

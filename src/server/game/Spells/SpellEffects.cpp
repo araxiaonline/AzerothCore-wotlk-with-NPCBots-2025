@@ -1,14 +1,14 @@
  /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -65,6 +65,8 @@
 //  there is probably some underlying problem with imports which should properly addressed
 //  see: https://github.com/azerothcore/azerothcore-wotlk/issues/9766
 #include "GridNotifiersImpl.h"
+
+
 
 pEffect SpellEffects[TOTAL_SPELL_EFFECTS] =
 {
@@ -233,6 +235,9 @@ pEffect SpellEffects[TOTAL_SPELL_EFFECTS] =
     &Spell::EffectActivateSpec,                             //162 SPELL_EFFECT_TALENT_SPEC_SELECT       activate primary/secondary spec
     &Spell::EffectNULL,                                     //163 unused
     &Spell::EffectRemoveAura,                               //164 SPELL_EFFECT_REMOVE_AURA
+    &Spell::EffectNULL,                                     //165 SPELL_EFFECT_LEARN_TRANSMOG_SET
+    &Spell::EffectNULL,                                     //166 SPELL_EFFECT_CREATE_AREATRIGGER
+    &Spell::EffectJumpCharge,                               //167 SPELL_EFFECT_JUMP_CHARGE
 };
 
 void Spell::EffectNULL(SpellEffIndex /*effIndex*/)
@@ -266,6 +271,13 @@ void Spell::EffectResurrectNew(SpellEffIndex effIndex)
 
     uint32 health = damage;
     uint32 mana = m_spellInfo->Effects[effIndex].MiscValue;
+
+    // Dinkle: If MiscValue (mana) is 0, use bp1 (health value)
+    if (mana == 0)
+    {
+        mana = health;
+    }
+
     ExecuteLogEffectResurrect(effIndex, target);
     target->setResurrectRequestData(m_caster->GetGUID(), m_caster->GetMapId(), m_caster->GetPositionX(), m_caster->GetPositionY(), m_caster->GetPositionZ(), health, mana);
     SendResurrectRequest(target);
@@ -328,6 +340,16 @@ void Spell::EffectSchoolDMG(SpellEffIndex effIndex)
     if (unitTarget && unitTarget->IsAlive())
     {
         bool apply_direct_bonus = true;
+        // Dinkle: Move meteor outside switch
+        if (m_spellInfo->HasAttribute(SPELL_ATTR0_CU_SHARE_DAMAGE))
+        {
+            uint32 count = 0;
+            for (std::list<TargetInfo>::iterator ihit = m_UniqueTargetInfo.begin(); ihit != m_UniqueTargetInfo.end(); ++ihit)
+                if (ihit->effectMask & (1 << effIndex))
+                    ++count;
+
+            damage /= count;                    // divide to all targets
+        }
         switch (m_spellInfo->SpellFamilyName)
         {
             case SPELLFAMILY_GENERIC:
@@ -1940,13 +1962,13 @@ void Spell::DoCreateItem(uint8 /*effIndex*/, uint32 itemId)
         }
 
         // set the "Crafted by ..." property of the item
-        if (m_caster->IsPlayer() && pItem->GetTemplate()->HasSignature())
+        if (pItem->GetTemplate()->HasSignature())
             pItem->SetGuidValue(ITEM_FIELD_CREATOR, player->GetGUID());
 
         // send info to the client
         player->SendNewItem(pItem, addNumber, true, SelfCast);
 
-        sScriptMgr->OnPlayerCreateItem(player, pItem, addNumber);
+        sScriptMgr->OnCreateItem(player, pItem, addNumber);
 
         // we succeeded in creating at least one item, so a levelup is possible
         if (SelfCast)
@@ -2035,7 +2057,7 @@ void Spell::EffectPersistentAA(SpellEffIndex effIndex)
         // Caster not in world, might be spell triggered from aura removal
         if (!caster->IsInWorld() || !caster->FindMap() || !ObjectAccessor::GetUnit(*caster, caster->GetGUID())) // pussywizard: temporary crash fix (FindMap and GetUnit are mine)
             return;
-        DynamicObject* dynObj = new DynamicObject();
+        DynamicObject* dynObj = new DynamicObject(false);
         if (!dynObj->CreateDynamicObject(caster->GetMap()->GenerateLowGuid<HighGuid::DynamicObject>(), caster, m_spellInfo->Id, *destTarget, radius, DYNAMIC_OBJECT_AREA_SPELL))
         {
             delete dynObj;
@@ -2649,14 +2671,8 @@ void Spell::EffectSummonType(SpellEffIndex effIndex)
                         }
                         break;
                     }
-                case SUMMON_TYPE_MINIPET:
-                    // For companions, recalculate the position to ensure they spawn at the intended π/4 angle.
-                    destTarget->Relocate(m_originalCaster->GetNearPosition(
-                        m_originalCaster->GetDistance2d(destTarget->GetPositionX(), destTarget->GetPositionY()),
-                        MINI_PET_SUMMON_ANGLE
-                    ));
-                    [[fallthrough]];
                 case SUMMON_TYPE_JEEVES:
+                case SUMMON_TYPE_MINIPET:
                     {
                         summon = m_caster->GetMap()->SummonCreature(entry, *destTarget, properties, duration, m_originalCaster, m_spellInfo->Id, 0, personalSpawn);
                         if (!summon || !summon->HasUnitTypeMask(UNIT_MASK_MINION))
@@ -2672,9 +2688,8 @@ void Spell::EffectSummonType(SpellEffIndex effIndex)
                         //summon->AI()->EnterEvadeMode();
                         if (properties->Type != SUMMON_TYPE_JEEVES)
                         {
-                            summon->SetFacingToObject(m_originalCaster);
                             summon->GetMotionMaster()->Clear(false);
-                            summon->GetMotionMaster()->MoveFollow(m_originalCaster, PET_FOLLOW_DIST, MINI_PET_FOLLOW_ANGLE, MOTION_SLOT_ACTIVE);
+                            summon->GetMotionMaster()->MoveFollow(m_originalCaster, PET_FOLLOW_DIST, summon->GetFollowAngle(), MOTION_SLOT_ACTIVE);
                         }
                         break;
                     }
@@ -2958,7 +2973,7 @@ void Spell::EffectAddFarsight(SpellEffIndex effIndex)
     // Remove old farsight if exist
     bool updateViewerVisibility = m_caster->RemoveDynObject(m_spellInfo->Id);
 
-    DynamicObject* dynObj = new DynamicObject();
+    DynamicObject* dynObj = new DynamicObject(true);
     if (!dynObj->CreateDynamicObject(m_caster->GetMap()->GenerateLowGuid<HighGuid::DynamicObject>(), m_caster, m_spellInfo->Id, *destTarget, radius, DYNAMIC_OBJECT_FARSIGHT_FOCUS))
     {
         delete dynObj;
@@ -3229,21 +3244,20 @@ void Spell::EffectEnchantItemTmp(SpellEffIndex effIndex)
             return;
         }
 
-        for (int j = BASE_ATTACK; j <= OFF_ATTACK; ++j)
+        // Dinkle: Check and apply only to main hand weapon
+        if (Item* item = p_caster->GetWeaponForAttack(WeaponAttackType(BASE_ATTACK)))
         {
-            if (Item* item = p_caster->GetWeaponForAttack(WeaponAttackType(j)))
+            if (item->IsFitToSpellRequirements(m_spellInfo))
             {
-                if (item->IsFitToSpellRequirements(m_spellInfo))
-                {
-                    Spell* spell = new Spell(m_caster, spellInfo, TRIGGERED_FULL_MASK);
-                    SpellCastTargets targets;
-                    targets.SetItemTarget(item);
-                    spell->prepare(&targets);
-                }
+                Spell* spell = new Spell(m_caster, spellInfo, TRIGGERED_FULL_MASK);
+                SpellCastTargets targets;
+                targets.SetItemTarget(item);
+                spell->prepare(&targets);
             }
         }
         return;
     }
+
     if (!itemTarget)
         return;
 
@@ -3273,7 +3287,7 @@ void Spell::EffectEnchantItemTmp(SpellEffIndex effIndex)
         duration = 3600;                                    // 1 hour
     // shaman family enchantments
     else if (m_spellInfo->SpellFamilyName == SPELLFAMILY_SHAMAN)
-        duration = 1800;                                    // 30 mins
+        duration = 7200;                                    // 2 hours
     // other cases with this SpellVisual already selected
     else if (m_spellInfo->SpellVisual[0] == 215)
         duration = 1800;                                    // 30 mins
@@ -3282,7 +3296,7 @@ void Spell::EffectEnchantItemTmp(SpellEffIndex effIndex)
         duration = 600;                                     // 10 mins
     // shaman rockbiter enchantments
     else if (m_spellInfo->SpellVisual[0] == 0)
-        duration = 1800;                                    // 30 mins
+        duration = 7200;                                    // 2 hours
     else if (m_spellInfo->Id == 29702)
         duration = 300;                                     // 5 mins
     else if (m_spellInfo->Id == 37360)
@@ -3619,14 +3633,14 @@ void Spell::EffectWeaponDmg(SpellEffIndex effIndex)
                     if (m_caster->IsPlayer())
                         if (Item* item = m_caster->ToPlayer()->GetWeaponForAttack(m_attackType, true))
                             if (item->GetTemplate()->SubClass == ITEM_SUBCLASS_WEAPON_DAGGER)
-                                AddPct(totalDamagePercentMod, 50.0f);
+                                AddPct(totalDamagePercentMod, 65.0f);
 
                     //npcbot: handle bot weapons
                     // 50% more damage with daggers
                     if (m_caster->IsNPCBot())
                         if (Item const* weapon = m_caster->ToCreature()->GetBotEquips(m_attackType))
                             if (weapon->GetTemplate()->SubClass == ITEM_SUBCLASS_WEAPON_DAGGER)
-                                totalDamagePercentMod *= 1.5f;
+                                totalDamagePercentMod *= 1.65f;
                     //end npcbot
                 }
                 // Mutilate (for each hand)
@@ -3662,6 +3676,11 @@ void Spell::EffectWeaponDmg(SpellEffIndex effIndex)
                     case 20467: // Seal of Command Unleashed
                         spell_bonus += int32(0.08f * m_caster->GetTotalAttackPowerValue(BASE_ATTACK));
                         spell_bonus += int32(0.13f * m_caster->SpellBaseDamageBonusDone(m_spellInfo->GetSchoolMask()));
+                        break;
+                    case 42463: // Seals of the Pure for Seal of Vengeance/Corruption
+                    case 53739:
+                        if (AuraEffect const* sealsOfPure = m_caster->GetAuraEffect(SPELL_AURA_ADD_PCT_MODIFIER, SPELLFAMILY_PALADIN, 25, 0))
+                            AddPct(totalDamagePercentMod, sealsOfPure->GetAmount());
                         break;
                     case 53385:  // Divine Storm deals normalized damage
                         normalized = true;
@@ -3762,7 +3781,9 @@ void Spell::EffectWeaponDmg(SpellEffIndex effIndex)
                 // Blood-Caked Strike - Blood-Caked Blade
                 if (m_spellInfo->SpellIconID == 1736)
                 {
-                    AddPct(totalDamagePercentMod, unitTarget->GetDiseasesByCaster(m_caster->GetGUID()) * 50.0f);
+                    int32 weaponDamage = m_caster->CalculateDamage(m_attackType, false, true);
+                    ApplyPct(weaponDamage, std::min(uint32(3), unitTarget->GetDiseasesByCaster(m_caster->GetGUID())) * 12.5f);
+                    spell_bonus = weaponDamage;
                     break;
                 }
                 // Heart Strike
@@ -3809,26 +3830,30 @@ void Spell::EffectWeaponDmg(SpellEffIndex effIndex)
         }
     }
 
-    bool const isPhysical = (m_spellSchoolMask & SPELL_SCHOOL_MASK_NORMAL);
-    if (isPhysical && (fixed_bonus || spell_bonus))
+    // apply to non-weapon bonus weapon total pct effect, weapon total flat effect included in weapon damage
+    if (fixed_bonus || spell_bonus)
     {
         UnitMods unitMod;
         switch (m_attackType)
         {
-        default:
-        case BASE_ATTACK:
-            unitMod = UNIT_MOD_DAMAGE_MAINHAND;
-            break;
-        case OFF_ATTACK:
-            unitMod = UNIT_MOD_DAMAGE_OFFHAND;
-            break;
-        case RANGED_ATTACK:
-            unitMod = UNIT_MOD_DAMAGE_RANGED;
-            break;
+            default:
+            case BASE_ATTACK:
+                unitMod = UNIT_MOD_DAMAGE_MAINHAND;
+                break;
+            case OFF_ATTACK:
+                unitMod = UNIT_MOD_DAMAGE_OFFHAND;
+                break;
+            case RANGED_ATTACK:
+                unitMod = UNIT_MOD_DAMAGE_RANGED;
+                break;
         }
-        float weapon_total_pct = m_caster->GetModifierValue(unitMod, TOTAL_PCT);
-        fixed_bonus = int32(fixed_bonus * weapon_total_pct);
-        spell_bonus = int32(spell_bonus * weapon_total_pct);
+
+        if (m_spellSchoolMask & SPELL_SCHOOL_MASK_NORMAL)
+        {
+            float weapon_total_pct = m_caster->GetModifierValue(unitMod, TOTAL_PCT);
+            fixed_bonus = int32(fixed_bonus * weapon_total_pct);
+            spell_bonus = int32(spell_bonus * weapon_total_pct);
+        }
     }
 
     int32 weaponDamage = 0;
@@ -3836,11 +3861,15 @@ void Spell::EffectWeaponDmg(SpellEffIndex effIndex)
     if (m_caster->GetEntry() == 27893)
     {
         if (Unit* owner = m_caster->GetOwner())
-            weaponDamage = owner->CalculateDamage(m_attackType, normalized, isPhysical);
+            weaponDamage = owner->CalculateDamage(m_attackType, normalized, true);
+    }
+    else if (m_spellInfo->Id == 5019) // Wands
+    {
+        weaponDamage = m_caster->CalculateDamage(m_attackType, true, false);
     }
     else
     {
-        weaponDamage = m_caster->CalculateDamage(m_attackType, normalized, isPhysical);
+        weaponDamage = m_caster->CalculateDamage(m_attackType, normalized, true);
     }
 
     // Sequence is important
@@ -4050,8 +4079,8 @@ void Spell::EffectScriptEffect(SpellEffIndex effIndex)
                             if (!unitTarget || !unitTarget->IsAlive())
                                 return;
 
-                            // Onyxia Scale Cloak
-                            if (unitTarget->HasAura(22683))
+                            // Onyxia Scale Cloak or New AoE Version
+                            if (unitTarget->HasAura(22683) || unitTarget->HasAura(82683))
                                 return;
 
                             // Shadow Flame
@@ -4180,7 +4209,7 @@ void Spell::EffectScriptEffect(SpellEffIndex effIndex)
                         {
                             int32 basepoints0 = damage;
                             // Cast Absorb on totems
-                            for (uint8 slot = SUMMON_SLOT_TOTEM_FIRE; slot < MAX_TOTEM_SLOT; ++slot)
+                            for (uint8 slot = SUMMON_SLOT_TOTEM; slot < MAX_TOTEM_SLOT; ++slot)
                             {
                                 if (!unitTarget->m_SummonSlot[slot])
                                     continue;
@@ -4286,7 +4315,7 @@ void Spell::EffectSanctuary(SpellEffIndex /*effIndex*/)
     UnitList targets;
     Acore::AnyUnfriendlyUnitInObjectRangeCheck u_check(unitTarget, unitTarget, unitTarget->GetVisibilityRange()); // no VISIBILITY_COMPENSATION, distance is enough
     Acore::UnitListSearcher<Acore::AnyUnfriendlyUnitInObjectRangeCheck> searcher(unitTarget, targets, u_check);
-    Cell::VisitObjects(unitTarget, searcher, unitTarget->GetVisibilityRange());
+    Cell::VisitAllObjects(unitTarget, searcher, unitTarget->GetVisibilityRange());
     for (UnitList::iterator iter = targets.begin(); iter != targets.end(); ++iter)
     {
         if (!(*iter)->HasUnitState(UNIT_STATE_CASTING))
@@ -4398,8 +4427,8 @@ void Spell::EffectDuel(SpellEffIndex effIndex)
     WorldPacket data(SMSG_DUEL_REQUESTED, 8 + 8);
     data << pGameObj->GetGUID();
     data << caster->GetGUID();
-    caster->SendDirectMessage(&data);
-    target->SendDirectMessage(&data);
+    caster->GetSession()->SendPacket(&data);
+    target->GetSession()->SendPacket(&data);
 
     // create duel-info
     bool isMounted = (GetSpellInfo()->Id == 62875);
@@ -4481,7 +4510,7 @@ void Spell::EffectSummonPlayer(SpellEffIndex /*effIndex*/)
     data << m_caster->GetGUID();                                // summoner guid
     data << uint32(m_caster->GetZoneId());                      // summoner zone
     data << uint32(MAX_PLAYER_SUMMON_DELAY * IN_MILLISECONDS);  // auto decline after msecs
-    player->SendDirectMessage(&data);
+    player->GetSession()->SendPacket(&data);
 }
 
 void Spell::EffectActivateObject(SpellEffIndex effIndex)
@@ -4578,25 +4607,25 @@ void Spell::EffectApplyGlyph(SpellEffIndex effIndex)
     {
         case 0:
         case 1:
-            minLevel = 15;
+            minLevel = 10;
             break;
         case 2:
-            minLevel = 50;
-            break;
-        case 3:
             minLevel = 30;
             break;
+        case 3:
+            minLevel = 20;
+            break;
         case 4:
-            minLevel = 70;
+            minLevel = 40;
             break;
         case 5:
-            minLevel = 80;
+            minLevel = 60;
             break;
     }
     if (minLevel && m_caster->GetLevel() < minLevel)
     {
         SendCastResult(SPELL_FAILED_GLYPH_SOCKET_LOCKED);
-        return;
+       return;
     }
 
     // apply new one
@@ -5021,7 +5050,7 @@ void Spell::EffectForceDeselect(SpellEffIndex /*effIndex*/)
 
     float dist = m_caster->GetVisibilityRange() + VISIBILITY_COMPENSATION;
     Acore::MessageDistDelivererToHostile notifier(m_caster, &data, dist);
-    Cell::VisitObjects(m_caster, notifier, dist);
+    Cell::VisitWorldObjects(m_caster, notifier, dist);
 
     // xinef: we should also force pets to remove us from current target
     Unit::AttackerSet attackerSet;
@@ -5046,7 +5075,7 @@ void Spell::EffectForceDeselect(SpellEffIndex /*effIndex*/)
         UnitList targets;
         Acore::AnyUnfriendlyUnitInObjectRangeCheck u_check(m_caster, m_caster, m_caster->GetVisibilityRange()); // no VISIBILITY_COMPENSATION, distance is enough
         Acore::UnitListSearcher<Acore::AnyUnfriendlyUnitInObjectRangeCheck> searcher(m_caster, targets, u_check);
-        Cell::VisitObjects(m_caster, searcher, m_caster->GetVisibilityRange());
+        Cell::VisitAllObjects(m_caster, searcher, m_caster->GetVisibilityRange());
         for (UnitList::iterator iter = targets.begin(); iter != targets.end(); ++iter)
         {
             if (!(*iter)->HasUnitState(UNIT_STATE_CASTING))
@@ -5280,7 +5309,7 @@ void Spell::EffectLeapBack(SpellEffIndex effIndex)
     float speedxy = m_spellInfo->Effects[effIndex].MiscValue / 10.0f;
     float speedz = damage / 10.0f;
     //1891: Disengage
-    unitTarget->JumpTo(speedxy, speedz, m_spellInfo->SpellFamilyName != SPELLFAMILY_HUNTER);
+    m_caster->JumpTo(speedxy, speedz, m_spellInfo->SpellFamilyName != SPELLFAMILY_HUNTER);
 
     if (m_caster->IsPlayer())
     {
@@ -5449,7 +5478,7 @@ void Spell::EffectResurrectPet(SpellEffIndex /*effIndex*/)
     {
         // Position passed to SummonPet is irrelevant with current implementation,
         // pet will be relocated without using these coords in Pet::LoadPetFromDB
-        player->SummonPet(0, 0.0f, 0.0f, 0.0f, 0.0f, SUMMON_PET, 0ms, damage);
+        player->SummonPet(0, 0.0f, 0.0f, 0.0f, 0.0f, SUMMON_PET, 0s, damage);
         return;
     }
 
@@ -5488,7 +5517,7 @@ void Spell::EffectDestroyAllTotems(SpellEffIndex /*effIndex*/)
         return;
 
     int32 mana = 0;
-    for (uint8 slot = SUMMON_SLOT_TOTEM_FIRE; slot < MAX_TOTEM_SLOT; ++slot)
+    for (uint8 slot = SUMMON_SLOT_TOTEM; slot < MAX_TOTEM_SLOT; ++slot)
     {
         if (!m_caster->m_SummonSlot[slot])
             continue;
@@ -5814,10 +5843,6 @@ void Spell::EffectSkinPlayerCorpse(SpellEffIndex /*effIndex*/)
         return;
 
     unitTarget->ToPlayer()->RemovedInsignia(m_caster->ToPlayer());
-
-    // We have a corpse object as the target.
-    // This target was deleted in RemovedInsignia() -> ConvertCorpseToBones().
-    m_targets.RemoveObjectTarget();
 }
 
 void Spell::EffectStealBeneficialBuff(SpellEffIndex effIndex)
@@ -6062,7 +6087,7 @@ void Spell::EffectActivateRune(SpellEffIndex effIndex)
 
         for (uint32 i = 0; i < MAX_RUNES; ++i)
         {
-            if (player->GetRuneCooldown(i) && (player->GetCurrentRune(i) == RUNE_FROST ||  player->GetCurrentRune(i) == RUNE_DEATH))
+            if (player->GetRuneCooldown(i) && (player->GetCurrentRune(i) == RUNE_FROST || player->GetCurrentRune(i) == RUNE_DEATH))
             {
                 player->SetRuneCooldown(i, 0);
                 player->SetGracePeriod(i, player->IsInCombat()); // xinef: reset grace period
@@ -6452,6 +6477,35 @@ void Spell::EffectRemoveAura(SpellEffIndex effIndex)
     unitTarget->RemoveAurasDueToSpell(m_spellInfo->Effects[effIndex].TriggerSpell);
 }
 
+void Spell::EffectJumpCharge(SpellEffIndex effIndex)
+{
+    if (effectHandleMode != SPELL_EFFECT_HANDLE_LAUNCH)
+        return;
+
+    if (!m_caster)
+        return;
+
+    if (m_caster->IsInFlight())
+        return;
+
+    JumpChargeParams const* params = sObjectMgr->GetJumpChargeParams(m_spellInfo->Effects[effIndex].MiscValue);
+
+    if (!params)
+        return;
+
+    float speed = params->Speed;
+
+    if (params->TreatSpeedAsMoveTimeSeconds)
+        speed = m_caster->GetExactDist(destTarget) / params->MoveTimeInSec;
+
+    m_caster->GetMotionMaster()->MoveJumpWithGravity(*destTarget, speed, params->JumpGravity, 0, ObjectAccessor::GetUnit(*m_caster, m_caster->GetGuidValue(UNIT_FIELD_TARGET)));
+
+    if (m_caster->GetTypeId() == TYPEID_PLAYER)
+    {
+        sScriptMgr->AnticheatSetUnderACKmount(m_caster->ToPlayer());
+    }
+}
+
 void Spell::EffectCastButtons(SpellEffIndex effIndex)
 {
     if (effectHandleMode != SPELL_EFFECT_HANDLE_HIT)
@@ -6596,5 +6650,5 @@ void Spell::EffectSummonRaFFriend(SpellEffIndex  /*effIndex*/)
     data << m_caster->GetGUID();
     data << uint32(m_caster->GetZoneId());
     data << uint32(MAX_PLAYER_SUMMON_DELAY * IN_MILLISECONDS); // auto decline after msecs
-    player->SendDirectMessage(&data);
+    player->GetSession()->SendPacket(&data);
 }

@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -42,7 +42,7 @@
 #include "botmgr.h"
 //end npcbot
 
-GameObject::GameObject() : WorldObject(), MovableMapObject(),
+GameObject::GameObject() : WorldObject(false), MovableMapObject(),
     m_model(nullptr), m_goValue(), m_AI(nullptr)
 {
     m_objectType |= TYPEMASK_GAMEOBJECT;
@@ -435,11 +435,15 @@ bool GameObject::Create(ObjectGuid::LowType guidlow, uint32 name_id, Map* map, u
 
     // Check if GameObject is Large
     if (goinfo->IsLargeGameObject())
+    {
         SetVisibilityDistanceOverride(VisibilityDistanceType::Large);
+    }
 
     // Check if GameObject is Infinite
     if (goinfo->IsInfiniteGameObject())
+    {
         SetVisibilityDistanceOverride(VisibilityDistanceType::Infinite);
+    }
 
     return true;
 }
@@ -506,8 +510,33 @@ void GameObject::Update(uint32 diff)
                             break;
                         }
                     case GAMEOBJECT_TYPE_FISHINGNODE:
+                    {
+                        bool FastBobber = sWorld->getBoolConfig(CONFIG_FISHING_BOBBER_FAST);
+
+                        // Check if the fast bobber option is enabled
+                        if (FastBobber)
                         {
-                            // fishing code (bobber ready)
+                            // Make the bobber ready nearly instantly
+                            Unit* caster = GetOwner();
+                            if (caster && caster->GetTypeId() == TYPEID_PLAYER)
+                            {
+                                SetGoState(GO_STATE_ACTIVE);
+                                ReplaceAllGameObjectFlags(GO_FLAG_NODESPAWN);
+
+                                UpdateData udata;
+                                WorldPacket packet;
+                                BuildValuesUpdateBlockForPlayer(&udata, caster->ToPlayer());
+                                udata.BuildPacket(packet);
+                                caster->ToPlayer()->GetSession()->SendPacket(&packet);
+
+                                SendCustomAnim(GetGoAnimProgress());
+                            }
+
+                            m_lootState = GO_READY; // Bobber is now ready
+                        }
+                        else
+                        {
+                            // Original fishing code for normal bobber behavior
                             if (GameTime::GetGameTime().count() > m_respawnTime - FISHING_BOBBER_READY_TIME)
                             {
                                 // splash bobber (bobber ready now)
@@ -518,18 +547,19 @@ void GameObject::Update(uint32 diff)
                                     ReplaceAllGameObjectFlags(GO_FLAG_NODESPAWN);
 
                                     UpdateData udata;
-                                    WorldPacket packet;
+                                    WorldPacket packet; 
                                     BuildValuesUpdateBlockForPlayer(&udata, caster->ToPlayer());
                                     udata.BuildPacket(packet);
-                                    caster->ToPlayer()->SendDirectMessage(&packet);
+                                    caster->ToPlayer()->GetSession()->SendPacket(&packet);
 
                                     SendCustomAnim(GetGoAnimProgress());
                                 }
 
-                                m_lootState = GO_READY;                 // can be successfully open with some chance
+                                m_lootState = GO_READY; // can be successfully open with some chance
                             }
-                            return;
                         }
+                        return;
+                    }
                     case GAMEOBJECT_TYPE_SUMMONING_RITUAL:
                         {
                             if (GameTime::GetGameTimeMS().count() < m_cooldownTime)
@@ -641,7 +671,7 @@ void GameObject::Update(uint32 diff)
                                         caster->ToPlayer()->RemoveGameObject(this, false);
 
                                         WorldPacket data(SMSG_FISH_ESCAPED, 0);
-                                        caster->ToPlayer()->SendDirectMessage(&data);
+                                        caster->ToPlayer()->GetSession()->SendPacket(&data);
                                     }
                                     // can be delete
                                     m_lootState = GO_JUST_DEACTIVATED;
@@ -721,7 +751,7 @@ void GameObject::Update(uint32 diff)
                         {
                             Acore::NearestAttackableNoTotemUnitInObjectRangeCheck checker(this, owner, radius);
                             Acore::UnitSearcher<Acore::NearestAttackableNoTotemUnitInObjectRangeCheck> searcher(this, target, checker);
-                            Cell::VisitObjects(this, searcher, radius);
+                            Cell::VisitAllObjects(this, searcher, radius);
                         }
                         else                                        // environmental trap
                         {
@@ -730,7 +760,7 @@ void GameObject::Update(uint32 diff)
                             Player* player = nullptr;
                             Acore::AnyPlayerInObjectRangeCheck checker(this, radius, true, true);
                             Acore::PlayerSearcher<Acore::AnyPlayerInObjectRangeCheck> searcher(this, player, checker);
-                            Cell::VisitObjects(this, searcher, radius);
+                            Cell::VisitWorldObjects(this, searcher, radius);
                             target = player;
 
                         //npcbot
@@ -739,7 +769,7 @@ void GameObject::Update(uint32 diff)
                             Creature* bot = nullptr;
                             std::function bot_checker = [=, this](Creature const* c) { return c->IsNPCBot() && c->IsAlive() && IsWithinDistInMap(c, radius); };
                             Acore::CreatureSearcher searcher(this, bot, bot_checker);
-                            Cell::VisitObjects(this, searcher, radius);
+                            Cell::VisitAllObjects(this, searcher, radius);
                             target = bot;
                         }
                         //end npcbot
@@ -910,18 +940,17 @@ void GameObject::Update(uint32 diff)
                 if (!m_spawnedByDefault)
                 {
                     m_respawnTime = 0;
-                    DestroyForVisiblePlayers(); // xinef: old UpdateObjectVisibility();
+                    DestroyForNearbyPlayers(); // xinef: old UpdateObjectVisibility();
                     return;
                 }
 
-                uint32 dynamicRespawnDelay = GetMap()->ApplyDynamicModeRespawnScaling(this, m_respawnDelayTime);
-                m_respawnTime = GameTime::GetGameTime().count() + dynamicRespawnDelay;
+                m_respawnTime = GameTime::GetGameTime().count() + m_respawnDelayTime;
 
                 // if option not set then object will be saved at grid unload
                 if (GetMap()->IsDungeon())
                     SaveRespawnTime();
 
-                DestroyForVisiblePlayers(); // xinef: old UpdateObjectVisibility();
+                DestroyForNearbyPlayers(); // xinef: old UpdateObjectVisibility();
                 break;
             }
     }
@@ -950,7 +979,7 @@ void GameObject::AddUniqueUse(Player* player)
     m_unique_users.insert(player->GetGUID());
 }
 
-void GameObject::DespawnOrUnsummon(Milliseconds delay /*= 0ms*/, Seconds forceRespawnTime /*= 0s*/)
+void GameObject::DespawnOrUnsummon(Milliseconds delay, Seconds forceRespawnTime)
 {
     if (delay > 0ms)
     {
@@ -1019,25 +1048,43 @@ void GameObject::Delete()
         AddObjectToRemoveList();
 }
 
-void GameObject::GetFishLoot(Loot* fishLoot, Player* lootOwner, bool junk /*= false*/)
+void GameObject::GetFishLoot(Loot* fishloot, Player* loot_owner)
 {
-    fishLoot->clear();
+    fishloot->clear();
 
-    uint32 zone, area;
-    uint32 defaultZone = 1;
-    GetZoneAndAreaId(zone, area);
+    uint32 zone, subzone;
+    uint32 defaultzone = 1;
+    GetZoneAndAreaId(zone, subzone);
 
-    uint16 lootMode = junk ? LOOT_MODE_JUNK_FISH : LOOT_MODE_DEFAULT;
-    // Check to fill loot in the order area - zone - defaultZone.
-    // This is because area and zone is not set in some places, like Off the coast of Storm Peaks.
-    uint32 lootZones[] = { area, zone, defaultZone };
-    for (uint32 fillZone : lootZones)
+    // if subzone loot exist use it
+    fishloot->FillLoot(subzone, LootTemplates_Fishing, loot_owner, true, true);
+    if (fishloot->empty())  //use this becase if zone or subzone has set LOOT_MODE_JUNK_FISH,Even if no normal drop, fishloot->FillLoot return true. it wrong.
     {
-        fishLoot->FillLoot(fillZone, LootTemplates_Fishing, lootOwner, true, true, lootMode);
+        //subzone no result,use zone loot
+        fishloot->FillLoot(zone, LootTemplates_Fishing, loot_owner, true, true);
+        //use zone 1 as default, somewhere fishing got nothing,becase subzone and zone not set, like Off the coast of Storm Peaks.
+        if (fishloot->empty())
+            fishloot->FillLoot(defaultzone, LootTemplates_Fishing, loot_owner, true, true);
+    }
+}
 
-        // If the loot is filled and the loot is eligible, then we break out of the loop.
-        if (!fishLoot->empty() && !fishLoot->isLooted())
-            break;
+void GameObject::GetFishLootJunk(Loot* fishloot, Player* loot_owner)
+{
+    fishloot->clear();
+
+    uint32 zone, subzone;
+    uint32 defaultzone = 1;
+    GetZoneAndAreaId(zone, subzone);
+
+    // if subzone loot exist use it
+    fishloot->FillLoot(subzone, LootTemplates_Fishing, loot_owner, true, true, LOOT_MODE_JUNK_FISH);
+    if (fishloot->empty())  //use this becase if zone or subzone has normal mask drop, then fishloot->FillLoot return true.
+    {
+        //use zone loot
+        fishloot->FillLoot(zone, LootTemplates_Fishing, loot_owner, true, true, LOOT_MODE_JUNK_FISH);
+        if (fishloot->empty())
+            //use zone 1 as default
+            fishloot->FillLoot(defaultzone, LootTemplates_Fishing, loot_owner, true, true, LOOT_MODE_JUNK_FISH);
     }
 }
 
@@ -1414,7 +1461,7 @@ GameObject* GameObject::LookupFishingHoleAround(float range)
     Acore::NearestGameObjectFishingHole u_check(*this, range);
     Acore::GameObjectSearcher<Acore::NearestGameObjectFishingHole> checker(this, ok, u_check);
 
-    Cell::VisitObjects(this, checker, range);
+    Cell::VisitGridObjects(this, checker, range);
     return ok;
 }
 
@@ -1487,7 +1534,7 @@ void GameObject::Use(Unit* user)
     // by default spell caster is user
     Unit* spellCaster = user;
     uint32 spellId = 0;
-    uint32 triggeredFlags = TRIGGERED_NONE;
+    bool triggered = false;
 
     if (Player* playerUser = user->ToPlayer())
     {
@@ -1506,10 +1553,6 @@ void GameObject::Use(Unit* user)
 
         m_cooldownTime = GameTime::GetGameTimeMS().count() + cooldown * IN_MILLISECONDS;
     }
-
-    if (user->IsPlayer() && GetGoType() != GAMEOBJECT_TYPE_TRAP) // workaround for GO casting
-        if (!m_goInfo->IsUsableMounted())
-            user->RemoveAurasByType(SPELL_AURA_MOUNTED);
 
     switch (GetGoType())
     {
@@ -1649,7 +1692,7 @@ void GameObject::Use(Unit* user)
                     {
                         WorldPacket data(SMSG_GAMEOBJECT_PAGETEXT, 8);
                         data << GetGUID();
-                        player->SendDirectMessage(&data);
+                        player->GetSession()->SendPacket(&data);
                     }
                     else if (info->goober.gossipID)
                     {
@@ -1756,40 +1799,34 @@ void GameObject::Use(Unit* user)
                             uint32 zone, subzone;
                             GetZoneAndAreaId(zone, subzone);
 
-                            int32 zoneSkill = sObjectMgr->GetFishingBaseSkillLevel(subzone);
-                            if (!zoneSkill)
-                                zoneSkill = sObjectMgr->GetFishingBaseSkillLevel(zone);
+                            int32 zone_skill = sObjectMgr->GetFishingBaseSkillLevel(subzone);
+                            if (!zone_skill)
+                                zone_skill = sObjectMgr->GetFishingBaseSkillLevel(zone);
 
                             //provide error, no fishable zone or area should be 0
-                            if (!zoneSkill)
+                            if (!zone_skill)
                                 LOG_ERROR("sql.sql", "Fishable areaId {} are not properly defined in `skill_fishing_base_level`.", subzone);
 
-                            // no miss skill is zone skill + 95 since at least patch 2.1
-                            int32 const noMissSkill = zoneSkill + 95;
-
-                            int32 const skill = player->GetSkillValue(SKILL_FISHING);
+                            int32 skill = player->GetSkillValue(SKILL_FISHING);
 
                             int32 chance;
-                            // fishing pool catches are 100%
-                            //TODO: find reasonable value for fishing hole search
-                            GameObject* fishingHole = LookupFishingHoleAround(20.0f + CONTACT_DISTANCE);
-                            if (fishingHole)
-                                chance = 100;
-                            else if (skill < noMissSkill)
+                            if (skill < zone_skill)
                             {
-                                chance = int32(pow((double)skill / noMissSkill, 2) * 100);
+                                chance = int32(pow((double)skill / zone_skill, 2) * 100);
                                 if (chance < 1)
                                     chance = 1;
                             }
                             else
                                 chance = 100;
 
-                            int32 const roll = irand(1, 100);
+                            int32 roll = irand(1, 100);
 
-                            LOG_DEBUG("entities.gameobject", "Fishing check (skill: {} zone min skill: {} no-miss skill: {} chance {} roll: {})", skill, zoneSkill, noMissSkill, chance, roll);
+                            LOG_DEBUG("entities.gameobject", "Fishing check (skill: {} zone min skill: {} chance {} roll: {}", skill, zone_skill, chance, roll);
 
-                            if (sScriptMgr->OnPlayerUpdateFishingSkill(player, skill, zoneSkill, chance, roll))
+                            if (sScriptMgr->OnUpdateFishingSkill(player, skill, zone_skill, chance, roll))
+                            {
                                 player->UpdateFishingSkill();
+                            }
                             // but you will likely cause junk in areas that require a high fishing skill (not yet implemented)
                             if (chance >= roll)
                             {
@@ -1799,10 +1836,11 @@ void GameObject::Use(Unit* user)
                                 SetOwnerGUID(player->GetGUID());
                                 SetSpellId(0); // prevent removing unintended auras at Unit::RemoveGameObject
 
-                                // fishing pool catch
-                                if (fishingHole)
+                                //TODO: find reasonable value for fishing hole search
+                                GameObject* ok = LookupFishingHoleAround(20.0f + CONTACT_DISTANCE);
+                                if (ok)
                                 {
-                                    fishingHole->Use(player);
+                                    ok->Use(player);
                                     SetLootState(GO_JUST_DEACTIVATED);
                                 }
                                 else
@@ -1819,7 +1857,7 @@ void GameObject::Use(Unit* user)
                             SetLootState(GO_JUST_DEACTIVATED);
 
                             WorldPacket data(SMSG_FISH_NOT_HOOKED, 0);
-                            player->SendDirectMessage(&data);
+                            player->GetSession()->SendPacket(&data);
                             break;
                         }
                 }
@@ -1837,13 +1875,16 @@ void GameObject::Use(Unit* user)
                     spellCaster = botOwner;
 
                     if (info->summoningRitual.animSpell)
+                    {
                         user->CastSpell(user, info->summoningRitual.animSpell, true);
+                        triggered = true;
+                    }
 
                     spellId = info->summoningRitual.spellId;
                     if (spellId == 62330)
                     {
                         spellId = 61993;
-                        triggeredFlags = TRIGGERED_FULL_MASK;
+                        triggered = true;
                     }
                     if (!info->summoningRitual.ritualPersistent)
                         SetLootState(GO_JUST_DEACTIVATED);
@@ -1941,6 +1982,7 @@ void GameObject::Use(Unit* user)
                     }
                 }
 
+                user->RemoveAurasByType(SPELL_AURA_MOUNTED);
                 spellId = info->spellcaster.spellId;
                 break;
             }
@@ -2131,7 +2173,7 @@ void GameObject::Use(Unit* user)
                 player->TeleportTo(GetMapId(), GetPositionX(), GetPositionY(), GetPositionZ(), GetOrientation(), TELE_TO_NOT_LEAVE_TRANSPORT | TELE_TO_NOT_LEAVE_COMBAT | TELE_TO_NOT_UNSUMMON_PET);
 
                 WorldPacket data(SMSG_ENABLE_BARBER_SHOP, 0);
-                player->SendDirectMessage(&data);
+                player->GetSession()->SendPacket(&data);
 
                 player->SetStandState(UNIT_STAND_STATE_SIT_LOW_CHAIR + info->barberChair.chairheight);
                 return;
@@ -2156,15 +2198,12 @@ void GameObject::Use(Unit* user)
         return;
     }
 
-    if (m_goInfo->IsUsableMounted())
-        triggeredFlags |= TRIGGERED_IGNORE_CASTER_MOUNTED_OR_ON_VEHICLE;
-
     if (Player* player = user->ToPlayer())
         sOutdoorPvPMgr->HandleCustomSpell(player, spellId, this);
 
     if (spellCaster)
     {
-        if ((spellCaster->CastSpell(user, spellInfo, TriggerCastFlags(triggeredFlags)) == SPELL_CAST_OK) && GetGoType() == GAMEOBJECT_TYPE_SPELLCASTER)
+        if ((spellCaster->CastSpell(user, spellInfo, triggered) == SPELL_CAST_OK) && GetGoType() == GAMEOBJECT_TYPE_SPELLCASTER)
             AddUse();
     }
     else
@@ -2408,7 +2447,7 @@ void GameObject::ModifyHealth(int32 change, Unit* attackerOrHealer /*= nullptr*/
         data << uint32(-change);                    // change  < 0 triggers SPELL_BUILDING_HEAL combat log event
         // change >= 0 triggers SPELL_BUILDING_DAMAGE event
         data << uint32(spellId);
-        player->SendDirectMessage(&data);
+        player->GetSession()->SendPacket(&data);
     }
 
     GameObjectDestructibleState newState = GetDestructibleState();
@@ -2565,6 +2604,12 @@ void GameObject::SetLootState(LootState state, Unit* unit)
 
 void GameObject::SetGoState(GOState state)
 {
+    // Null check for the game object
+    if (!this)
+    {
+        LOG_ERROR("entities.object", "GameObject::SetGoState: Attempted to set state on a null GameObject");
+        return;
+    }
     SetByteValue(GAMEOBJECT_BYTES_1, 0, state);
 
     sScriptMgr->OnGameObjectStateChanged(this, state);
@@ -2699,7 +2744,7 @@ void GameObject::EnableCollision(bool enable)
         GetMap()->InsertGameObjectModel(*m_model);*/
 
     uint32 phaseMask = 0;
-    if (enable && !sDisableMgr->IsDisabledFor(DISABLE_TYPE_GO_LOS, GetEntry(), nullptr))
+    if (enable && !DisableMgr::IsDisabledFor(DISABLE_TYPE_GO_LOS, GetEntry(), nullptr))
         phaseMask = GetPhaseMask();
 
     m_model->enable(phaseMask);
@@ -3154,13 +3199,13 @@ SpellInfo const* GameObject::GetSpellForLock(Player const* player) const
     return nullptr;
 }
 
-void GameObject::AddToSkillupList(ObjectGuid const& playerGuid)
+void GameObject::AddToSkillupList(ObjectGuid playerGuid)
 {
     int32 timer = GetMap()->IsDungeon() ? -1 : 10 * MINUTE * IN_MILLISECONDS;
     m_SkillupList[playerGuid] = timer;
 }
 
-bool GameObject::IsInSkillupList(ObjectGuid const& playerGuid) const
+bool GameObject::IsInSkillupList(ObjectGuid playerGuid) const
 {
     for (auto const& itr : m_SkillupList)
     {
@@ -3179,22 +3224,4 @@ std::string GameObject::GetDebugInfo() const
     sstr << WorldObject::GetDebugInfo() << "\n"
         << "SpawnId: " << GetSpawnId() << " GoState: " << std::to_string(GetGoState()) << " ScriptId: " << GetScriptId() << " AIName: " << GetAIName();
     return sstr.str();
-}
-
-// Note: This is called in a tight (heavy) loop, is it critical that all checks are FAST and are hopefully only simple conditionals.
-bool GameObject::IsUpdateNeeded()
-{
-    if (WorldObject::IsUpdateNeeded())
-        return true;
-
-    if (GetMap()->isCellMarked(GetCurrentCell().GetCellCoord().GetId()))
-        return true;
-
-    if (!GetObjectVisibilityContainer().GetVisiblePlayersMap().empty())
-        return true;
-
-    if (IsTransport())
-        return true;
-
-    return false;
 }

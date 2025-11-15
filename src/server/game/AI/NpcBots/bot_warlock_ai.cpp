@@ -98,7 +98,8 @@ enum WarlockPassives
     GLYPH_FEAR                          = 56244,
     GLYPH_QUICK_DECAY                   = 70947,
     GLYPH_CONFLAGRATE                   = 56235,
-    GLYPH_SHADOWFLAME                   = 63310
+    GLYPH_SHADOWFLAME                   = 63310,
+    SPELL_ID_THORIUM_GRENADE            = 19769
 };
 
 enum WarlockSpecial
@@ -171,6 +172,8 @@ enum CurseType : uint32
     CURSE_MASK_MY_CURSE_ANY     = (CURSE_MASK_MY_WEAKNESS | CURSE_MASK_MY_AGONY | CURSE_MASK_MY_DOOM | \
                                 CURSE_MASK_MY_ELEMENTS | CURSE_MASK_MY_TONGUES | CURSE_MASK_MY_EXHAUSTION)
 };
+
+const uint32 THORIUM_GRENADE_SPELL_ID = 19769;
 
 static const uint32 Warlock_spells_damage_arr[] =
 { CHAOS_BOLT_1, CONFLAGRATE_1, CORRUPTION_1, CURSE_OF_AGONY_1, CURSE_OF_DOOM_1, DEATH_COIL_1, DRAIN_SOUL_1, HAUNT_1,
@@ -400,7 +403,26 @@ public:
 
             Unit* banishTarget = FindUndeadCCTarget(CalcSpellMaxRange(BANISH_1), BANISH_1);
             if (banishTarget && doCast(banishTarget, BANISH))
-                return;
+            {
+                if (!IsWanderer()) 
+                {
+                    const char* banishMessages[] = {
+                        "|cFFFFFFFFCasting Banish on %s! See you in a bit.|r",
+                        "|cFFFFFFFFHey %s, enjoy your trip to Banish-land!|r",
+                        "|cFFFFFFFFTime for a little Banish, %s. Don't miss us too much!|r",
+                        "|cFFFFFFFF%s's getting a one-way ticket to the nether! Banish, go!|r",
+                        "|cFFFFFFFFBanish time for %s! Take a moment to reflect.|r",
+                    };
+
+                    int randomIndex = urand(0, sizeof(banishMessages) / sizeof(char*) - 1);
+                    const char* selectedMessage = banishMessages[randomIndex];
+
+                    char messageBuffer[256];
+                    snprintf(messageBuffer, sizeof(messageBuffer), selectedMessage, banishTarget->GetName().c_str());
+
+                    me->Say(messageBuffer, LANG_UNIVERSAL, me->ToUnit());
+                }
+            }
         }
 
         void CheckUnBanish(uint32 diff)
@@ -410,15 +432,32 @@ public:
 
             unbanishTimer = 2000;
 
-            //we check only our spell rank which is enough in 99% cases
             uint32 BANISH = GetSpell(BANISH_1);
             if (!BANISH)
                 return;
 
-            //looks like you cannot dispel other people's banish
             Unit* unbanishTarget = FindAffectedTarget(BANISH, me->GetGUID(), CalcSpellMaxRange(BANISH_1));
             if (unbanishTarget && doCast(unbanishTarget, BANISH))
-                return;
+            {
+                if (!IsWanderer()) 
+                {
+                    const char* unbanishMessages[] = {
+                        "|cFFFFFFFFLifting Banish on %s! Welcome back to the fight.|r",
+                        "|cFFFFFFFFUnbanishing %s! Ready for round two?|r",
+                        "|cFFFFFFFF%s's Banish break is over. Time to get back in the game!|r",
+                        "|cFFFFFFFFBringing %s back from their Banish vacation!|r",
+                        "|cFFFFFFFFTime's up, %s! Unbanish incoming.|r",
+                    };
+
+                    int randomIndex = urand(0, sizeof(unbanishMessages) / sizeof(char*) - 1);
+                    const char* selectedMessage = unbanishMessages[randomIndex];
+
+                    char messageBuffer[256];
+                    snprintf(messageBuffer, sizeof(messageBuffer), selectedMessage, unbanishTarget->GetName().c_str());
+
+                    me->Say(messageBuffer, LANG_UNIVERSAL, me->ToUnit());
+                }
+            }
         }
 
         void CheckDrainMana(uint32 diff)
@@ -596,6 +635,25 @@ public:
         {
             if (!GlobalUpdate(diff))
                 return;
+
+            if (IsSpellReady(THORIUM_GRENADE_SPELL_ID, diff))
+            {
+                std::list<Creature*> targets;
+                me->GetCreaturesWithEntryInRange(targets, 35.0f, 15555);
+
+                for (Creature* target : targets)
+                {
+                    if (!target->IsAlive() || me->IsFriendlyTo(target))
+                        continue;
+
+                    if (me->IsWithinDistInMap(target, 35.0f))
+                    {
+                        me->CastSpell(target, THORIUM_GRENADE_SPELL_ID, true);
+                        SetSpellCooldown(THORIUM_GRENADE_SPELL_ID, 3000);
+                        break;
+                    }
+                }
+            }
 
             DoVehicleActions(diff);
             if (!CanBotAttackOnVehicle())
@@ -1696,7 +1754,7 @@ public:
             OnSpellHitTarget(target, spell);
         }
 
-        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType, SpellSchoolMask damageSchoolMask) override
+        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType) override
         {
             //Fel Synergy (Life Tap)
             if (damage && botPet && me->GetLevel() >= 10 && (damageType == SPELL_DIRECT_DAMAGE || damageType == DOT))
@@ -1710,7 +1768,7 @@ public:
                 }
             }
 
-            bot_ai::DamageDealt(victim, damage, damageType, damageSchoolMask);
+            bot_ai::DamageDealt(victim, damage, damageType);
         }
 
         void DamageTaken(Unit* u, uint32& /*damage*/, DamageEffectType /*damageType*/, SpellSchoolMask /*schoolMask*/) override

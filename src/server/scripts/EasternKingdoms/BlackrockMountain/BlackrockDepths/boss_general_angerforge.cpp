@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -24,6 +24,13 @@ enum Spells
     SPELL_MIGHTYBLOW                                       = 14099,
     SPELL_HAMSTRING                                        = 9080,
     SPELL_CLEAVE                                           = 20691
+};
+
+const Position anvilrageSpawnPositions[] = {
+    {675.304199f, 40.174721f, -58.529747f, 3.095478f},
+    {675.293152f, 34.244930f, -55.226852f, 3.095478f},
+    {675.084961f, 29.733681f, -51.742348f, 3.095478f},
+    {675.317749f, 22.587074f, -50.623539f, 3.095478f}
 };
 
 class boss_general_angerforge : public CreatureScript
@@ -55,8 +62,34 @@ public:
             Medics = false;
         }
 
-        void JustEngagedWith(Unit* /*who*/) override { }
+        void JustEngagedWith(Unit* who) override
+        {
+            me->Yell("Reservists! Get these interlopers out of here!", LANG_UNIVERSAL);
+            for (const Position& pos : anvilrageSpawnPositions)
+            {
+                if (Creature* reservist = me->SummonCreature(8901, pos, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 69000))
+                {
+                    reservist->SetInCombatWithZone(); 
+                }
+            }
+        }
 
+        void JustDied(Unit* /*killer*/) override
+        {
+            Map::PlayerList const& players = me->GetMap()->GetPlayers();
+            if (players.begin() != players.end())
+            {
+                uint32 baseRewardLevel = 1;
+                bool isDungeon = me->GetMap()->IsDungeon();
+
+                Player* player = players.begin()->GetSource();
+                if (player)
+                {
+                    DistributeChallengeRewards(player, me, baseRewardLevel, isDungeon);
+                }
+            }
+        }
+        
         void SummonAdds(Unit* victim)
         {
             if (Creature* SummonedAdd = DoSpawnCreature(8901, float(irand(-14, 14)), float(irand(-14, 14)), 0, 0, TEMPSUMMON_TIMED_OR_CORPSE_DESPAWN, 120000))

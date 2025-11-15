@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -78,7 +78,7 @@ struct boss_sartura : public BossAI
     {
         BossAI::JustEngagedWith(who);
         Talk(SAY_AGGRO);
-        events.ScheduleEvent(EVENT_SARTURA_WHIRLWIND, 12s, 22s);
+        events.ScheduleEvent(EVENT_SARTURA_WHIRLWIND, 14s, 24s);
         events.ScheduleEvent(EVENT_SPELL_BERSERK, 10min);
         events.ScheduleEvent(EVENT_SARTURA_SUNDERING_CLEAVE, 2400ms, 3s);
     }
@@ -87,6 +87,16 @@ struct boss_sartura : public BossAI
     {
         _JustDied();
         Talk(SAY_DEATH);
+        DoCastSelf(875167, true);
+        Map::PlayerList const& players = me->GetMap()->GetPlayers();
+        for (auto const& playerPair : players)
+        {
+            Player* player = playerPair.GetSource();
+            if (player)
+            {
+                DistributeChallengeRewards(player, me, 1, false);
+            }
+        }
     }
 
     void KilledUnit(Unit* /*victim*/) override
@@ -115,7 +125,7 @@ struct boss_sartura : public BossAI
             switch (eventId)
             {
                 case EVENT_SARTURA_WHIRLWIND:
-                    if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, 100.0f, true, false))
+                    if (Unit* target = SelectTarget(SelectTargetMethod::Random, 1, 100.0f, true))
                     {
                         me->GetThreatMgr().ResetAllThreat();
                         me->AddThreat(target, 1000.0f);
@@ -136,7 +146,7 @@ struct boss_sartura : public BossAI
                     me->GetThreatMgr().ResetAllThreat();
                     me->SetReactState(REACT_AGGRESSIVE);
                     events.CancelEvent(EVENT_SARTURA_WHIRLWIND_RANDOM);
-                    events.ScheduleEvent(EVENT_SARTURA_WHIRLWIND, 5s, 11s);
+                    events.ScheduleEvent(EVENT_SARTURA_WHIRLWIND, 6s, 14s);
                     break;
                 case EVENT_SPELL_BERSERK:
                     if (!berserked)
@@ -199,9 +209,9 @@ struct npc_sartura_royal_guard : public ScriptedAI
             switch (eventid)
             {
                 case EVENT_GUARD_WHIRLWIND:
-                    if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, 100.0f, true, false))
+                    if (Unit* target = SelectTarget(SelectTargetMethod::Random, 1, 100.0f, true))
                     {
-                        me->GetThreatMgr().ResetAllThreat();
+                        //me->GetThreatMgr().ResetAllThreat();
                         me->AddThreat(target, 1000.0f);
                     }
                     DoCastSelf(SPELL_GUARD_WHIRLWIND);
@@ -211,13 +221,13 @@ struct npc_sartura_royal_guard : public ScriptedAI
                 case EVENT_GUARD_WHIRLWIND_RANDOM:
                     if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, 100.0f, true))
                     {
-                        me->GetThreatMgr().ResetAllThreat();
+                        //me->GetThreatMgr().ResetAllThreat();
                         me->AddThreat(target, 1000.0f);
                     }
                     events.Repeat(2s, 7s);
                     break;
                 case EVENT_GUARD_WHIRLWIND_END:
-                    me->GetThreatMgr().ResetAllThreat();
+                    //me->GetThreatMgr().ResetAllThreat();
                     me->SetReactState(REACT_AGGRESSIVE);
                     events.CancelEvent(EVENT_GUARD_WHIRLWIND_RANDOM);
                     events.ScheduleEvent(EVENT_GUARD_WHIRLWIND, 500ms, 9s);

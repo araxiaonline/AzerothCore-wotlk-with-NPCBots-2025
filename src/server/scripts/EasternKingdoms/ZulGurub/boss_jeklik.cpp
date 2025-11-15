@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -120,7 +120,7 @@ struct boss_jeklik : public BossAI
         BossAI::Reset();
 
         me->SetHomePosition(JeklikCaveHomePosition);
-
+        DoCastSelf(875167, true);
         me->SetDisableGravity(false);
         me->SetReactState(REACT_PASSIVE);
         BossAI::me->SetCombatMovement(false);
@@ -140,7 +140,7 @@ struct boss_jeklik : public BossAI
         me->SetDisableGravity(true);
         DoCastSelf(SPELL_BAT_FORM, true);
 
-        me->GetMotionMaster()->MoveWaypoint(PATH_JEKLIK_INTRO, false);
+        me->GetMotionMaster()->MovePath(PATH_JEKLIK_INTRO, false);
     }
 
     void PathEndReached(uint32 pathId) override
@@ -263,6 +263,16 @@ struct boss_jeklik : public BossAI
     {
         BossAI::JustDied(killer);
         Talk(SAY_DEATH);
+        DoCastSelf(875167, true);
+        Map::PlayerList const& players = me->GetMap()->GetPlayers();
+        for (auto const& playerPair : players)
+        {
+            Player* player = playerPair.GetSource();
+            if (player)
+            {
+                DistributeChallengeRewards(player, me, 1, false);
+            }
+        }
     }
 };
 
@@ -295,7 +305,7 @@ struct npc_batrider : public CreatureAI
             me->SetSpeed(MOVE_WALK, 5.0f, true);
 
             me->SetCanFly(true);
-            me->GetMotionMaster()->MovePath(PATH_BATRIDER_LOOP);
+            me->GetMotionMaster()->MoveSplinePath(PATH_BATRIDER_LOOP);
         }
         else
         {
@@ -335,7 +345,7 @@ struct npc_batrider : public CreatureAI
         {
             _scheduler.Schedule(2s, [this](TaskContext context)
             {
-                DoCastRandomTarget(SPELL_BATRIDER_THROW_LIQUID_FIRE);
+                CastSpellOnRandomTarget(SPELL_BATRIDER_THROW_LIQUID_FIRE, 100.0f);
                 context.Repeat(8s);
             });
         }
@@ -368,6 +378,24 @@ struct npc_batrider : public CreatureAI
         }
     }
 
+    void CastSpellOnRandomTarget(uint32 spellId, float range)
+    {
+        std::list<Unit*> targets;
+        Acore::AnyUnitInObjectRangeCheck check(me, range);
+        Acore::UnitListSearcher<Acore::AnyUnitInObjectRangeCheck> searcher(me, targets, check);
+        Cell::VisitAllObjects(me, searcher, range);
+
+        targets.remove_if([this](Unit* unit) -> bool {
+            return !unit->IsAlive() || !(unit->GetTypeId() == TYPEID_PLAYER || (unit->GetTypeId() == TYPEID_UNIT && static_cast<Creature*>(unit)->IsNPCBot()));
+            });
+
+        if (!targets.empty())
+        {
+            Unit* target = Acore::Containers::SelectRandomContainerElement(targets);
+            DoCast(target, spellId);
+        }
+    }
+
     void UpdateAI(uint32 /*diff*/) override
     {
         if (_mode == BATRIDER_MODE_BOSS)
@@ -375,7 +403,7 @@ struct npc_batrider : public CreatureAI
             if (!me->isMoving())
             {
                 me->SetCanFly(true);
-                me->GetMotionMaster()->MovePath(PATH_BATRIDER_LOOP);
+                me->GetMotionMaster()->MoveSplinePath(PATH_BATRIDER_LOOP);
             }
         }
         else if (_mode == BATRIDER_MODE_TRASH)

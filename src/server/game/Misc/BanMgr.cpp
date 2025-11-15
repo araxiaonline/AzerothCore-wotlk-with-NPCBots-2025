@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -26,7 +26,6 @@
 #include "ScriptMgr.h"
 #include "World.h"
 #include "WorldSession.h"
-#include "WorldSessionMgr.h"
 
 BanMgr* BanMgr::instance()
 {
@@ -70,11 +69,11 @@ BanReturn BanMgr::BanAccount(std::string const& AccountName, std::string const& 
     stmt->SetData(3, Reason);
     trans->Append(stmt);
 
-    if (WorldSession* session = sWorldSessionMgr->FindSession(AccountID))
+    if (WorldSession* session = sWorld->FindSession(AccountID))
         if (session->GetPlayerName() != Author)
             session->KickPlayer("Ban Account at condition 'FindSession(account)->GetPlayerName() != author'");
 
-    if (WorldSession* session = sWorldSessionMgr->FindOfflineSession(AccountID))
+    if (WorldSession* session = sWorld->FindOfflineSession(AccountID))
         if (session->GetPlayerName() != Author)
             session->KickPlayer("Ban Account at condition 'FindOfflineSession(account)->GetPlayerName() != author'");
 
@@ -132,11 +131,11 @@ BanReturn BanMgr::BanAccountByPlayerName(std::string const& CharacterName, std::
     stmt->SetData(3, Reason);
     trans->Append(stmt);
 
-    if (WorldSession* session = sWorldSessionMgr->FindSession(AccountID))
+    if (WorldSession* session = sWorld->FindSession(AccountID))
         if (session->GetPlayerName() != Author)
             session->KickPlayer("Ban Account at condition 'FindSession(account)->GetPlayerName() != author'");
 
-    if (WorldSession* session = sWorldSessionMgr->FindOfflineSession(AccountID))
+    if (WorldSession* session = sWorld->FindOfflineSession(AccountID))
         if (session->GetPlayerName() != Author)
             session->KickPlayer("Ban Account at condition 'FindOfflineSession(account)->GetPlayerName() != author'");
 
@@ -206,11 +205,11 @@ BanReturn BanMgr::BanIP(std::string const& IP, std::string const& Duration, std:
         Field* fields = resultAccounts->Fetch();
         uint32 AccountID = fields[0].Get<uint32>();
 
-        if (WorldSession* session = sWorldSessionMgr->FindSession(AccountID))
+        if (WorldSession* session = sWorld->FindSession(AccountID))
             if (session->GetPlayerName() != Author)
                 session->KickPlayer("Ban IP at condition 'FindSession(account)->GetPlayerName() != author'");
 
-        if (WorldSession* session = sWorldSessionMgr->FindOfflineSession(AccountID))
+        if (WorldSession* session = sWorld->FindOfflineSession(AccountID))
             if (session->GetPlayerName() != Author)
                 session->KickPlayer("Ban IP at condition 'FindOfflineSession(account)->GetPlayerName() != author'");
     } while (resultAccounts->NextRow());

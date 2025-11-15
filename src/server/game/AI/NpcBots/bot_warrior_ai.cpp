@@ -75,7 +75,9 @@ enum WarriorBaseSpells
     COMMANDING_SHOUT_1                      = 469,
     SHATTERING_THROW_1                      = 64382,
     DEMORALIZING_SHOUT_1                    = 1160,
-    HEROIC_FURY_1                           = 60970
+    HEROIC_FURY_1                           = 60970,
+    SPELL_ID_THORIUM_GRENADE                = 19769,
+    COLOSSUS_SMASH_1                        = 994999
 };
 enum WarriorPassives
 {
@@ -161,10 +163,12 @@ enum WarriorSpecial
     BERSERKER_STANCE_PASSIVE                = 7381
 };
 
+const uint32 THORIUM_GRENADE_SPELL_ID = 19769;
+
 static  uint32 Warrior_spells_damage_arr[] =
 { BLADESTORM_1, BLOODTHIRST_1, CLEAVE_1, CONCUSSION_BLOW_1, DEVASTATE_1, EXECUTE_1, HEROIC_STRIKE_1, HEROIC_THROW_1,
 INTERCEPT_1, MOCKING_BLOW_1, MORTAL_STRIKE_1, OVERPOWER_1, REND_1, RETALIATION_1, REVENGE_1, SHATTERING_THROW_1,
-SHIELD_SLAM_1, SHOCKWAVE_1, SLAM_1, THUNDER_CLAP_1, VICTORY_RUSH_1, WHIRLWIND_1 };
+SHIELD_SLAM_1, SHOCKWAVE_1, SLAM_1, THUNDER_CLAP_1, VICTORY_RUSH_1, WHIRLWIND_1, COLOSSUS_SMASH_1 };
 
 static  uint32 Warrior_spells_cc_arr[] =
 { CHARGE_1, INTERCEPT_1, INTIMIDATING_SHOUT_1, CONCUSSION_BLOW_1, DISARM_1, HAMSTRING_1, PIERCING_HOWL_1,
@@ -182,6 +186,19 @@ static const std::vector<uint32> Warrior_spells_support(FROM_ARRAY(Warrior_spell
 
 static float rageIncomeMult;
 static float rageLossMult;
+
+const char* warriorhealingMessages[] = {
+    "|cFFFFFFFFWhoa, healers, let's not make this a ghost story, eh? A little help!|r",
+    "|cFFFFFFFFI'm starting to see my ancestors! Quick, a heal before I join them!|r",
+    "|cFFFFFFFFHey, do I need to fill out a form for a heal, or is shouting enough?|r",
+    "|cFFFFFFFFNot to alarm anyone, but I'm currently embracing the 'nearly dead' lifestyle. Heal, maybe?|r",
+    "|cFFFFFFFFHealers, how about we swap roles? You tank, and I'll... Oh wait, I need healing.|r",
+    "|cFFFFFFFFIs this what they call 'living on the edge'? Because I'm about to fall off. Heals, please!|r",
+    "|cFFFFFFFFI didn't choose the tank life, the tank life chose—OW! Heal, please?|r",
+    "|cFFFFFFFFRoses are red, my health bar is low, if I were a healer, I'd heal me, you know?|r",
+    "|cFFFFFFFFIf I survive this, first round's on me! But seriously, I need a heal.|r",
+    "|cFFFFFFFFI've had closer shaves, but none where I might actually die! Little healing love over here?|r",
+};
 
 class warrior_bot : public CreatureScript
 {
@@ -346,6 +363,41 @@ public:
                     }
                 }
                 getrage();
+            }
+
+            // Dinkle
+            if (!IsWanderer()) { 
+                if (me->IsInCombat()) {
+                    float healthPercentage = (float)me->GetHealth() / (float)me->GetMaxHealth();
+                    if (healthPercentage <= 0.15f && !needHealingFlag) {
+                        int randomIndex = urand(0, sizeof(warriorhealingMessages) / sizeof(warriorhealingMessages[0]) - 1);
+                        me->Say(warriorhealingMessages[randomIndex], LANG_UNIVERSAL, me->ToUnit());
+                        needHealingFlag = true;
+                    }
+                    else if (healthPercentage >= 0.50f && needHealingFlag) {
+                        needHealingFlag = false;
+                    }
+                }
+            }
+            //end Dinkle
+
+            if (IsSpellReady(THORIUM_GRENADE_SPELL_ID, diff))
+            {
+                std::list<Creature*> targets;
+                me->GetCreaturesWithEntryInRange(targets, 35.0f, 15555);
+
+                for (Creature* target : targets)
+                {
+                    if (!target->IsAlive() || me->IsFriendlyTo(target))
+                        continue;
+
+                    if (me->IsWithinDistInMap(target, 35.0f))
+                    {
+                        me->CastSpell(target, THORIUM_GRENADE_SPELL_ID, true);
+                        SetSpellCooldown(THORIUM_GRENADE_SPELL_ID, 3000);
+                        break;
+                    }
+                }
             }
 
             if (!GlobalUpdate(diff))
@@ -693,24 +745,64 @@ public:
             }
 
             MoveBehind(mytar);
-
             //SHIELD BASH - shared cd with pummel
             if (IsSpellReady(SHIELD_BASH_1, diff, false) && can_do_normal && CanBlock() && Rand() < 80 &&
                 (_inStance(4) || stancetimer <= diff) &&
-                dist < 5 && rage >= rcost(SHIELD_BASH_1) && mytar->IsNonMeleeSpellCast(false,false,true))
+                dist < 5 && rage >= rcost(SHIELD_BASH_1) && mytar->IsNonMeleeSpellCast(false, false, true))
             {
                 if ((_inStance(4) || stanceChange(diff, 4)) &&
                     doCast(mytar, GetSpell(SHIELD_BASH_1)))
+                {
+                    if (!IsWanderer()) 
+                    {
+                        const char* shieldBashMessages[] = {
+                            "|cFFFFFFFF%s's spell was bashed with my Shield Bash! No more casting for you.|r",
+                            "|cFFFFFFFFInterrupted %s with Shield Bash! That's got to hurt.|r",
+                            "|cFFFFFFFFShield Bash silenced %s! Perfectly timed.|r",
+                            "|cFFFFFFFF%s, meet my shield! Shield Bash for the win.|r",
+                            "|cFFFFFFFFStopped %s in their tracks with a Shield Bash!|r",
+                        };
+
+                        int randomIndex = urand(0, sizeof(shieldBashMessages) / sizeof(char*) - 1);
+                        const char* selectedMessage = shieldBashMessages[randomIndex];
+
+                        char messageBuffer[256];
+                        snprintf(messageBuffer, sizeof(messageBuffer), selectedMessage, mytar->GetName().c_str());
+
+                        me->Say(messageBuffer, LANG_UNIVERSAL, me->ToUnit());
+                    }
                     return;
+                }
             }
-            //PUMMEL - shared cd with shield bash
+
+            // PUMMEL - shared cd with shield bash
             if (IsSpellReady(PUMMEL_1, diff, false) && can_do_normal && !IsTank() && !CanBlock() && Rand() < 80 &&
                 dist < 5 && (_inStance(3) || stancetimer <= diff) &&
-                rage >= rcost(PUMMEL_1) && mytar->IsNonMeleeSpellCast(false,false,true))
+                rage >= rcost(PUMMEL_1) && mytar->IsNonMeleeSpellCast(false, false, true))
             {
                 if ((_inStance(3) || stanceChange(diff, 3)) &&
                     doCast(mytar, GetSpell(PUMMEL_1)))
+                {
+                    if (!IsWanderer()) 
+                    {
+                        const char* pummelMessages[] = {
+                            "|cFFFFFFFF%s just got a taste of my Pummel! Spellcasting interrupted.|r",
+                            "|cFFFFFFFFPummeled %s! No more spells for you.|r",
+                            "|cFFFFFFFF%s's casting was stopped by my Pummel!|r",
+                            "|cFFFFFFFFDelivered a Pummel to %s, silencing them effectively.|r",
+                            "|cFFFFFFFF%s was pummeled into silence! Spellcasting interrupted.|r",
+                        };
+
+                        int randomIndex = urand(0, sizeof(pummelMessages) / sizeof(char*) - 1);
+                        const char* selectedMessage = pummelMessages[randomIndex];
+
+                        char messageBuffer[256];
+                        snprintf(messageBuffer, sizeof(messageBuffer), selectedMessage, mytar->GetName().c_str());
+
+                        me->Say(messageBuffer, LANG_UNIVERSAL, me->ToUnit());
+                    }
                     return;
+                }
             }
             //HAMSTRING
             if (IsSpellReady(HAMSTRING_1, diff) && can_do_normal && Rand() < 70 && (_inStance(5) || stancetimer <= diff) &&
@@ -798,7 +890,6 @@ public:
                 if (doCast(me, GetSpell(DEATH_WISH_1)))
                     return;
             }
-
             //VICTORY RUSH
             if (IsSpellReady(VICTORY_RUSH_1, diff) && can_do_normal && HasRole(BOT_ROLE_DPS) && Rand() < 70 && dist < 5 && _inStance(5) &&
                 me->GetAuraEffect(SPELL_AURA_DUMMY, SPELLFAMILY_WARRIOR, 0x0, 0x40000, 0x0))
@@ -813,16 +904,29 @@ public:
                 if (doCast(mytar, GetSpell(DEVASTATE_1)))
                     return;
             }
-            //SUNDER ARMOR
-            if (IsSpellReady(SUNDER_ARMOR_1, diff) && !IAmFree() && can_do_normal && dist < 5 && Rand() < 45 &&
-                (IsTank() ? (mytar->GetHealth() > me->GetMaxHealth()) : (Rand() < 25 && mytar->GetHealth() > me->GetMaxHealth() * 2)) &&
-                (!HasRole(BOT_ROLE_DPS) || !CanBlock() || !GetSpell(DEVASTATE_1)) &&
-                (IsTank() || master->GetBotMgr()->HasBotWithSpec(BOT_SPEC_WARRIOR_PROTECTION, false)) && rage >= rcost(SUNDER_ARMOR_1))
+            //SUNDER ARMOR 
+            if (IsSpellReady(SUNDER_ARMOR_1, diff) && can_do_normal && dist < 5 && rage >= rcost(SUNDER_ARMOR_1))
             {
-                AuraEffect const* sunder = mytar->GetAuraEffect(SUNDER_ARMOR_DEBUFF, 0);
-                if ((!sunder || sunder->GetBase()->GetStackAmount() < 5 || sunder->GetBase()->GetDuration() < 20000) &&
-                    doCast(mytar, GetSpell(SUNDER_ARMOR_1)))
-                    return;
+                bool shouldCastSunder = false;
+
+                if (IsTank() && !GetSpell(DEVASTATE_1) && mytar->GetHealth() > me->GetMaxHealth() && Rand() < 55)
+                {
+                    shouldCastSunder = true;
+                }
+                else if ((!IsTank() && (isFury || isArms)) && Rand() < 30)
+                {
+                    shouldCastSunder = true;
+                }
+
+                if (shouldCastSunder)
+                {
+                    AuraEffect const* sunder = mytar->GetAuraEffect(SUNDER_ARMOR_DEBUFF, 0);
+                    if ((!sunder || sunder->GetBase()->GetStackAmount() < 5 || sunder->GetBase()->GetDuration() < 20000) &&
+                        doCast(mytar, GetSpell(SUNDER_ARMOR_1)))
+                    {
+                        return;
+                    }
+                }
             }
             //SWEEPING STRIKES //no GCD
             if (IsSpellReady(SWEEPING_STRIKES_1, diff, false) && HasRole(BOT_ROLE_DPS) && !IsTank() && Rand() < 65 &&
@@ -845,6 +949,16 @@ public:
             {
                 if (doCast(mytar, GetSpell(REND_1)))
                     return;
+            }
+            // Dinkle COLOSSUS SMASH
+            if (IsSpellReady(COLOSSUS_SMASH_1, diff) && HasRole(BOT_ROLE_DPS) && !IsTank() &&
+                dist < 5)
+            {
+                if (doCast(mytar, GetSpell(COLOSSUS_SMASH_1)))
+                {
+                    SetSpellCooldown(COLOSSUS_SMASH_1, 34000);  // Set cooldown to 34 seconds
+                    return;
+                }
             }
             //BLOODTHIRST
             if (IsSpellReady(BLOODTHIRST_1, diff) && can_do_normal && HasRole(BOT_ROLE_DPS) &&
@@ -897,9 +1011,8 @@ public:
             }
             //EXECUTE
             if (IsSpellReady(EXECUTE_1, diff) && can_do_normal && HasRole(BOT_ROLE_DPS) && !IsTank() && Rand() < 110 &&
-                (isFury || !me->GetMap()->IsRaid()) &&
                 (mytar->HasAuraState(AURA_STATE_HEALTHLESS_20_PERCENT) ||
-                me->GetAuraEffect(SPELL_AURA_ABILITY_IGNORE_AURASTATE, SPELLFAMILY_WARRIOR, 0x0, 0x2000000, 0x0)) &&
+                    me->GetAuraEffect(SPELL_AURA_ABILITY_IGNORE_AURASTATE, SPELLFAMILY_WARRIOR, 0x0, 0x2000000, 0x0)) &&
                 dist < 5 && rage >= rcost(EXECUTE_1) &&
                 (_inStance(5) || (stancetimer <= diff && stanceChange(diff, 5))))
             {
@@ -1878,7 +1991,7 @@ public:
             OnSpellHit(caster, spell);
         }
 
-        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType, SpellSchoolMask damageSchoolMask) override
+        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType) override
         {
             //Unbridled Wrath
             if ((GetSpec() == BOT_SPEC_WARRIOR_FURY || GetSpec() == BOT_SPEC_WARRIOR_ARMS) &&
@@ -1888,7 +2001,7 @@ public:
                 if (roll_chance_f(me->GetPPMProcChance(me->GetFloatValue(UNIT_FIELD_BASEATTACKTIME), 15.f, nullptr)))
                     me->CastSpell(me, UNBRIDLED_WRATH_EFFECT, true);
             }
-            bot_ai::DamageDealt(victim, damage, damageType, damageSchoolMask);
+            bot_ai::DamageDealt(victim, damage, damageType);
         }
 
         void DamageTaken(Unit* u, uint32& /*damage*/, DamageEffectType /*damageType*/, SpellSchoolMask /*schoolMask*/) override
@@ -2008,6 +2121,7 @@ public:
             InitSpellMap(DEMORALIZING_SHOUT_1);
 
   /*Talent*/lvl >= 30 && isArms ? InitSpellMap(SWEEPING_STRIKES_1) : RemoveSpell(SWEEPING_STRIKES_1);
+  /*Talent*/lvl >= 30 && isArms ? InitSpellMap(COLOSSUS_SMASH_1) : RemoveSpell(COLOSSUS_SMASH_1);
   /*Talent*/lvl >= 40 && isArms ? InitSpellMap(MORTAL_STRIKE_1) : RemoveSpell(MORTAL_STRIKE_1);
   /*Talent*/lvl >= 60 && isArms ? InitSpellMap(BLADESTORM_1) : RemoveSpell(BLADESTORM_1);
 
@@ -2071,6 +2185,10 @@ public:
             RefreshAura(WARBRINGER, isProt && level >= 50 ? 1 : 0);
             RefreshAura(CRITICAL_BLOCK, isProt && level >= 50 ? 1 : 0);
             RefreshAura(DAMAGE_SHIELD, isProt && level >= 55 ? 1 : 0);
+            RefreshAura(12287, isProt && level >= 11 && level < 12 ? 1 : 0);  // Improved Thunder Clap Rank 1
+            RefreshAura(12665, isProt && level >= 12 && level < 13 ? 1 : 0);  // Improved Thunder Clap Rank 2
+            RefreshAura(12666, isProt && level >= 13 ? 1 : 0);                // Improved Thunder Clap Rank 3
+            RefreshAura(855057, isProt && level >= 45 ? 1 : 0);               // Unbreakable Will
 
             RefreshAura(GLYPH_HEROIC_STRIKE, level >= 15 ? 1 : 0);
             RefreshAura(GLYPH_REVENGE, level >= 15 ? 1 : 0);
@@ -2158,6 +2276,8 @@ public:
         }
 
     private:
+        //Dinkle
+        bool needHealingFlag;
         bool _inStance(uint8 stance) const
         {
             switch (stance)

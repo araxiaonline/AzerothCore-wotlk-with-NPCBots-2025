@@ -1,19 +1,28 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
+
+/* ScriptData
+TCName: Boss_Arlokk
+TC%Complete: 95
+TCComment: Wrong cleave and red aura is missing not yet added.
+TCComment: Prowlers moving through wall hopefully mmaps will fix.
+TCComment: Can't test LOS until mmaps.
+TCCategory: Zul'Gurub
+EndScriptData */
 
 #include "CreatureScript.h"
 #include "GameObjectScript.h"
@@ -89,6 +98,7 @@ public:
 
         void Reset() override
         {
+            DoCastSelf(875167, true);
             if (events.IsInPhase(PHASE_TWO))
                 me->HandleStatModifier(UNIT_MOD_DAMAGE_MAINHAND, TOTAL_PCT, 35.0f, false); // hack
             _Reset();
@@ -105,6 +115,16 @@ public:
         {
             _JustDied();
             Talk(SAY_DEATH);
+            DoCastSelf(875167, true);
+            Map::PlayerList const& players = me->GetMap()->GetPlayers();
+            for (auto const& playerPair : players)
+            {
+                Player* player = playerPair.GetSource();
+                if (player)
+                {
+                    DistributeChallengeRewards(player, me, 1, false);
+                }
+            }
         }
 
         void JustEngagedWith(Unit* /*who*/) override
@@ -330,7 +350,7 @@ public:
 
             if (Unit* arlokk = ObjectAccessor::GetUnit(*me, _instance->GetGuidData(NPC_ARLOKK)))
                 me->GetMotionMaster()->MovePoint(0, arlokk->GetPositionX(), arlokk->GetPositionY(), arlokk->GetPositionZ());
-            _events.ScheduleEvent(EVENT_ATTACK, 6s);
+            _events.ScheduleEvent(EVENT_ATTACK, 6000);
         }
 
         void JustEngagedWith(Unit* /*who*/) override
@@ -355,7 +375,7 @@ public:
                 if (arlokk->IsAlive())
                     arlokk->GetAI()->SetData(_sideData, 0);
             }
-            me->DespawnOrUnsummon(4s);
+            me->DespawnOrUnsummon(4000);
         }
 
         void UpdateAI(uint32 diff) override

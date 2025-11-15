@@ -90,7 +90,8 @@ enum DruidBaseSpells
     BARKSKIN_1                          = 22812,
     NATURES_GRASP_1                     = 16689,
     INNERVATE_1                         = 29166,
-    NATURES_SWIFTNESS_1                 = 17116
+    NATURES_SWIFTNESS_1                 = 17116,
+    SPELL_ID_THORIUM_GRENADE            = 19769
 };
 enum DruidPassives
 {
@@ -186,6 +187,8 @@ enum DruidSpecial
     FORCE_OF_NATURE_1                   = 33831 //not casted
 };
 
+const uint32 THORIUM_GRENADE_SPELL_ID = 19769;
+
 static const uint32 Druid_spells_damage_arr[] =
 { FAERIE_FIRE_FERAL_1, CLAW_1, FEROCIOUS_BITE_1, MAIM_1, MANGLE_CAT_1, POUNCE_1, RAKE_1, RAVAGE_1, RIP_1, SHRED_1,
 SWIPE_CAT_1, LACERATE_1, MANGLE_BEAR_1, MAUL_1,SWIPE_BEAR_1, ENTANGLING_ROOTS_1, HURRICANE_1, INSECT_SWARM_1,
@@ -209,6 +212,28 @@ static const std::vector<uint32> Druid_spells_heal(FROM_ARRAY(Druid_spells_heal_
 static const std::vector<uint32> Druid_spells_support(FROM_ARRAY(Druid_spells_support_arr));
 
 static float rageLossMult;
+
+const char* druidhealingMessages[] = {
+    "|cFFFFFFFFWhoa, taking hits here! Little help, healers?|r",
+    "|cFFFFFFFFFeeling a bit under the weather... aka dying. Heals, please?|r",
+    "|cFFFFFFFFHealth bar's looking red, and I don't mean the color of my armor!|r",
+    "|cFFFFFFFFThis is me, asking for heals... preferably before I meet the floor.|r",
+    "|cFFFFFFFFHey healers, how about we keep the dying to a minimum?|r",
+    "|cFFFFFFFFOof, could really use a heal before I start seeing the light!|r",
+    "|cFFFFFFFFHello? Yes, this is me requesting some of those sweet, sweet heals.|r",
+    "|cFFFFFFFFNot to alarm anyone, but my health bar is more empty than my mana...|r",
+};
+
+const char* druidmanaMessages[] = {
+    "|cFFFFFFFFMana's running lower than my patience levels right now...|r",
+    "|cFFFFFFFFAnyone got some mana? I'm running on fumes here!|r",
+    "|cFFFFFFFFIn dire need of a blue bar refill, stat!|r",
+    "|cFFFFFFFFMana's so low, even my spells are yawning.|r",
+    "|cFFFFFFFFIf mana was gold, I'd be flat broke. Help, please?|r",
+    "|cFFFFFFFFCould use a mana top-up before I'm just waving my hands around.|r",
+    "|cFFFFFFFFIs there a mana store around here? Asking for a friend... me.|r",
+    "|cFFFFFFFFMana check: not great, not terrible, but definitely closer to terrible.|r",
+};
 
 class druid_bot : public CreatureScript
 {
@@ -550,6 +575,54 @@ public:
             }
             else if (me->GetPowerType() == POWER_ENERGY)
                 getenergy();
+
+            // Dinkle
+        if (!IsWanderer())
+        {
+            if (me->IsInCombat()) {
+                // Health check
+                float healthPercentage = (float)me->GetHealth() / (float)me->GetMaxHealth();
+                if (healthPercentage <= 0.15f && !needHealingFlag) {
+                    int randomIndex = urand(0, sizeof(druidhealingMessages) / sizeof(druidhealingMessages[0]) - 1);
+                    me->Say(druidhealingMessages[randomIndex], LANG_UNIVERSAL, me->ToUnit());
+                    needHealingFlag = true;
+                }
+                else if (healthPercentage >= 0.50f && needHealingFlag) {
+                    needHealingFlag = false;
+                }
+
+                // Mana check
+                float manaPercentage = (float)me->GetPower(POWER_MANA) / (float)me->GetMaxPower(POWER_MANA);
+                if (manaPercentage <= 0.25f && !needManaFlag) {
+                    int randomIndex = urand(0, sizeof(druidmanaMessages) / sizeof(druidmanaMessages[0]) - 1);
+                    me->Say(druidmanaMessages[randomIndex], LANG_UNIVERSAL, me->ToUnit());
+                    needManaFlag = true;
+                }
+                else if (manaPercentage >= 0.50f && needManaFlag) {
+                    needManaFlag = false;
+                }
+            }
+        }
+            //end Dinkle
+
+            if (IsSpellReady(THORIUM_GRENADE_SPELL_ID, diff))
+            {
+                std::list<Creature*> targets;
+                me->GetCreaturesWithEntryInRange(targets, 35.0f, 15555);
+
+                for (Creature* target : targets)
+                {
+                    if (!target->IsAlive() || me->IsFriendlyTo(target))
+                        continue;
+
+                    if (me->IsWithinDistInMap(target, 35.0f))
+                    {
+                        me->CastSpell(target, THORIUM_GRENADE_SPELL_ID, true);
+                        SetSpellCooldown(THORIUM_GRENADE_SPELL_ID, 3000);
+                        break;
+                    }
+                }
+            }
 
             if (!GlobalUpdate(diff))
                 return;
@@ -949,6 +1022,7 @@ public:
                 if (doCast(me, GetSpell(TIGERS_FURY_1)))
                     getenergy();
             }
+
             //Berserk can be used After Tiger's Fury without dispelling it
             //Berserk (Cat)
             if (IsSpellReady(BERSERK_1, diff) && Rand() < 80 && !IsSpellReady(TIGERS_FURY_1, diff, false) && (!HasRole(BOT_ROLE_HEAL) || me->HasAuraType(SPELL_AURA_MOD_FEAR)) &&
@@ -1031,11 +1105,20 @@ public:
 
             //Shred
             if (IsSpellReady(SHRED_1, diff) && ((Rand() < 70 && energy >= acost(SHRED_1)) || !!me->GetAuraEffect(SPELL_AURA_ADD_PCT_MODIFIER, SPELLFAMILY_DRUID, 0x0, 0x200000, 0x0)) &&
-                /*comboPoints < 5 && */ !mytar->HasInArc(float(M_PI), me))
+                !mytar->HasInArc(float(M_PI), me))
             {
                 if (doCast(mytar, GetSpell(SHRED_1)))
                     return;
             }
+
+            //Rake
+            if (IsSpellReady(RAKE_1, diff) && (comboPoints <= (mytar->IsControlledByPlayer() ? 4 : 5)) && Rand() < 100 && energy >= acost(RAKE_1) &&
+                !mytar->GetAuraEffect(SPELL_AURA_PERIODIC_DAMAGE, SPELLFAMILY_DRUID, 0x1000, 0x0, 0x0, me->GetGUID()))
+            {
+                if (doCast(mytar, GetSpell(RAKE_1)))
+                    return;
+            }
+
             //Mangle (Cat)
             if (IsSpellReady(MANGLE_CAT_1, diff) && comboPoints < 5 && energy >= acost(MANGLE_CAT_1) &&
                 !me->GetAuraEffect(SPELL_AURA_ADD_PCT_MODIFIER, SPELLFAMILY_DRUID, 0x0, 0x200000, 0x0) &&
@@ -1044,13 +1127,7 @@ public:
                 if (doCast(mytar, GetSpell(MANGLE_CAT_1)))
                     return;
             }
-            //Rake
-            if (IsSpellReady(RAKE_1, diff) && (comboPoints <= (mytar->IsControlledByPlayer() ? 4 : 5)) && Rand() < 100 && energy >= acost(RAKE_1) &&
-                !mytar->GetAuraEffect(SPELL_AURA_PERIODIC_DAMAGE, SPELLFAMILY_DRUID, 0x1000, 0x0, 0x0, me->GetGUID()))
-            {
-                if (doCast(mytar, GetSpell(RAKE_1)))
-                    return;
-            }
+
             //Claw
             if (IsSpellReady(CLAW_1, diff) && comboPoints < 5 && Rand() < 40 && energy >= acost(CLAW_1) && (!GetSpell(SHRED_1) || mytar->HasInArc(float(M_PI), me)))
             {
@@ -1483,8 +1560,30 @@ public:
                 if (FindAffectedTarget(ENTANGLING_ROOTS, me->GetGUID(), 60))
                     return;
                 if (Unit* target = FindRootTarget(30, ENTANGLING_ROOTS))
+                {
                     if (doCast(target, ENTANGLING_ROOTS))
+                    {
+                        if (!IsWanderer()) 
+                        {
+                            const char* rootMessages[] = {
+                                "|cFFFFFFFF%s is entangled! They're not going anywhere.|r",
+                                "|cFFFFFFFFRooted %s in place! Take advantage.|r",
+                                "|cFFFFFFFF%s's movements are hindered by roots!|r",
+                                "|cFFFFFFFFEntangling Roots cast on %s!|r",
+                                "|cFFFFFFFF%s is caught in roots, immobilized!|r",
+                            };
+
+                            int randomIndex = urand(0, sizeof(rootMessages) / sizeof(char*) - 1);
+                            const char* selectedMessage = rootMessages[randomIndex];
+
+                            char messageBuffer[256];
+                            snprintf(messageBuffer, sizeof(messageBuffer), selectedMessage, target->GetName().c_str());
+
+                            me->Say(messageBuffer, LANG_UNIVERSAL, me->ToUnit());
+                        }
                         return;
+                    }
+                }
             }
         }
 
@@ -2476,9 +2575,9 @@ public:
             OnSpellHit(caster, spell);
         }
 
-        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType, SpellSchoolMask damageSchoolMask) override
+        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType) override
         {
-            bot_ai::DamageDealt(victim, damage, damageType, damageSchoolMask);
+            bot_ai::DamageDealt(victim, damage, damageType);
         }
 
         void DamageTaken(Unit* u, uint32& /*damage*/, DamageEffectType /*damageType*/, SpellSchoolMask /*schoolMask*/) override
@@ -2913,6 +3012,9 @@ public:
         }
 
     private:
+        //Dinkle
+        bool needHealingFlag;
+        bool needManaFlag;
         bool _isValidInnervateTarget(Unit const* unit) const
         {
             if (!unit || unit->GetPowerType() != POWER_MANA || !unit->IsInCombat() || !unit->IsInMap(me) || me->GetExactDist(unit) > 30.f ||

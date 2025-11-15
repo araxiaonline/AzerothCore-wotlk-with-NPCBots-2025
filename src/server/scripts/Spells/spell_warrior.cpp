@@ -1,32 +1,35 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "CreatureScript.h"
-#include "Player.h"
-#include "SpellAuraEffects.h"
-#include "SpellInfo.h"
-#include "SpellMgr.h"
-#include "SpellScript.h"
-#include "SpellScriptLoader.h"
 /*
  * Scripts for spells with SPELLFAMILY_WARRIOR and SPELLFAMILY_GENERIC spells used by warrior players.
  * Ordered alphabetically using scriptname.
  * Scriptnames of files in this file should be prefixed with "spell_warr_".
  */
+
+#include "CreatureScript.h"
+#include "Player.h"
+#include "ScriptMgr.h"
+#include "SpellAuraEffects.h"
+#include "SpellInfo.h"
+#include "SpellMgr.h"
+#include "SpellScript.h"
+#include "SpellScriptLoader.h"
+#include "Spell.h"
 
 enum WarriorSpells
 {
@@ -60,8 +63,7 @@ enum WarriorSpells
     SPELL_WARRIOR_VIGILANCE_PROC                    = 50725,
     SPELL_WARRIOR_VIGILANCE_REDIRECT_THREAT         = 59665,
     SPELL_WARRIOR_WHIRLWIND_MAIN                    = 50622,
-    SPELL_WARRIOR_WHIRLWIND_OFF                     = 44949,
-    SPELL_WARRIOR_EXECUTE_R1                        = 5308,
+    SPELL_WARRIOR_WHIRLWIND_OFF                     = 44949
 };
 
 enum WarriorSpellIcons
@@ -76,6 +78,151 @@ enum MiscSpells
     SPELL_PRIEST_RENEWED_HOPE                       = 63944,
     SPELL_GEN_DAMAGE_REDUCTION_AURA                 = 68066,
 };
+
+
+class spell_war_whirlwind : public SpellScript
+{
+    PrepareSpellScript(spell_war_whirlwind);
+
+    void HandleAfterCast()
+    {
+        if (Player* caster = GetCaster()->ToPlayer())
+        {
+            // Skip the script if the unit is an NPC bot
+            if (caster->IsNPCBot())
+            {
+                return;
+            }
+
+            // Check if the player has the aura with ID 98239
+            if (caster->HasAura(98239))
+            {
+                // Custom attribute to identify script-triggered casts
+                if (!caster->HasAura(98241)) 
+                {
+                    // 33% chance to recast the spell
+                    if (urand(0, 2) == 0)
+                    {
+                        // Apply the custom attribute
+                        caster->AddAura(98241, caster);
+
+                        caster->CastSpell(caster, 1680, true);
+
+                        // Remove the custom attribute
+                        caster->RemoveAurasDueToSpell(98241);
+                    }
+                }
+            }
+        }
+    }
+
+    void Register() override
+    {
+        AfterCast += SpellCastFn(spell_war_whirlwind::HandleAfterCast);
+    }
+};
+
+void AddSC_spell_war_whirlwind()
+{
+    RegisterSpellScript(spell_war_whirlwind);
+}
+
+
+class spell_war_commanding_shout : public SpellScript
+{
+    PrepareSpellScript(spell_war_commanding_shout);
+
+    static constexpr uint32 GLYPH_OF_COMMAND = 68164;
+    static constexpr uint32 HEAL_TEN_HEAL = 1200019;
+
+    void HandleAfterCast()
+    {
+        if (Player* caster = GetCaster()->ToPlayer())
+        {
+            if (caster->HasAura(GLYPH_OF_COMMAND))
+            {
+                caster->CastSpell(caster, HEAL_TEN_HEAL, true);
+            }
+        }
+    }
+
+    void Register() override
+    {
+        AfterCast += SpellCastFn(spell_war_commanding_shout::HandleAfterCast);
+    }
+};
+
+void AddSC_spell_war_commanding_shout()
+{
+    RegisterSpellScript(spell_war_commanding_shout);
+}
+
+class spell_war_battle_shout : public SpellScript
+{
+    PrepareSpellScript(spell_war_battle_shout);
+
+    static constexpr uint32 GLYPH_OF_BATTLE = 58095;
+    static constexpr uint32 RECKLESSNESS = 1719;   
+    static constexpr uint32 RAGE_TEN_GEN = 23690;
+
+    void HandleOnCast()
+    {
+        Unit* caster = GetCaster();
+        if (!caster)
+            return;
+
+        if (caster->HasAura(GLYPH_OF_BATTLE))
+        {
+            caster->CastSpell(caster, RAGE_TEN_GEN, true);
+
+            // Check for Recklessness aura and cast Rage Ten Gen again if present
+            if (caster->HasAura(RECKLESSNESS))
+            {
+                caster->CastSpell(caster, RAGE_TEN_GEN, true);
+            }
+        }
+    }
+
+    void Register() override
+    {
+        OnCast += SpellCastFn(spell_war_battle_shout::HandleOnCast);
+    }
+};
+
+void AddSC_spell_war_battle_shout()
+{
+    RegisterSpellScript(spell_war_battle_shout);
+}
+
+class spell_warrior_vanguard_legendary : public SpellScript
+{
+    PrepareSpellScript(spell_warrior_vanguard_legendary);
+
+    static constexpr uint32 REQUIRED_AURA_ID = 100249;
+    static constexpr uint32 ADDITIONAL_SPELL_ID = 100250;
+
+    void HandleOnCast()
+    {
+        Unit* caster = GetCaster();
+        if (!caster || caster->IsNPCBot()) // Exclude NPC bots
+            return;
+
+        if (caster->HasAura(REQUIRED_AURA_ID))
+        {
+            caster->CastSpell(caster, ADDITIONAL_SPELL_ID, true);
+        }
+    }
+
+    void Register() override
+    {
+        OnCast += SpellCastFn(spell_warrior_vanguard_legendary::HandleOnCast);
+    }
+};
+
+void AddSC_spell_warrior_vanguard_legendary()
+{
+    RegisterSpellScript(spell_warrior_vanguard_legendary);
+}
 
 class spell_warr_mocking_blow : public SpellScript
 {
@@ -103,15 +250,23 @@ class spell_warr_victory_rush : public SpellScript
 {
     PrepareSpellScript(spell_warr_victory_rush);
 
-    void HandleCast()
+    void VictoryRushHit()
     {
-        if (Unit* caster = GetCaster())
-            caster->RemoveAurasDueToSpell(SPELL_VICTORIOUS);
+        if (Unit* player = GetCaster())
+        {
+            if (Unit* victim = GetHitUnit())
+            {
+                if (victim->isDead())
+                {
+                    player->CastSpell(player, SPELL_VICTORIOUS, true);
+                }
+            }
+        }
     }
 
     void Register() override
     {
-        OnCast += SpellCastFn(spell_warr_victory_rush::HandleCast);
+        AfterHit += SpellHitFn(spell_warr_victory_rush::VictoryRushHit);
     }
 };
 
@@ -260,7 +415,7 @@ class spell_warr_deep_wounds : public SpellScript
             // include target dependant auras
             damage = target->MeleeDamageBonusTaken(caster, damage, BASE_ATTACK, GetSpellInfo());
             // apply percent damage mods
-            ApplyPct(damage, 16.0f * GetSpellInfo()->GetRank() / 6.0f);
+            ApplyPct(damage, 15.0f * GetSpellInfo()->GetRank() / 6.0f);
             target->CastDelayedSpellWithPeriodicAmount(caster, SPELL_WARRIOR_DEEP_WOUNDS_RANK_PERIODIC, SPELL_AURA_PERIODIC_DAMAGE, damage, EFFECT_0);
 
             //caster->CastCustomSpell(target, SPELL_WARRIOR_DEEP_WOUNDS_RANK_PERIODIC, &damage, nullptr, nullptr, true);
@@ -372,6 +527,9 @@ class spell_warr_execute : public SpellScript
 {
     PrepareSpellScript(spell_warr_execute);
 
+    static constexpr uint32 REQUIRED_AURA_ID = 100249;
+    static constexpr uint32 ADDITIONAL_SPELL_ID = 100248;
+
     bool Validate(SpellInfo const* /*spellInfo*/) override
     {
         return ValidateSpellInfo({ SPELL_WARRIOR_EXECUTE, SPELL_WARRIOR_GLYPH_OF_EXECUTION });
@@ -414,8 +572,14 @@ class spell_warr_execute : public SpellScript
 
             int32 bp = GetEffectValue() + int32(rageUsed * spellInfo->Effects[effIndex].DamageMultiplier + caster->GetTotalAttackPowerValue(BASE_ATTACK) * 0.2f);
             caster->CastCustomSpell(target, SPELL_WARRIOR_EXECUTE, &bp, nullptr, nullptr, true, nullptr, nullptr, GetOriginalCaster()->GetGUID());
+            //  logic from spell_warrior_juggernaut_legendary
+            if (caster && !caster->IsNPCBot() && caster->HasAura(REQUIRED_AURA_ID))
+            {
+                caster->CastSpell(caster, ADDITIONAL_SPELL_ID, true);
+            }
         }
     }
+
 
     void Register() override
     {
@@ -535,12 +699,9 @@ class spell_warr_intimidating_shout : public SpellScript
 {
     PrepareSpellScript(spell_warr_intimidating_shout);
 
-    void FilterTargets(std::list<WorldObject*>& targets)
+    void FilterTargets(std::list<WorldObject*>& unitList)
     {
-        targets.remove(GetExplTargetWorldObject());
-        uint32 maxTargets = GetSpellInfo()->MaxAffectedTargets;
-        if (targets.size() > maxTargets)
-            targets.resize(maxTargets);
+        unitList.remove(GetExplTargetWorldObject());
     }
 
     void Register() override
@@ -630,54 +791,60 @@ class spell_warr_sweeping_strikes : public AuraScript
     bool CheckProc(ProcEventInfo& eventInfo)
     {
         Unit* actor = eventInfo.GetActor();
-        if (!actor)
+        if (!actor || !IsSpellValid(eventInfo.GetSpellInfo(), actor))
         {
             return false;
-        }
-
-        if (SpellInfo const* spellInfo = eventInfo.GetSpellInfo())
-        {
-            switch (spellInfo->Id)
-            {
-                case SPELL_WARRIOR_SWEEPING_STRIKES_EXTRA_ATTACK_1:
-                case SPELL_WARRIOR_SWEEPING_STRIKES_EXTRA_ATTACK_2:
-                case SPELL_WARRIOR_WHIRLWIND_OFF:
-                    return false;
-                case SPELL_WARRIOR_WHIRLWIND_MAIN:
-                    if (actor->HasSpellCooldown(SPELL_WARRIOR_SWEEPING_STRIKES_EXTRA_ATTACK_1))
-                    {
-                        return false;
-                    }
-                    break;
-                default:
-                    break;
-            }
         }
 
         _procTarget = actor->SelectNearbyNoTotemTarget(eventInfo.GetProcTarget());
         return _procTarget != nullptr;
     }
 
+    bool IsSpellValid(SpellInfo const* spellInfo, Unit* actor)
+    {
+        if (!spellInfo)
+            return true;
+
+        switch (spellInfo->Id)
+        {
+        case SPELL_WARRIOR_SWEEPING_STRIKES_EXTRA_ATTACK_1:
+        case SPELL_WARRIOR_SWEEPING_STRIKES_EXTRA_ATTACK_2:
+        case SPELL_WARRIOR_WHIRLWIND_OFF:
+            return false;
+        case SPELL_WARRIOR_WHIRLWIND_MAIN:
+            return !actor->HasSpellCooldown(SPELL_WARRIOR_SWEEPING_STRIKES_EXTRA_ATTACK_1);
+        default:
+            return true;
+        }
+    }
+
     void HandleProc(AuraEffect const* aurEff, ProcEventInfo& eventInfo)
     {
         PreventDefaultAction();
+        Unit* actor = eventInfo.GetActor();
+        Unit* target = GetTarget();
+
+        if (!actor || !target || !_procTarget)
+            return;
+
         if (DamageInfo* damageInfo = eventInfo.GetDamageInfo())
         {
             SpellInfo const* spellInfo = damageInfo->GetSpellInfo();
+            int32 damage = damageInfo->GetUnmitigatedDamage();
+
             if (spellInfo && spellInfo->Id == SPELL_WARRIOR_EXECUTE && !_procTarget->HasAuraState(AURA_STATE_HEALTHLESS_20_PERCENT))
             {
                 // If triggered by Execute (while target is not under 20% hp) deals normalized weapon damage
-                GetTarget()->CastSpell(_procTarget, SPELL_WARRIOR_SWEEPING_STRIKES_EXTRA_ATTACK_2, aurEff);
+                target->CastSpell(_procTarget, SPELL_WARRIOR_SWEEPING_STRIKES_EXTRA_ATTACK_2, aurEff);
             }
             else
             {
                 if (spellInfo && spellInfo->Id == SPELL_WARRIOR_WHIRLWIND_MAIN)
                 {
-                    eventInfo.GetActor()->AddSpellCooldown(SPELL_WARRIOR_SWEEPING_STRIKES_EXTRA_ATTACK_1, 0, 500);
+                    actor->AddSpellCooldown(SPELL_WARRIOR_SWEEPING_STRIKES_EXTRA_ATTACK_1, 0, 500);
                 }
 
-                int32 damage = damageInfo->GetUnmitigatedDamage();
-                GetTarget()->CastCustomSpell(_procTarget, SPELL_WARRIOR_SWEEPING_STRIKES_EXTRA_ATTACK_1, &damage, 0, 0, true, nullptr, aurEff);
+                target->CastCustomSpell(_procTarget, SPELL_WARRIOR_SWEEPING_STRIKES_EXTRA_ATTACK_1, &damage, 0, 0, true, nullptr, aurEff);
             }
         }
     }
@@ -773,7 +940,7 @@ class spell_warr_vigilance : public AuraScript
     }
 
 private:
-    Unit* _procTarget;
+    Unit* _procTarget = nullptr; // Initialize _procTarget to nullptr here
 };
 
 // 50725 - Vigilance
@@ -892,94 +1059,6 @@ class spell_warr_retaliation : public AuraScript
     }
 };
 
-// 29707 - Heroic Strike (Rank 10)
-// 30324 - Heroic Strike (Rank 11)
-// 47449 - Heroic Strike (Rank 12)
-// 47450 - Heroic Strike (Rank 13)
-enum DazeSpells
-{
-    ICON_GENERIC_DAZE                   = 15,
-    SPELL_GENERIC_AFTERMATH             = 18118,
-};
-
-class spell_warr_heroic_strike : public SpellScript
-{
-    PrepareSpellScript(spell_warr_heroic_strike);
-
-    void HandleOnHit()
-    {
-        Unit* target = GetHitUnit();
-        if (!target)
-            return;
-        Unit::AuraEffectList const& AuraEffectList = target->GetAuraEffectsByType(SPELL_AURA_MOD_DECREASE_SPEED);
-        bool bonusDamage = false;
-        for (AuraEffect* eff : AuraEffectList)
-        {
-            const SpellInfo* spellInfo = eff->GetSpellInfo();
-            if (!spellInfo)
-                continue;
-
-            // Warrior Spells: Piercing Howl or Dazed (29703)
-            if (spellInfo->SpellFamilyName == SPELLFAMILY_WARRIOR && (spellInfo->SpellFamilyFlags[1] & (0x20 | 0x200000)))
-            {
-                bonusDamage = true;
-                break;
-            }
-
-            // Generic Daze: icon 15 with mechanic daze or snare
-            if ((spellInfo->SpellIconID == ICON_GENERIC_DAZE)
-                && ((spellInfo->Mechanic == MECHANIC_DAZE || spellInfo->HasEffectMechanic(MECHANIC_DAZE))
-                    || (spellInfo->Mechanic == MECHANIC_SNARE || spellInfo->HasEffectMechanic(MECHANIC_SNARE))
-                    )
-            )
-            {
-                bonusDamage = true;
-                break;
-            }
-
-            if ((spellInfo->Id == SPELL_GENERIC_AFTERMATH)
-                || (spellInfo->SpellFamilyName == SPELLFAMILY_MAGE && (spellInfo->SpellFamilyFlags[1] & 0x40)) // Blast Wave
-                || (spellInfo->SpellFamilyName == SPELLFAMILY_PALADIN && (spellInfo->SpellFamilyFlags[2] & 0x4000)) // Avenger's Shield
-            )
-            {
-                bonusDamage = true;
-                break;
-            }
-        }
-        if (bonusDamage)
-        {
-            int32 damage = GetHitDamage();
-            AddPct(damage, 35); // "Causes ${0.35*$m1} additional damage against Dazed targets."
-            SetHitDamage(damage);
-        }
-    }
-
-    void Register() override
-    {
-        OnHit += SpellHitFn(spell_warr_heroic_strike::HandleOnHit);
-    }
-};
-
-class spell_war_sudden_death_aura : public AuraScript
-{   PrepareAuraScript(spell_war_sudden_death_aura);
-
-    bool AfterCheckProc(ProcEventInfo& eventInfo, bool isTriggeredAtSpellProcEvent)
-    {
-        // Check PROC_SPELL_PHASE_FINISH only for Execute
-        if (eventInfo.GetSpellPhaseMask() != PROC_SPELL_PHASE_FINISH)
-            return isTriggeredAtSpellProcEvent;
-        if (Spell const* procSpell = eventInfo.GetProcSpell())
-            if (procSpell->GetSpellInfo()->GetFirstRankSpell()->Id == SPELL_WARRIOR_EXECUTE_R1)
-                return isTriggeredAtSpellProcEvent;
-        return false;
-    }
-
-    void Register() override
-    {
-        DoAfterCheckProc += AuraAfterCheckProcFn(spell_war_sudden_death_aura::AfterCheckProc);
-    }
-};
-
 void AddSC_warrior_spell_scripts()
 {
     RegisterSpellScript(spell_warr_mocking_blow);
@@ -1006,6 +1085,8 @@ void AddSC_warrior_spell_scripts()
     RegisterSpellScript(spell_warr_vigilance);
     RegisterSpellScript(spell_warr_vigilance_trigger);
     RegisterSpellScript(spell_warr_t3_prot_8p_bonus);
-    RegisterSpellScript(spell_warr_heroic_strike);
-    RegisterSpellScript(spell_war_sudden_death_aura);
+    RegisterSpellScript(spell_warrior_vanguard_legendary);
+    RegisterSpellScript(spell_war_battle_shout);
+    RegisterSpellScript(spell_war_commanding_shout);
+    RegisterSpellScript(spell_war_whirlwind);
 }

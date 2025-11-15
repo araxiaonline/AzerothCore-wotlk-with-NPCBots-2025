@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -154,7 +154,7 @@ struct boss_ossirian : public BossAI
         }
     }
 
-    void SetGUID(ObjectGuid const& guid, int32 action) override
+    void SetGUID(ObjectGuid guid, int32 action) override
     {
         if (action == ACTION_TRIGGER_WEAKNESS && guid != _firstCrystalGUID)
         {
@@ -188,7 +188,7 @@ struct boss_ossirian : public BossAI
         {
             if (Creature* vortex = me->SummonCreature(NPC_SAND_VORTEX, pos))
             {
-                vortex->GetMotionMaster()->MoveWaypoint(pathIds.front(), true);
+                vortex->GetMotionMaster()->MovePath(pathIds.front(), true);
                 pathIds.reverse();
             }
         }
@@ -203,6 +203,20 @@ struct boss_ossirian : public BossAI
             if (GameObject* crystal = GetClosestGameObjectWithEntry(summon, GO_OSSIRIAN_CRYSTAL, 5.0f))
             {
                 crystal->Delete();
+            }
+        }
+    }
+
+    void JustDied(Unit* /*killer*/) override
+    {
+        DoCastSelf(875167, true);
+        Map::PlayerList const& players = me->GetMap()->GetPlayers();
+        for (auto const& playerPair : players)
+        {
+            Player* player = playerPair.GetSource();
+            if (player)
+            {
+                DistributeChallengeRewards(player, me, 10, false);
             }
         }
     }
@@ -317,7 +331,7 @@ public:
     {
         go_ossirian_crystalAI(GameObject* go) : GameObjectAI(go), _instance(go->GetInstanceScript()) { }
 
-        void SetGUID(ObjectGuid const& guid, int32 type) override
+        void SetGUID(ObjectGuid guid, int32 type) override
         {
             if (type == GUID_TRIGGER_PAIR)
             {

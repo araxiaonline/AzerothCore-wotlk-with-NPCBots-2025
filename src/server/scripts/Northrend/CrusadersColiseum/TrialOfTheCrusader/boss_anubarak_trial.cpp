@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -19,7 +19,6 @@
 #include "PassiveAI.h"
 #include "Player.h"
 #include "ScriptedCreature.h"
-#include "SharedDefines.h"
 #include "SpellAuraEffects.h"
 #include "SpellScript.h"
 #include "SpellScriptLoader.h"
@@ -162,7 +161,7 @@ public:
             events.Reset();
             bIntro = false;
             bPhase3 = false;
-            me->ApplySpellImmune(0, IMMUNITY_ID, sSpellMgr->GetSpellIdForDifficulty(SPELL_PERMAFROST, me), true);
+            me->ApplySpellImmune(0, IMMUNITY_ID, RAID_MODE(66193, 67855, 67856, 67857), true);
             me->m_SightDistance = 90.0f; // for MoveInLineOfSight distance
         }
 
@@ -502,8 +501,8 @@ public:
 
         void JustDied(Unit*  /*killer*/) override
         {
-            me->CastSpell(me, SPELL_TRAITOR_KING, true);
-            me->m_Events.AddEventAtOffset(new HideNpcEvent(*me), 5s);
+            me->CastSpell(me, RAID_MODE(SPELL_TRAITOR_KING_10, SPELL_TRAITOR_KING_25, SPELL_TRAITOR_KING_10, SPELL_TRAITOR_KING_25), true);
+            me->m_Events.AddEvent(new HideNpcEvent(*me), me->m_Events.CalculateTime(5000));
         }
 
         bool CanAIAttack(Unit const* target) const override
@@ -575,7 +574,7 @@ public:
             if (spell->Id == SPELL_SPIKE_FAIL)
             {
                 me->RemoveAllAuras();
-                me->DespawnOrUnsummon(1500ms);
+                me->DespawnOrUnsummon(1500);
             }
         }
 
@@ -656,7 +655,7 @@ public:
                 me->NearTeleportTo(target->GetPositionX() + cos(o) * 5.0f, target->GetPositionY() + std::sin(o) * 5.0f, target->GetPositionZ() + 0.6f, target->GetOrientation());
                 AttackStart(target);
                 me->GetMotionMaster()->MoveChase(target);
-                events.DelayEvents(3s);
+                events.DelayEvents(3000);
             }
         }
 
@@ -680,7 +679,7 @@ public:
                     events.Repeat(30s, 45s);
                     break;
                 case EVENT_SUBMERGE:
-                    if (HealthBelowPct(80) && !me->HasAura(sSpellMgr->GetSpellIdForDifficulty(SPELL_PERMAFROST, me))) // not having permafrost - allow submerge
+                    if (HealthBelowPct(80) && !me->HasAura(RAID_MODE(66193, 67855, 67856, 67857))) // not having permafrost - allow submerge
                     {
                         me->GetMotionMaster()->MoveIdle();
                         me->SetUnitFlag(UNIT_FLAG_NOT_SELECTABLE);
@@ -711,7 +710,7 @@ public:
 
         void JustDied(Unit*  /*killer*/) override
         {
-            me->m_Events.AddEventAtOffset(new HideNpcEvent(*me), 5s);
+            me->m_Events.AddEvent(new HideNpcEvent(*me), me->m_Events.CalculateTime(5000));
         }
 
         bool CanAIAttack(Unit const* target) const override

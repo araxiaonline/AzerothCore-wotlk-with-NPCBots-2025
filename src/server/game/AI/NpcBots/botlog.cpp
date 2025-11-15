@@ -44,21 +44,25 @@ inline static void BotLogImpl(uint16 log_type, Creature const* bot, int32 owner,
     BotLogImpl(log_type, bot->GetEntry(), owner, (int32)bot->GetMapId(), (int8)!!bot->FindMap(), (int8)bot->IsInWorld(), std::forward<Args>(params)...);
 }
 
-void BotLogger::Log(uint16 log_type, Creature const* bot, NPCBots::LoggableArguments auto&&... params)
+template<typename... Args>
+requires NPCBots::LoggableArguments<Args...>
+void BotLogger::Log(uint16 log_type, Creature const* bot, Args&&... params)
 {
     if (!BotMgr::IsNpcBotLogEnabled())
         return;
 
-    BotLogImpl(log_type, bot, int32(bot->GetBotAI() ? bot->GetBotAI()->GetBotOwnerGuid() : -1), std::forward<decltype(params)>(params)...);
+    BotLogImpl(log_type, bot, int32(bot->GetBotAI() ? bot->GetBotAI()->GetBotOwnerGuid() : -1), std::forward<Args>(params)...);
 }
 
-void BotLogger::Log(uint16 log_type, uint32 entry,  NPCBots::LoggableArguments auto&&... params)
+template<typename... Args>
+requires NPCBots::LoggableArguments<Args...>
+void BotLogger::Log(uint16 log_type, uint32 entry, Args&&... params)
 {
     if (!BotMgr::IsNpcBotLogEnabled())
         return;
 
     if (Creature const* bot = entry ? BotDataMgr::FindBot(entry) : nullptr)
-        BotLogger::Log(log_type, bot, std::forward<decltype(params)>(params)...);
+        BotLogger::Log(log_type, bot, std::forward<Args>(params)...);
     else
     {
         if (entry)
@@ -68,7 +72,7 @@ void BotLogger::Log(uint16 log_type, uint32 entry,  NPCBots::LoggableArguments a
             (void)compounder { 0, ((void)(ss << ' ' << params), 0) ... };
             BOT_LOG_DEBUG("npcbots", "Logging unregistered bot entry {}: type {} params:{}", entry, log_type, ss.str());
         }
-        BotLogImpl(log_type, entry, -1, -1, -1, -1, std::forward<decltype(params)>(params)...);
+        BotLogImpl(log_type, entry, -1, -1, -1, -1, std::forward<Args>(params)...);
     }
 }
 

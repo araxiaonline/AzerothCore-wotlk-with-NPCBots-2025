@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -44,7 +44,6 @@
 #include "SpellMgr.h"
 #include "World.h"
 #include "WorldPacket.h"
-#include "WorldSessionMgr.h"
 
 bool AchievementCriteriaData::IsValid(AchievementCriteriaEntry const* criteria)
 {
@@ -581,7 +580,7 @@ void AchievementMgr::SaveToDB(CharacterDatabaseTransaction trans)
 
             iter->second.changed = false;
 
-            sScriptMgr->OnPlayerAchievementSave(trans, GetPlayer(), iter->first, iter->second);
+            sScriptMgr->OnAchievementSave(trans, GetPlayer(), iter->first, iter->second);
         }
     }
 
@@ -610,7 +609,7 @@ void AchievementMgr::SaveToDB(CharacterDatabaseTransaction trans)
 
             iter->second.changed = false;
 
-            sScriptMgr->OnPlayerCriteriaSave(trans, GetPlayer(), iter->first, iter->second);
+            sScriptMgr->OnCriteriaSave(trans, GetPlayer(), iter->first, iter->second);
         }
     }
 }
@@ -729,7 +728,7 @@ void AchievementMgr::SendAchievementEarned(AchievementEntry const* achievement) 
             data << GetPlayer()->GetGUID();
             data << uint32(achievement->ID);
             data << uint32(0);                                  // display name as plain string in chat (always 0 for guild)
-            sWorldSessionMgr->SendGlobalMessage(&data);
+            sWorld->SendGlobalMessage(&data);
         }
         else
         {
@@ -742,19 +741,25 @@ void AchievementMgr::SendAchievementEarned(AchievementEntry const* achievement) 
             data << uint32(achievement->ID);
             std::size_t linkTypePos = data.wpos();
             data << uint32(1);                                  // display name as clickable link in chat
-            sWorldSessionMgr->SendGlobalMessage(&data, nullptr, teamId);
+            sWorld->SendGlobalMessage(&data, nullptr, teamId);
 
             data.put<uint32>(linkTypePos, 0);                   // display name as plain string in chat
-            sWorldSessionMgr->SendGlobalMessage(&data, nullptr, teamId == TEAM_ALLIANCE ? TEAM_HORDE : TEAM_ALLIANCE);
+            sWorld->SendGlobalMessage(&data, nullptr, teamId == TEAM_ALLIANCE ? TEAM_HORDE : TEAM_ALLIANCE);
         }
     }
     // if player is in world he can tell his friends about new achievement
     else if (GetPlayer()->IsInWorld())
     {
+        CellCoord p = Acore::ComputeCellCoord(GetPlayer()->GetPositionX(), GetPlayer()->GetPositionY());
+
+        Cell cell(p);
+        cell.SetNoCreate();
+
         Acore::BroadcastTextBuilder _builder(GetPlayer(), CHAT_MSG_ACHIEVEMENT, BROADCAST_TEXT_ACHIEVEMENT_EARNED, GetPlayer()->getGender(), GetPlayer(), achievement->ID);
         Acore::LocalizedPacketDo<Acore::BroadcastTextBuilder> _localizer(_builder);
         Acore::PlayerDistWorker<Acore::LocalizedPacketDo<Acore::BroadcastTextBuilder>> _worker(GetPlayer(), sWorld->getFloatConfig(CONFIG_LISTEN_RANGE_SAY), _localizer);
-        Cell::VisitObjects(GetPlayer(), _worker, sWorld->getFloatConfig(CONFIG_LISTEN_RANGE_SAY));
+        TypeContainerVisitor<Acore::PlayerDistWorker<Acore::LocalizedPacketDo<Acore::BroadcastTextBuilder> >, WorldTypeMapContainer > message(_worker);
+        Cell::VisitWorldObjects(GetPlayer(), _worker, sWorld->getFloatConfig(CONFIG_LISTEN_RANGE_SAY));
     }
 
     WorldPacket data(SMSG_ACHIEVEMENT_EARNED, 8 + 4 + 8);
@@ -1826,15 +1831,6 @@ bool AchievementMgr::IsCompletedCriteria(AchievementCriteriaEntry const* achieve
         // someone on this realm has already completed that achievement
         if (sAchievementMgr->IsRealmCompleted(achievement))
             return false;
-
-        // A character may only have 1 race-specific 'Realm First!' achievement
-        // prevent clever use of the race/faction change service to obtain multiple 'Realm First!' achievements
-        constexpr std::array<uint32, 9> raceSpecificRealmFirstAchievements { 1405, 1406, 1407, 1408, 1409, 1410, 1411, 1412, 1413 };
-        bool isRaceSpecific = std::ranges::find(raceSpecificRealmFirstAchievements, achievement->ID) != std::ranges::end(raceSpecificRealmFirstAchievements);
-        if (isRaceSpecific)
-            for (uint32 raceAchievementId : raceSpecificRealmFirstAchievements)
-                if (raceAchievementId != achievement->ID && HasAchieved(raceAchievementId))
-                    return false;
     }
 
     // pussywizard: progress will be deleted after getting the achievement (optimization)
@@ -2107,7 +2103,7 @@ void AchievementMgr::SetCriteriaProgress(AchievementCriteriaEntry const* entry, 
     if (entry->timeLimit && timedIter == _timedAchievements.end())
         return;
 
-    if (!sScriptMgr->OnPlayerBeforeCriteriaProgress(GetPlayer(), entry))
+    if (!sScriptMgr->OnBeforeCriteriaProgress(GetPlayer(), entry))
     {
         return;
     }
@@ -2173,7 +2169,7 @@ void AchievementMgr::SetCriteriaProgress(AchievementCriteriaEntry const* entry, 
 
     SendCriteriaUpdate(entry, progress, timeElapsed, true);
 
-    sScriptMgr->OnPlayerCriteriaProgress(GetPlayer(), entry);
+    sScriptMgr->OnCriteriaProgress(GetPlayer(), entry);
 }
 
 void AchievementMgr::RemoveCriteriaProgress(const AchievementCriteriaEntry* entry)
@@ -2281,7 +2277,7 @@ void AchievementMgr::CompletedAchievement(AchievementEntry const* achievement)
         return;
     }
 
-    if (!sScriptMgr->OnPlayerBeforeAchievementComplete(GetPlayer(), achievement))
+    if (!sScriptMgr->OnBeforeAchievementComplete(GetPlayer(), achievement))
     {
         return;
     }
@@ -2296,7 +2292,7 @@ void AchievementMgr::CompletedAchievement(AchievementEntry const* achievement)
     ca.date = GameTime::GetGameTime().count();
     ca.changed = true;
 
-    sScriptMgr->OnPlayerAchievementComplete(GetPlayer(), achievement);
+    sScriptMgr->OnAchievementComplete(GetPlayer(), achievement);
 
     // pussywizard: set all progress counters to 0, so progress will be deleted from db during save
     {
@@ -2387,7 +2383,7 @@ void AchievementMgr::SendAllAchievementData() const
 {
     WorldPacket data(SMSG_ALL_ACHIEVEMENT_DATA, _completedAchievements.size() * 8 + 4 + _criteriaProgress.size() * 38 + 4);
     BuildAllDataPacket(&data);
-    GetPlayer()->SendDirectMessage(&data);
+    GetPlayer()->GetSession()->SendPacket(&data);
 }
 
 void AchievementMgr::SendRespondInspectAchievements(Player* player) const
@@ -2395,7 +2391,7 @@ void AchievementMgr::SendRespondInspectAchievements(Player* player) const
     WorldPacket data(SMSG_RESPOND_INSPECT_ACHIEVEMENTS, 9 + _completedAchievements.size() * 8 + 4 + _criteriaProgress.size() * 38 + 4);
     data << GetPlayer()->GetPackGUID();
     BuildAllDataPacket(&data);
-    player->SendDirectMessage(&data);
+    player->GetSession()->SendPacket(&data);
 }
 
 /**
@@ -2442,7 +2438,7 @@ bool AchievementMgr::HasAchieved(uint32 achievementId) const
 
 bool AchievementMgr::CanUpdateCriteria(AchievementCriteriaEntry const* criteria, AchievementEntry const* achievement)
 {
-    if (sDisableMgr->IsDisabledFor(DISABLE_TYPE_ACHIEVEMENT_CRITERIA, criteria->ID, nullptr))
+    if (DisableMgr::IsDisabledFor(DISABLE_TYPE_ACHIEVEMENT_CRITERIA, criteria->ID, nullptr))
         return false;
 
     if (achievement->mapID != -1 && GetPlayer()->GetMapId() != uint32(achievement->mapID))
@@ -2921,7 +2917,7 @@ void AchievementGlobalMgr::LoadAchievementCriteriaData()
                 continue;
         }
 
-        if (!GetCriteriaDataSet(criteria) && !sDisableMgr->IsDisabledFor(DISABLE_TYPE_ACHIEVEMENT_CRITERIA, entryId, nullptr))
+        if (!GetCriteriaDataSet(criteria) && !DisableMgr::IsDisabledFor(DISABLE_TYPE_ACHIEVEMENT_CRITERIA, entryId, nullptr))
             LOG_ERROR("sql.sql", "Table `achievement_criteria_data` does not have expected data for criteria (Entry: {} Type: {}) for achievement {}.", criteria->ID, criteria->requiredType, criteria->referredAchievement);
     }
 

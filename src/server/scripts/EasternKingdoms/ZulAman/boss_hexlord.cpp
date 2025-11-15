@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -135,8 +135,7 @@ enum Misc
     MAX_ADD_COUNT               = 4,
     ADDITIONAL_CLASS_SPRIEST    = 11,
     AURA_SHADOW_FORM            = 15473,
-    GROUP_CLASS_ABILITY         = 1,
-    GROUP_DRAIN_POWER           = 2
+    GROUP_CLASS_ABILITY         = 1
 };
 
 enum AbilityTarget
@@ -160,73 +159,71 @@ static PlayerAbilityStruct PlayerAbility[13][3] =
 {
     // 0 UNK class (should never be set)
     {
-        // Warrior as fallback behavior if for some reason UNK class
-        { SPELL_WR_SPELL_REFLECT, ABILITY_TARGET_SELF,   10s },
-        { SPELL_WR_WHIRLWIND,     ABILITY_TARGET_SELF,   10s },
-        { SPELL_WR_MORTAL_STRIKE, ABILITY_TARGET_VICTIM, 6s  }
+        { 0, ABILITY_TARGET_SELF, 0ms},
+        { 0, ABILITY_TARGET_SELF, 0ms},
+        { 0, ABILITY_TARGET_SELF, 0ms}
     },
     // 1 warrior
-    {   { SPELL_WR_SPELL_REFLECT, ABILITY_TARGET_SELF,   10s },
-        { SPELL_WR_WHIRLWIND,     ABILITY_TARGET_SELF,   10s },
-        { SPELL_WR_MORTAL_STRIKE, ABILITY_TARGET_VICTIM, 6s  }
+    {   { SPELL_WR_SPELL_REFLECT, ABILITY_TARGET_SELF,   10000ms },
+        { SPELL_WR_WHIRLWIND,     ABILITY_TARGET_SELF,   10000ms },
+        { SPELL_WR_MORTAL_STRIKE, ABILITY_TARGET_VICTIM, 6000ms  }
     },
     // 2 paladin
-    {   { SPELL_PA_CONSECRATION,   ABILITY_TARGET_SELF, 10s },
-        { SPELL_PA_HOLY_LIGHT,     ABILITY_TARGET_HEAL, 10s },
-        { SPELL_PA_AVENGING_WRATH, ABILITY_TARGET_SELF, 10s }
+    {   { SPELL_PA_CONSECRATION,   ABILITY_TARGET_SELF, 10000ms },
+        { SPELL_PA_HOLY_LIGHT,     ABILITY_TARGET_HEAL, 10000ms },
+        { SPELL_PA_AVENGING_WRATH, ABILITY_TARGET_SELF, 10000ms }
     },
     // 3 hunter
-    {   { SPELL_HU_EXPLOSIVE_TRAP, ABILITY_TARGET_SELF, 10s },
-        { SPELL_HU_FREEZING_TRAP,  ABILITY_TARGET_SELF, 10s },
-        { SPELL_HU_SNAKE_TRAP,     ABILITY_TARGET_SELF, 10s }
+    {   { SPELL_HU_EXPLOSIVE_TRAP, ABILITY_TARGET_SELF, 10000ms },
+        { SPELL_HU_FREEZING_TRAP,  ABILITY_TARGET_SELF, 10000ms },
+        { SPELL_HU_SNAKE_TRAP,     ABILITY_TARGET_SELF, 10000ms }
     },
     // 4 rogue
-    {   { SPELL_RO_WOUND_POISON, ABILITY_TARGET_VICTIM, 3s  },
-        { SPELL_RO_SLICE_DICE,   ABILITY_TARGET_SELF,   10s },
-        { SPELL_RO_BLIND,        ABILITY_TARGET_ENEMY,  10s }
+    {   { SPELL_RO_WOUND_POISON, ABILITY_TARGET_VICTIM, 3000ms  },
+        { SPELL_RO_SLICE_DICE,   ABILITY_TARGET_SELF,   10000ms },
+        { SPELL_RO_BLIND,        ABILITY_TARGET_ENEMY,  10000ms }
     },
     // 5 priest
-    {   { SPELL_PR_PAIN_SUPP,      ABILITY_TARGET_HEAL, 10s },
-        { SPELL_PR_HEAL,           ABILITY_TARGET_HEAL, 10s },
-        { SPELL_PR_PSYCHIC_SCREAM, ABILITY_TARGET_SELF, 10s }
+    {   { SPELL_PR_PAIN_SUPP,      ABILITY_TARGET_HEAL, 10000ms },
+        { SPELL_PR_HEAL,           ABILITY_TARGET_HEAL, 10000ms },
+        { SPELL_PR_PSYCHIC_SCREAM, ABILITY_TARGET_SELF, 10000ms }
     },
     // 6 death knight
     {
-        { SPELL_DK_PLAGUE_STRIKE,   ABILITY_TARGET_ENEMY, 2s },
-        { SPELL_DK_DEATH_AND_DECAY, ABILITY_TARGET_SELF, 10s },
-        { SPELL_DK_BLOOD_WORMS,     ABILITY_TARGET_ENEMY, 5s }
+        { SPELL_DK_PLAGUE_STRIKE,   ABILITY_TARGET_ENEMY, 2000ms },
+        { SPELL_DK_DEATH_AND_DECAY, ABILITY_TARGET_SELF, 10000ms },
+        { SPELL_DK_BLOOD_WORMS,     ABILITY_TARGET_ENEMY, 5000ms }
     },
     // 7 shaman
-    {   { SPELL_SH_FIRE_NOVA,    ABILITY_TARGET_SELF, 10s },
-        { SPELL_SH_HEALING_WAVE, ABILITY_TARGET_HEAL, 10s },
-        { SPELL_SH_CHAIN_LIGHT,  ABILITY_TARGET_ENEMY, 8s }
+    {   { SPELL_SH_FIRE_NOVA,    ABILITY_TARGET_SELF, 10000ms },
+        { SPELL_SH_HEALING_WAVE, ABILITY_TARGET_HEAL, 10000ms },
+        { SPELL_SH_CHAIN_LIGHT,  ABILITY_TARGET_ENEMY, 8000ms }
     },
     // 8 mage
-    {   { SPELL_MG_FIREBALL,  ABILITY_TARGET_ENEMY, 5s   },
-        { SPELL_MG_FROSTBOLT, ABILITY_TARGET_ENEMY, 5s   },
-        { SPELL_MG_ICE_LANCE, ABILITY_TARGET_SPECIAL, 2s }
+    {   { SPELL_MG_FIREBALL,  ABILITY_TARGET_ENEMY, 5000ms   },
+        { SPELL_MG_FROSTBOLT, ABILITY_TARGET_ENEMY, 5000ms   },
+        { SPELL_MG_ICE_LANCE, ABILITY_TARGET_SPECIAL, 2000ms }
     },
     // 9 warlock
-    {   { SPELL_WL_CURSE_OF_DOOM, ABILITY_TARGET_ENEMY, 10s },
-        { SPELL_WL_RAIN_OF_FIRE,  ABILITY_TARGET_ENEMY, 10s },
-        { SPELL_WL_UNSTABLE_AFFL, ABILITY_TARGET_ENEMY, 10s }
+    {   { SPELL_WL_CURSE_OF_DOOM, ABILITY_TARGET_ENEMY, 10000ms },
+        { SPELL_WL_RAIN_OF_FIRE,  ABILITY_TARGET_ENEMY, 10000ms },
+        { SPELL_WL_UNSTABLE_AFFL, ABILITY_TARGET_ENEMY, 10000ms }
     },
     // 10 UNK class (should never be set)
     {
-        // Warrior as fallback behavior if for some reason UNK class
-        { SPELL_WR_SPELL_REFLECT, ABILITY_TARGET_SELF,   10s },
-        { SPELL_WR_WHIRLWIND,     ABILITY_TARGET_SELF,   10s },
-        { SPELL_WR_MORTAL_STRIKE, ABILITY_TARGET_VICTIM, 6s  }
+        { 0, ABILITY_TARGET_SELF, 0ms},
+        { 0, ABILITY_TARGET_SELF, 0ms},
+        { 0, ABILITY_TARGET_SELF, 0ms}
     },
     // 11 druid
-    {   { SPELL_DR_LIFEBLOOM, ABILITY_TARGET_HEAL, 10s },
-        { SPELL_DR_THORNS,    ABILITY_TARGET_SELF, 10s },
-        { SPELL_DR_MOONFIRE,  ABILITY_TARGET_ENEMY, 8s }
+    {   { SPELL_DR_LIFEBLOOM, ABILITY_TARGET_HEAL, 10000ms },
+        { SPELL_DR_THORNS,    ABILITY_TARGET_SELF, 10000ms },
+        { SPELL_DR_MOONFIRE,  ABILITY_TARGET_ENEMY, 8000ms }
     },
     // MISC shadow priest
-    {   { SPELL_PR_MIND_CONTROL, ABILITY_TARGET_ENEMY, 15s },
-        { SPELL_PR_MIND_BLAST,   ABILITY_TARGET_ENEMY, 5s  },
-        { SPELL_PR_SW_DEATH,     ABILITY_TARGET_ENEMY, 10s }
+    {   { SPELL_PR_MIND_CONTROL, ABILITY_TARGET_ENEMY, 15000ms },
+        { SPELL_PR_MIND_BLAST,   ABILITY_TARGET_ENEMY, 5000ms  },
+        { SPELL_PR_SW_DEATH,     ABILITY_TARGET_ENEMY, 10000ms }
     }
 };
 
@@ -244,16 +241,13 @@ struct boss_hexlord_malacrass : public BossAI
     {
         BossAI::Reset();
         _currentClass = CLASS_NONE;
-        _classAbilityTimer = 10s;
-        _timeUntilNextDrainPower = 0ms;
+        _classAbilityTimer = 10000ms;
         SpawnAdds();
         ScheduleHealthCheckEvent(80, [&] {
-            scheduler.Schedule(1s, GROUP_DRAIN_POWER, [this](TaskContext context)
-            {
+            ScheduleTimedEvent(1s, [&] {
                 DoCastSelf(SPELL_DRAIN_POWER, true);
                 Talk(SAY_DRAIN_POWER);
-                context.Repeat(30s);
-            });
+            }, 30s);
         });
     }
 
@@ -288,14 +282,6 @@ struct boss_hexlord_malacrass : public BossAI
         ScheduleTimedEvent(30s, [&]{
             scheduler.CancelGroup(GROUP_CLASS_ABILITY);
             DoCastSelf(SPELL_SPIRIT_BOLTS);
-            // Delay Drain Power if it's currently within 10s of being cast
-            // TODO: see what is wrong with GetNextGroupOccurrence as the timers don't seem correct on resets
-            _timeUntilNextDrainPower = scheduler.GetNextGroupOccurrence(GROUP_DRAIN_POWER);
-            if (_timeUntilNextDrainPower > 0s && _timeUntilNextDrainPower < 10s)
-            {
-                std::chrono::milliseconds delayTime = 10s - _timeUntilNextDrainPower + 1s;
-                scheduler.DelayGroup(GROUP_DRAIN_POWER, delayTime);
-            }
             scheduler.Schedule(10s, [this](TaskContext)
             {
                 if (Creature* siphonTrigger = me->SummonCreature(NPC_TEMP_TRIGGER, me->GetPosition(), TEMPSUMMON_TIMED_DESPAWN, 30000))
@@ -368,7 +354,6 @@ struct boss_hexlord_malacrass : public BossAI
 private:
     uint8 _currentClass;
     std::chrono::milliseconds _classAbilityTimer;
-    std::chrono::milliseconds _timeUntilNextDrainPower;
     std::vector<uint8> _creatureIndex;
 };
 

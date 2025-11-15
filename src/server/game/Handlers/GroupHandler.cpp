@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -22,7 +22,6 @@
 #include "LFGMgr.h"
 #include "Language.h"
 #include "Log.h"
-#include "MapMgr.h"
 #include "MiscPackets.h"
 #include "ObjectMgr.h"
 #include "Opcodes.h"
@@ -92,7 +91,7 @@ void WorldSession::HandleGroupInviteOpcode(WorldPacket& recvData)
         return;
     }
 
-    if (!sScriptMgr->OnPlayerCanGroupInvite(invitingPlayer, membername))
+    if (!sScriptMgr->CanGroupInvite(invitingPlayer, membername))
         return;
 
     if (invitingPlayer->IsSpectator() || invitedPlayer->IsSpectator())
@@ -155,7 +154,7 @@ void WorldSession::HandleGroupInviteOpcode(WorldPacket& recvData)
             data << uint32(0);                                      // unk
             data << uint8(0);                                       // count
             data << uint32(0);                                      // unk
-            invitedPlayer->SendDirectMessage(&data);
+            invitedPlayer->GetSession()->SendPacket(&data);
         }
 
         return;
@@ -215,7 +214,7 @@ void WorldSession::HandleGroupInviteOpcode(WorldPacket& recvData)
     data << uint32(0);                                      // unk
     data << uint8(0);                                       // count
     data << uint32(0);                                      // unk
-    invitedPlayer->SendDirectMessage(&data);
+    invitedPlayer->GetSession()->SendPacket(&data);
 
     SendPartyResult(PARTY_OP_INVITE, membername, ERR_PARTY_RESULT_OK);
 }
@@ -237,7 +236,7 @@ void WorldSession::HandleGroupAcceptOpcode(WorldPacket& recvData)
         return;
     }
 
-    if (!sScriptMgr->OnPlayerCanGroupAccept(GetPlayer(), group))
+    if (!sScriptMgr->CanGroupAccept(GetPlayer(), group))
         return;
 
     if (group->GetLeaderGUID() == GetPlayer()->GetGUID())
@@ -298,7 +297,7 @@ void WorldSession::HandleGroupDeclineOpcode(WorldPacket& /*recvData*/)
     // report
     WorldPacket data(SMSG_GROUP_DECLINE, GetPlayer()->GetName().length());
     data << GetPlayer()->GetName();
-    leader->SendDirectMessage(&data);
+    leader->GetSession()->SendPacket(&data);
 }
 
 void WorldSession::HandleGroupUninviteGuidOpcode(WorldPacket& recvData)
@@ -529,17 +528,24 @@ void WorldSession::HandleLootRoll(WorldPacket& recvData)
     }
 }
 
-void WorldSession::HandleMinimapPingOpcode(WorldPackets::Misc::MinimapPingClient& packet)
+void WorldSession::HandleMinimapPingOpcode(WorldPacket& recvData)
 {
-    if (!sMapMgr->IsValidMapCoord(GetPlayer()->GetMap()->GetId(), packet.MapX, packet.MapY))
+    if (!GetPlayer()->GetGroup())
         return;
 
-    Group* group = GetPlayer()->GetGroup();
+    float x, y;
+    recvData >> x;
+    recvData >> y;
 
-    if (!group)
-        return;
+    /** error handling **/
+    /********************/
 
-    group->DoMinimapPing(GetPlayer()->GetGUID(), packet.MapX, packet.MapY);
+    // everything's fine, do it
+    WorldPacket data(MSG_MINIMAP_PING, (8 + 4 + 4));
+    data << GetPlayer()->GetGUID();
+    data << float(x);
+    data << float(y);
+    GetPlayer()->GetGroup()->BroadcastPacket(&data, true, -1, GetPlayer()->GetGUID());
 }
 
 void WorldSession::HandleRandomRollOpcode(WorldPackets::Misc::RandomRollClient& packet)
@@ -549,8 +555,10 @@ void WorldSession::HandleRandomRollOpcode(WorldPackets::Misc::RandomRollClient& 
     maximum = packet.Max;
 
     /** error handling **/
-    if (minimum > maximum || maximum > sWorld->getIntConfig(CONFIG_RANDOM_ROLL_MAXIMUM))
+    if (minimum > maximum || maximum > 10000) // < 32768 for urand call
+    {
         return;
+    }
 
     GetPlayer()->DoRandomRoll(minimum, maximum);
 }

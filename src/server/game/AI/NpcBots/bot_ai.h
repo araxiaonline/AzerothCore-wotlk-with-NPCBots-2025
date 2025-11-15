@@ -64,7 +64,7 @@ class bot_ai : public CreatureAI
         void AttackStart(Unit* u) override;
         void JustEngagedWith(Unit* u) override;
         void MoveInLineOfSight(Unit* u) override;
-        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType, SpellSchoolMask /*damageSchoolMask*/) override;
+        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType) override;
         //void DamageTaken(Unit* /*attacker*/, uint32& /*damage*/, DamageEffectType /*damageType*/, SpellInfo const* /*spellInfo*/) override { }
         void ReceiveEmote(Player* player, uint32 emote) override;
         void EnterEvadeMode(EvadeReason/* why*/ = EVADE_REASON_OTHER) override { }
@@ -166,6 +166,7 @@ class bot_ai : public CreatureAI
         void ApplyBotEffectMods(SpellInfo const* spellInfo, uint8 effIndex, float& value) const;
         void ApplyBotThreatMods(SpellInfo const* spellInfo, float& threat) const;
         void ApplyBotEffectValueMultiplierMods(SpellInfo const* spellInfo, SpellEffIndex effIndex, float& multiplier) const;
+        void ApplyBotRandomEquip();
         virtual uint8 GetBotStance() const;
         uint32 GetBotRoles() const { return _roleMask; }
         bool HasRole(uint32 role) const { return _roleMask & role; }
@@ -193,7 +194,7 @@ class bot_ai : public CreatureAI
         void OnBotEnterBattleground();
 
         Group* GetGroup() { return _group.getTarget(); }
-        Group const* GetGroup() const { return _group.getTarget(); }
+        Group const* GetGroup() const { return const_cast<Group const*>(_group.getTarget()); }
         void SetGroup(Group* group, int8 subgroup);
         uint8 GetSubGroup() const { return _group.getSubGroup(); }
         void SetSubGroup(uint8 subgroup) { _group.setSubGroup(subgroup); }
@@ -623,7 +624,7 @@ class bot_ai : public CreatureAI
         void ApplyRacials();
         void InitRoles();
         void InitSpec();
-        void InitEquips();
+        void InitEquips(bool randEquip);
         void InitOwner();
         void InitFaction();
         void InitRace();
@@ -652,7 +653,6 @@ class bot_ai : public CreatureAI
         bool _canCombineWeapons(ItemTemplate const* mh, ItemTemplate const* oh) const;
         bool _canEquip(ItemTemplate const* newProto, uint8 slot, bool ignoreItemLevel, Item const* newItem = nullptr, bool ignore_combine = false) const;
         void _removeEquipment(uint8 slot);
-        bool _isItemFitForWanderingBot(uint8 slot, ItemTemplate const* proto) const;
         [[nodiscard]] BotEquipResult _unequip(uint8 slot, ObjectGuid receiver, bool store_to_bank, bool on_equip_from_bank = false);
         [[nodiscard]] BotEquipResult _equip(uint8 slot, Item* newItem, ObjectGuid receiver, bool store_to_bank, bool from_bank = false);
         [[nodiscard]] BotEquipResult _resetEquipment(uint8 slot, ObjectGuid receiver, bool store_to_bank);
@@ -712,6 +712,10 @@ class bot_ai : public CreatureAI
 
         //timers
         uint32 _reviveTimer, _powersTimer, _chaseTimer, _engageTimer, _potionTimer;
+        
+        // Ornfelt: stucktimer
+        uint32 _stuckTimer;
+        uint32 stuckWpId;
         uint32 lastdiff, checkAurasTimer, checkMasterTimer, roleTimer, ordersTimer, regenTimer, _updateTimerLong, _updateTimerMedium, _updateTimerEx1, _updateTimerEx2;
         uint32 _checkOwershipTimer;
         uint32 _moveBehindTimer;

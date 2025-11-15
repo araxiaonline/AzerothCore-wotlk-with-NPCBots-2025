@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -16,59 +16,59 @@
  */
 
 #include "CreatureScript.h"
-#include "GridNotifiers.h"
 #include "Player.h"
 #include "ScriptedCreature.h"
 #include "SpellAuraEffects.h"
+#include "SpellAuras.h"
 #include "SpellScript.h"
 #include "SpellScriptLoader.h"
 #include "hyjal.h"
 
 enum Texts
 {
-    SAY_AGGRO       = 1,
-    SAY_DOOMFIRE    = 2,
-    SAY_AIR_BURST   = 3,
-    SAY_SLAY        = 4,
-    SAY_ENRAGE      = 5,
-    SAY_DEATH       = 6,
+    SAY_AGGRO = 1,
+    SAY_DOOMFIRE = 2,
+    SAY_AIR_BURST = 3,
+    SAY_SLAY = 4,
+    SAY_ENRAGE = 5,
+    SAY_DEATH = 6,
     SAY_SOUL_CHARGE = 7,
 };
 
 enum ArchiSpells
 {
-    SPELL_DENOUEMENT_WISP       = 32124,
-    SPELL_ANCIENT_SPARK         = 39349,
-    SPELL_PROTECTION_OF_ELUNE   = 38528,
+    SPELL_DENOUEMENT_WISP = 32124,
+    SPELL_ANCIENT_SPARK = 39349,
+    SPELL_PROTECTION_OF_ELUNE = 38528,
 
-    SPELL_DRAIN_WORLD_TREE      = 39140,
-    SPELL_DRAIN_WORLD_TREE_2    = 39141,
+    SPELL_DRAIN_WORLD_TREE = 39140,
+    SPELL_DRAIN_WORLD_TREE_2 = 39141,
 
-    SPELL_FINGER_OF_DEATH       = 31984,
-    SPELL_RED_SKY_EFFECT        = 32111,
-    SPELL_HAND_OF_DEATH         = 35354,
-    SPELL_AIR_BURST             = 32014,
-    SPELL_GRIP_OF_THE_LEGION    = 31972,
-    SPELL_DOOMFIRE_STRIKE       = 31903,    //summons two creatures
-    SPELL_DOOMFIRE_SPAWN        = 32074,
-    SPELL_DOOMFIRE              = 31945,
-    SPELL_DOOMFIRE_DOT          = 31969,
-    SPELL_SOUL_CHARGE_YELLOW    = 32045,
-    SPELL_SOUL_CHARGE_GREEN     = 32051,
-    SPELL_SOUL_CHARGE_RED       = 32052,
-    SPELL_UNLEASH_SOUL_YELLOW   = 32054,
-    SPELL_UNLEASH_SOUL_GREEN    = 32057,
-    SPELL_UNLEASH_SOUL_RED      = 32053,
-    SPELL_FEAR                  = 31970,
+    SPELL_FINGER_OF_DEATH = 31984,
+    SPELL_RED_SKY_EFFECT = 32111,
+    SPELL_HAND_OF_DEATH = 35354,
+    SPELL_AIR_BURST = 32014,
+    SPELL_GRIP_OF_THE_LEGION = 31972,
+    SPELL_DOOMFIRE_STRIKE = 31903,    //summons two creatures
+    SPELL_DOOMFIRE_SPAWN = 32074,
+    SPELL_DOOMFIRE = 31945,
+    SPELL_DOOMFIRE_DOT = 31969,
+    SPELL_SOUL_CHARGE_YELLOW = 32045,
+    SPELL_SOUL_CHARGE_GREEN = 32051,
+    SPELL_SOUL_CHARGE_RED = 32052,
+    SPELL_UNLEASH_SOUL_YELLOW = 32054,
+    SPELL_UNLEASH_SOUL_GREEN = 32057,
+    SPELL_UNLEASH_SOUL_RED = 32053,
+    SPELL_FEAR = 31970,
 };
 
 enum Summons
 {
-    CREATURE_DOOMFIRE           = 18095,
-    CREATURE_DOOMFIRE_SPIRIT    = 18104,
-    CREATURE_ANCIENT_WISP       = 17946,
-    CREATURE_CHANNEL_TARGET     = 22418,
-    DISPLAY_ID_TRIGGER          = 11686
+    CREATURE_DOOMFIRE = 18095,
+    CREATURE_DOOMFIRE_SPIRIT = 18104,
+    CREATURE_ANCIENT_WISP = 17946,
+    CREATURE_CHANNEL_TARGET = 22418,
+    DISPLAY_ID_TRIGGER = 11686
 };
 
 enum Events
@@ -78,7 +78,7 @@ enum Events
 
 enum SpellGroups
 {
-    GROUP_FEAR  = 0
+    GROUP_FEAR = 0
 };
 
 uint32 const availableChargeAurasAndSpells[3][2] = {
@@ -104,19 +104,19 @@ struct npc_ancient_wisp : public ScriptedAI
     {
         me->SetUnitFlag(UNIT_FLAG_NON_ATTACKABLE);
         ScheduleTimedEvent(1s, [&]
-        {
-            if (Creature* archimonde = _instance->GetCreature(DATA_ARCHIMONDE))
             {
-                if (archimonde->HealthBelowPct(2) || !archimonde->IsAlive())
+                if (Creature* archimonde = _instance->GetCreature(DATA_ARCHIMONDE))
                 {
-                    DoCastSelf(SPELL_DENOUEMENT_WISP);
+                    if (archimonde->HealthBelowPct(2) || !archimonde->IsAlive())
+                    {
+                        DoCastSelf(SPELL_DENOUEMENT_WISP);
+                    }
+                    else
+                    {
+                        DoCast(archimonde, SPELL_ANCIENT_SPARK);
+                    }
                 }
-                else
-                {
-                    DoCast(archimonde, SPELL_ANCIENT_SPARK);
-                }
-            }
-        }, 1s);
+            }, 1s);
     }
 
     void JustEngagedWith(Unit* /*who*/) override { }
@@ -143,7 +143,7 @@ private:
 
 struct npc_doomfire_spirit : public ScriptedAI
 {
-    npc_doomfire_spirit(Creature* creature) : ScriptedAI(creature){ }
+    npc_doomfire_spirit(Creature* creature) : ScriptedAI(creature) { }
 
     float const turnConstant = 0.785402f; // 45 degree turns, verified with sniffs
 
@@ -155,8 +155,8 @@ struct npc_doomfire_spirit : public ScriptedAI
             ScheduleTimedEvent(10ms, [&] {
                 float angle = irand(-1, 1) * turnConstant;
                 TryTeleportInDirection(8.f, angle, 2.f, false);
-            }, 1600ms);
-        },1);
+                }, 1600ms);
+            }, 1);
     }
 
     void TryTeleportInDirection(float dist, float angle, float step, bool alwaysturn)
@@ -187,9 +187,9 @@ struct boss_archimonde : public BossAI
     boss_archimonde(Creature* creature) : BossAI(creature, DATA_ARCHIMONDE)
     {
         scheduler.SetValidator([&]
-        {
-            return !me->HasUnitState(UNIT_STATE_CASTING);
-        });
+            {
+                return !me->HasUnitState(UNIT_STATE_CASTING);
+            });
     }
 
     void Reset() override
@@ -211,7 +211,7 @@ struct boss_archimonde : public BossAI
             DoAction(ACTION_BECOME_ACTIVE_AND_CHANNEL);
         }
 
-        ScheduleHealthCheckEvent(10, [&]{
+        ScheduleHealthCheckEvent(10, [&] {
             scheduler.CancelAll();
             me->SetReactState(REACT_PASSIVE);
             DoCastAOE(SPELL_PROTECTION_OF_ELUNE, true);
@@ -220,43 +220,61 @@ struct boss_archimonde : public BossAI
             me->GetMotionMaster()->Clear(false);
             me->GetMotionMaster()->MoveIdle();
             ScheduleTimedEvent(1s, [&]
-            {
-                if (_wispCount >= 30)
                 {
-                    me->KillSelf();
-                }
-                Position wispPosition = { me->GetPositionX() + float(rand() % WISP_OFFSET), me->GetPositionY() + float(rand() % WISP_OFFSET), me->GetPositionZ(), 0.0f };
-                if (Creature* wisp = me->SummonCreature(CREATURE_ANCIENT_WISP, wispPosition))
-                {
-                    wisp->AI()->DoCast(me, SPELL_ANCIENT_SPARK);
-                    ++_wispCount;
-                }
-            }, 1500ms);
+                    if (_wispCount >= 30)
+                    {
+                        if (Map* map = me->GetMap())
+                        {
+                            map->DoForAllPlayers([this](Player* player)
+                                {
+                                    player->KilledMonsterCredit(me->GetEntry());
+                                });
+                        }
+
+                        // Find the nearest player to kill the boss
+                        Player* nearestPlayer = me->SelectNearestPlayer(100.0f); // Adjust range as needed
+
+                        if (nearestPlayer)
+                        {
+                            nearestPlayer->Kill(nearestPlayer, me);
+                        }
+                        else
+                        {
+                            Unit::Kill(nullptr, me); // Fallback in case no player is found
+                        }
+                    }
+                    Position wispPosition = { me->GetPositionX() + float(rand() % WISP_OFFSET), me->GetPositionY() + float(rand() % WISP_OFFSET), me->GetPositionZ(), 0.0f };
+                    if (Creature* wisp = me->SummonCreature(CREATURE_ANCIENT_WISP, wispPosition))
+                    {
+                        wisp->AI()->DoCast(me, SPELL_ANCIENT_SPARK);
+                        ++_wispCount;
+                    }
+                }, 1500ms);
             ScheduleTimedEvent(1500ms, [&]
-            {
-                DoCastVictim(SPELL_RED_SKY_EFFECT);
-                DoCastVictim(SPELL_HAND_OF_DEATH);
-            }, 3s);
-        });
+                {
+                    DoCastVictim(SPELL_RED_SKY_EFFECT);
+                    DoCastVictim(SPELL_HAND_OF_DEATH);
+                }, 3s);
+            });
     }
 
     void DoAction(int32 action) override
     {
         switch (action)
         {
-            case ACTION_BECOME_ACTIVE_AND_CHANNEL:
-                me->SetReactState(REACT_AGGRESSIVE);
-                me->SetVisible(true);
-                if (!_isChanneling)
+        case ACTION_BECOME_ACTIVE_AND_CHANNEL:
+            me->SetReactState(REACT_AGGRESSIVE);
+            me->SetVisible(true);
+            if (!_isChanneling)
+            {
+                if (Creature* nordrassil = me->SummonCreature(CREATURE_CHANNEL_TARGET, nordrassilPosition, TEMPSUMMON_TIMED_DESPAWN, 1200000))
                 {
-                    if (Creature* nordrassil = me->SummonCreature(CREATURE_CHANNEL_TARGET, nordrassilPosition, TEMPSUMMON_TIMED_DESPAWN, 1200000))
-                    {
-                        DoCast(nordrassil, SPELL_DRAIN_WORLD_TREE);
-                        _isChanneling = true;
-                        nordrassil->AI()->DoCast(me, SPELL_DRAIN_WORLD_TREE_2, true);
-                    }
+                    DoCast(nordrassil, SPELL_DRAIN_WORLD_TREE);
+                    _isChanneling = true;
+                    nordrassil->AI()->DoCast(me, SPELL_DRAIN_WORLD_TREE_2, true);
                 }
-                break;
+            }
+            break;
         }
     }
 
@@ -266,67 +284,69 @@ struct boss_archimonde : public BossAI
         me->InterruptNonMeleeSpells(false);
         Talk(SAY_AGGRO);
         ScheduleTimedEvent(25s, 35s, [&]
-        {
-            if (DoCastRandomTarget(SPELL_AIR_BURST, 1) == SPELL_CAST_OK)
             {
                 scheduler.DelayGroup(GROUP_FEAR, 5s);
                 Talk(SAY_AIR_BURST);
-            }
-        }, 25s, 40s);
+                CastSpellOnRandomTargetNoTank(SPELL_AIR_BURST, 80.0f);
+            }, 25s, 40s);
         ScheduleTimedEvent(8s, [&]
-        {
-            DoCastDoomFire();
-        }, 8s);
+            {
+                DoCastDoomFire();
+            }, 8s);
         ScheduleTimedEvent(25s, 35s, [&]
-        {
-            DoCastRandomTarget(SPELL_GRIP_OF_THE_LEGION);
-        }, 5s, 25s);
-        ScheduleTimedEvent(5s, [&]
-        {
-            if (me->GetExactDist2d(nordrassilPosition) < 75.0f)
             {
-                if (!_enraged)
-                {
-                    _enraged = true;
-                    Talk(SAY_ENRAGE);
-                    ScheduleTimedEvent(1s, [&]
-                    {
-                        DoCastVictim(SPELL_RED_SKY_EFFECT);
-                        DoCastVictim(SPELL_HAND_OF_DEATH);
-                    }, 3s);
-                }
-            }
-        }, 5s);
+                CastSpellOnRandomTarget(SPELL_GRIP_OF_THE_LEGION, 80.0f);
+            }, 5s, 25s);
         ScheduleTimedEvent(5s, [&]
-        {
-            bool noPlayersInRange = true;
-            if (Map* map = me->GetMap())
             {
-                map->DoForAllPlayers([&noPlayersInRange, this](Player* player)
+                if (me->GetExactDist2d(nordrassilPosition) < 75.0f)
                 {
-                    if (me->IsWithinMeleeRange(player))
+                    if (!_enraged)
                     {
-                        noPlayersInRange = false;
-                        return false;
+                        _enraged = true;
+                        Talk(SAY_ENRAGE);
+                        ScheduleTimedEvent(1s, [&]
+                            {
+                                DoCastVictim(SPELL_RED_SKY_EFFECT);
+                                DoCastVictim(SPELL_HAND_OF_DEATH);
+                            }, 3s);
                     }
-                    return true;
-                });
-            }
-            if (noPlayersInRange)
+                }
+            }, 5s);
+        ScheduleTimedEvent(5000ms, [&]
             {
-                DoCastRandomTarget(SPELL_FINGER_OF_DEATH);
-            }
-        }, 3500ms);
+                bool noPlayersOrBotsInRange = true;
+                float radius = 80.0f;
+
+                std::list<Unit*> units;
+                Acore::AnyUnfriendlyUnitInObjectRangeCheck u_check(me, me, radius);
+                Acore::UnitListSearcher<Acore::AnyUnfriendlyUnitInObjectRangeCheck> searcher(me, units, u_check);
+                Cell::VisitAllObjects(me, searcher, radius);
+
+                for (Unit* unit : units)
+                {
+                    if ((unit->GetTypeId() == TYPEID_PLAYER || (unit->GetTypeId() == TYPEID_UNIT && unit->ToCreature()->IsNPCBot())) && me->IsWithinMeleeRange(unit))
+                    {
+                        noPlayersOrBotsInRange = false;
+                        break;
+                    }
+                }
+
+                if (noPlayersOrBotsInRange)
+                {
+                    CastSpellOnRandomTarget(SPELL_FINGER_OF_DEATH, radius);
+                }
+            }, 3500ms);
         ScheduleTimedEvent(10min, [&]
-        {
-            DoCastVictim(SPELL_RED_SKY_EFFECT);
-            DoCastVictim(SPELL_HAND_OF_DEATH);
-        }, 3s);
+            {
+                DoCastVictim(SPELL_RED_SKY_EFFECT);
+                DoCastVictim(SPELL_HAND_OF_DEATH);
+            }, 3s);
         scheduler.Schedule(40s, GROUP_FEAR, [this](TaskContext context)
-        {
-            DoCastAOE(SPELL_FEAR);
-            context.Repeat(42s);
-        });
+            {
+                DoCastAOE(SPELL_FEAR);
+                context.Repeat(42s);
+            });
         instance->SetData(DATA_SPAWN_WAVES, 1);
     }
 
@@ -335,7 +355,7 @@ struct boss_archimonde : public BossAI
         Talk(SAY_SLAY);
     }
 
-    void SetGUID(ObjectGuid const& guid, int32 type) override
+    void SetGUID(ObjectGuid guid, int32 type) override
     {
         if (type == GUID_GAIN_SOUL_CHARGE_PLAYER)
         {
@@ -343,31 +363,59 @@ struct boss_archimonde : public BossAI
             {
                 switch (player->getClass())
                 {
+                case CLASS_MAGE:
+                case CLASS_PRIEST:
+                case CLASS_WARLOCK:
+                    player->CastSpell(me, SPELL_SOUL_CHARGE_RED, true);
+                    break;
+                case CLASS_DEATH_KNIGHT:
+                case CLASS_PALADIN:
+                case CLASS_ROGUE:
+                case CLASS_WARRIOR:
+                    player->CastSpell(me, SPELL_SOUL_CHARGE_YELLOW, true);
+                    break;
+                case CLASS_DRUID:
+                case CLASS_HUNTER:
+                case CLASS_SHAMAN:
+                    player->CastSpell(me, SPELL_SOUL_CHARGE_GREEN, true);
+                    break;
+                case CLASS_NONE:
+                default:
+                    break;
+                }
+            }
+            else if (Creature* creature = ObjectAccessor::GetCreature(*me, guid))
+            {
+                if (creature->IsNPCBot())
+                {
+                    switch (creature->GetClass())
+                    {
                     case CLASS_MAGE:
                     case CLASS_PRIEST:
                     case CLASS_WARLOCK:
-                        player->CastSpell(me, SPELL_SOUL_CHARGE_RED, true);
+                        creature->CastSpell(me, SPELL_SOUL_CHARGE_RED, true);
                         break;
                     case CLASS_DEATH_KNIGHT:
                     case CLASS_PALADIN:
                     case CLASS_ROGUE:
                     case CLASS_WARRIOR:
-                        player->CastSpell(me, SPELL_SOUL_CHARGE_YELLOW, true);
+                        creature->CastSpell(me, SPELL_SOUL_CHARGE_YELLOW, true);
                         break;
                     case CLASS_DRUID:
                     case CLASS_HUNTER:
                     case CLASS_SHAMAN:
-                        player->CastSpell(me, SPELL_SOUL_CHARGE_GREEN, true);
+                        creature->CastSpell(me, SPELL_SOUL_CHARGE_GREEN, true);
                         break;
                     case CLASS_NONE:
                     default:
                         break;
-                }
+                    }
 
-                scheduler.Schedule(2s, 10s, [this](TaskContext)
-                {
-                    UnleashSoulCharge();
-                });
+                    scheduler.Schedule(2s, 10s, [this](TaskContext)
+                        {
+                            UnleashSoulCharge();
+                        });
+                }
             }
         }
     }
@@ -419,6 +467,42 @@ struct boss_archimonde : public BossAI
         }
     }
 
+    void CastSpellOnRandomTarget(uint32 spellId, float range)
+    {
+        std::list<Unit*> targets;
+        Acore::AnyUnitInObjectRangeCheck check(me, range);
+        Acore::UnitListSearcher<Acore::AnyUnitInObjectRangeCheck> searcher(me, targets, check);
+        Cell::VisitAllObjects(me, searcher, range);
+
+        targets.remove_if([this](Unit* unit) -> bool {
+            return !unit->IsAlive() || !(unit->GetTypeId() == TYPEID_PLAYER || (unit->GetTypeId() == TYPEID_UNIT && static_cast<Creature*>(unit)->IsNPCBot()));
+            });
+
+        if (!targets.empty())
+        {
+            Unit* target = Acore::Containers::SelectRandomContainerElement(targets);
+            DoCast(target, spellId);
+        }
+    }
+
+    void CastSpellOnRandomTargetNoTank(uint32 spellId, float range)
+    {
+        std::list<Unit*> potentialTargets;
+        Acore::AnyUnitInObjectRangeCheck unitCheck(me, range);
+        Acore::UnitListSearcher<Acore::AnyUnitInObjectRangeCheck> targetSearcher(me, potentialTargets, unitCheck);
+        Cell::VisitAllObjects(me, targetSearcher, range);
+
+        potentialTargets.remove_if([this](Unit* potentialTarget) -> bool {
+            return !potentialTarget->IsAlive() || potentialTarget == me->GetVictim() || !(potentialTarget->GetTypeId() == TYPEID_PLAYER || (potentialTarget->GetTypeId() == TYPEID_UNIT && static_cast<Creature*>(potentialTarget)->IsNPCBot()));
+            });
+
+        if (!potentialTargets.empty())
+        {
+            Unit* selectedTarget = Acore::Containers::SelectRandomContainerElement(potentialTargets);
+            DoCast(selectedTarget, spellId);
+        }
+    }
+
     void UnleashSoulCharge()
     {
         me->InterruptNonMeleeSpells(false);
@@ -457,6 +541,7 @@ private:
     std::vector<uint32> _availableAuras;
     std::vector<uint32> _availableSpells;
 };
+
 class spell_red_sky_effect : public SpellScript
 {
     PrepareSpellScript(spell_red_sky_effect);
@@ -490,7 +575,7 @@ class spell_doomfire : public AuraScript
 
         int32 bp = GetSpellInfo()->Effects[EFFECT_1].CalcValue();
         float tickCoef = (static_cast<float>(aurEff->GetTickNumber() - 1) / aurEff->GetTotalTicks()); // Tick moved back to ensure proper damage on each tick
-        int32 damage = bp - (bp*tickCoef);
+        int32 damage = bp - (bp * tickCoef);
         target->CastCustomSpell(target, SPELL_DOOMFIRE_DOT, &damage, &damage, &damage, true, nullptr, nullptr, target->GetGUID());
     }
 

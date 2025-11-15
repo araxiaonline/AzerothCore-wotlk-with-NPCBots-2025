@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -25,33 +25,33 @@
 
 enum Emotes
 {
-    EMOTE_PHASE_BANISH      = 0,
-    EMOTE_PHASE_PORTAL      = 1
+    EMOTE_PHASE_BANISH = 0,
+    EMOTE_PHASE_PORTAL = 1
 };
 
 enum Spells
 {
-    SPELL_NETHERBURN_AURA   = 30522,
-    SPELL_VOIDZONE          = 37063,
-    SPELL_NETHER_INFUSION   = 38688,
-    SPELL_NETHERBREATH      = 38523,
-    SPELL_BANISH_VISUAL     = 39833,
-    SPELL_BANISH_ROOT       = 42716,
-    SPELL_EMPOWERMENT       = 38549,
-    SPELL_NETHERSPITE_ROAR  = 38684
+    SPELL_NETHERBURN_AURA = 30522,
+    SPELL_VOIDZONE = 37063,
+    SPELL_NETHER_INFUSION = 38688,
+    SPELL_NETHERBREATH = 38523,
+    SPELL_BANISH_VISUAL = 39833,
+    SPELL_BANISH_ROOT = 42716,
+    SPELL_EMPOWERMENT = 38549,
+    SPELL_NETHERSPITE_ROAR = 38684
 };
 
 enum Portals
 {
-    RED_PORTAL              = 0, // Perseverence
-    GREEN_PORTAL            = 1, // Serenity
-    BLUE_PORTAL             = 2  // Dominance
+    RED_PORTAL = 0, // Perseverence
+    GREEN_PORTAL = 1, // Serenity
+    BLUE_PORTAL = 2  // Dominance
 };
 
 enum Groups
 {
-    PORTAL_PHASE            = 0,
-    BANISH_PHASE            = 1
+    PORTAL_PHASE = 0,
+    BANISH_PHASE = 1
 };
 
 const float PortalCoord[3][3] =
@@ -61,12 +61,12 @@ const float PortalCoord[3][3] =
     {-11094.493164f, -1591.969238f, 279.949188f}  // Back side
 };
 
-const uint32 PortalID[3] =     {17369, 17367, 17368};
-const uint32 PortalVisual[3] = {30487, 30490, 30491};
-const uint32 PortalBeam[3] =   {30465, 30464, 30463};
-const uint32 PlayerBuff[3] =   {30421, 30422, 30423};
-const uint32 NetherBuff[3] =   {30466, 30467, 30468};
-const uint32 PlayerDebuff[3] = {38637, 38638, 38639};
+const uint32 PortalID[3] = { 17369, 17367, 17368 };
+const uint32 PortalVisual[3] = { 30487, 30490, 30491 };
+const uint32 PortalBeam[3] = { 30465, 30464, 30463 };
+const uint32 PlayerBuff[3] = { 30421, 30422, 30423 };
+const uint32 NetherBuff[3] = { 30466, 30467, 30468 };
+const uint32 PlayerDebuff[3] = { 38637, 38638, 38639 };
 
 struct boss_netherspite : public BossAI
 {
@@ -107,18 +107,11 @@ struct boss_netherspite : public BossAI
 
     void SummonPortals()
     {
-        uint8 r = rand() % 4;
-        uint8 pos[3];
-        pos[RED_PORTAL] = ((r % 2) ? (r > 1 ? 2 : 1) : 0);
-        pos[GREEN_PORTAL] = ((r % 2) ? 0 : (r > 1 ? 2 : 1));
-        pos[BLUE_PORTAL] = (r > 1 ? 1 : 2); // Blue Portal not on the left side (0)
-        for (int i = 0; i < 3; ++i)
+        uint8 chosenPortal = urand(0, 2);
+        if (Creature* portal = me->SummonCreature(PortalID[chosenPortal], PortalCoord[chosenPortal][0], PortalCoord[chosenPortal][1], PortalCoord[chosenPortal][2], 0, TEMPSUMMON_TIMED_DESPAWN, 60000))
         {
-            if (Creature* portal = me->SummonCreature(PortalID[i], PortalCoord[pos[i]][0], PortalCoord[pos[i]][1], PortalCoord[pos[i]][2], 0, TEMPSUMMON_TIMED_DESPAWN, 60000))
-            {
-                PortalGUID[i] = portal->GetGUID();
-                portal->AddAura(PortalVisual[i], portal);
-            }
+            PortalGUID[chosenPortal] = portal->GetGUID();
+            portal->AddAura(PortalVisual[chosenPortal], portal);
         }
     }
 
@@ -197,26 +190,26 @@ struct boss_netherspite : public BossAI
         me->RemoveAurasDueToSpell(SPELL_BANISH_VISUAL);
         SummonPortals();
         scheduler.Schedule(60s, [this](TaskContext /*context*/)
-        {
-            if (!me->IsNonMeleeSpellCast(false))
             {
-                SwitchToBanishPhase();
-                return;
-            }
-        }).Schedule(10s, PORTAL_PHASE, [this](TaskContext context)
-        {
-            UpdatePortals();
-            context.Repeat(1s);
-        }).Schedule(10s, PORTAL_PHASE, [this](TaskContext context)
-        {
-            DoCastSelf(SPELL_EMPOWERMENT);
-            me->AddAura(SPELL_NETHERBURN_AURA, me);
-            context.Repeat(90s);
-        }).Schedule(15s, PORTAL_PHASE, [this](TaskContext context)
-        {
-            DoCastRandomTarget(SPELL_VOIDZONE, 0, 45.0f, true, true, false);
-            context.Repeat(15s);
-        });
+                if (!me->IsNonMeleeSpellCast(false))
+                {
+                    SwitchToBanishPhase();
+                    return;
+                }
+            }).Schedule(10s, PORTAL_PHASE, [this](TaskContext context)
+                {
+                    UpdatePortals();
+                    context.Repeat(1s);
+                }).Schedule(10s, PORTAL_PHASE, [this](TaskContext context)
+                    {
+                        DoCastSelf(SPELL_EMPOWERMENT);
+                        me->AddAura(SPELL_NETHERBURN_AURA, me);
+                        context.Repeat(90s);
+                    }).Schedule(15s, PORTAL_PHASE, [this](TaskContext context)
+                        {
+                            CastSpellOnRandomTarget(SPELL_VOIDZONE, 45.0f, true);
+                            context.Repeat(15s);
+                        });
     }
 
     void DestroyPortals()
@@ -249,20 +242,20 @@ struct boss_netherspite : public BossAI
         DestroyPortals();
 
         scheduler.Schedule(30s, [this](TaskContext)
-        {
-            SwitchToPortalPhase();
-            DoResetThreatList();
-            return;
-        }).Schedule(10s, BANISH_PHASE, [this](TaskContext context)
-        {
-            DoCastRandomTarget(SPELL_NETHERBREATH, 0, 40.0f, true);
-            context.Repeat(5s, 7s);
-        });
+            {
+                SwitchToPortalPhase();
+                DoResetThreatList();
+                return;
+            }).Schedule(10s, BANISH_PHASE, [this](TaskContext context)
+                {
+                    DoCastRandomTarget(SPELL_NETHERBREATH, 0, 40.0f, true);
+                    context.Repeat(5s, 7s);
+                });
 
-        for (uint8 i = 0; i < 3; ++i)
-        {
-            me->RemoveAurasDueToSpell(NetherBuff[i]);
-        }
+            for (uint8 i = 0; i < 3; ++i)
+            {
+                me->RemoveAurasDueToSpell(NetherBuff[i]);
+            }
     }
 
     void HandleDoors(bool open)
@@ -280,14 +273,14 @@ struct boss_netherspite : public BossAI
         SwitchToPortalPhase(true);
         DoZoneInCombat();
         scheduler.Schedule(9min, [this](TaskContext /*context*/)
-        {
-            if (!berserk)
             {
-                DoCastSelf(SPELL_NETHER_INFUSION);
-                DoCastAOE(SPELL_NETHERSPITE_ROAR);
-                berserk = true;
-            }
-        });
+                if (!berserk)
+                {
+                    DoCastSelf(SPELL_NETHER_INFUSION);
+                    DoCastAOE(SPELL_NETHERSPITE_ROAR);
+                    berserk = true;
+                }
+            });
     }
 
     void JustDied(Unit* killer) override
@@ -307,6 +300,24 @@ struct boss_netherspite : public BossAI
             return;
 
         DoMeleeAttackIfReady();
+    }
+
+    void CastSpellOnRandomTarget(uint32 spellId, float range, bool triggered = false)
+    {
+        std::list<Unit*> targets;
+        Acore::AnyUnitInObjectRangeCheck check(me, range);
+        Acore::UnitListSearcher<Acore::AnyUnitInObjectRangeCheck> searcher(me, targets, check);
+        Cell::VisitAllObjects(me, searcher, range);
+
+        targets.remove_if([this](Unit* unit) -> bool {
+            return !unit->IsAlive() || !(unit->GetTypeId() == TYPEID_PLAYER || (unit->GetTypeId() == TYPEID_UNIT && static_cast<Creature*>(unit)->IsNPCBot()));
+            });
+
+        if (!targets.empty())
+        {
+            Unit* target = Acore::Containers::SelectRandomContainerElement(targets);
+            DoCast(target, spellId, triggered);
+        }
     }
 
 private:

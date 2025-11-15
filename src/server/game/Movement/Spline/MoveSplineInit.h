@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -86,6 +86,12 @@ namespace Movement
          * can't be combined with final animation
          */
         void SetParabolic(float amplitude, float start_time);
+        /* Adds movement by parabolic trajectory
+        * @param vertical_acceleration - vertical acceleration
+        * @param start_time - delay between movement starting time and beginning to move by parabolic trajectory
+        * can't be combined with final animation
+        */
+        void SetParabolicVerticalAcceleration(float vertical_acceleration, float start_time);
         /* Plays animation after movement done
          * can't be combined with parabolic movement
          */
@@ -188,6 +194,15 @@ namespace Movement
     {
         args.time_perc = time_shift;
         args.parabolic_amplitude = amplitude;
+        args.vertical_acceleration = 0.0f;
+        args.flags.EnableParabolic();
+    }
+
+    inline void MoveSplineInit::SetParabolicVerticalAcceleration(float vertical_acceleration, float time_shift)
+    {
+        args.time_perc = time_shift;
+        args.parabolic_amplitude = 0.0f;
+        args.vertical_acceleration = vertical_acceleration;
         args.flags.EnableParabolic();
     }
 

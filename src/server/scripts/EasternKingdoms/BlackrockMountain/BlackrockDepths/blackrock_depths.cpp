@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -27,20 +27,31 @@
 
 enum IronhandData
 {
+    IRONHAND_FLAMES_TIMER      = 16000,
+    IRONHAND_FLAMES_TIMER_RAND = 3000,
     IRONHAND_N_GROUPS          = 3,
     SPELL_GOUT_OF_FLAMES       = 15529
 };
-
-constexpr Milliseconds IRONHAND_FLAMES_TIMER = 16s;
-constexpr Milliseconds IRONHAND_FLAMES_TIMER_RAND = 3s;
-
+//Dinkle: Hardcoded braziers because of RDF fuckery
 class go_shadowforge_brazier : public GameObjectScript
 {
 public:
     go_shadowforge_brazier() : GameObjectScript("go_shadowforge_brazier") {}
 
-    bool OnGossipHello(Player* /*player*/, GameObject* go) override
+    static bool northBrazierLit;
+    static bool southBrazierLit;
+
+    bool OnGossipHello(Player* player, GameObject* go) override
     {
+        if (!player->HasItemCount(11885)) // Check if the player has a Shadowforge Torch
+        {
+            ChatHandler(player->GetSession()).SendNotification("You need a Shadowforge Torch to use this.");
+            return true;
+        }
+
+        // Consume a Shadowforge Torch from the player's inventory
+        player->DestroyItemCount(11885, 1, true);
+
         if (InstanceScript* instance = go->GetInstanceScript())
         {
             GameObject* northBrazier = ObjectAccessor::GetGameObject(*go, instance->GetGuidData(DATA_SF_BRAZIER_N));
@@ -51,23 +62,37 @@ public:
                 return false;
             }
 
+            // Check which brazier the player is interacting with and set the local flag
+            if (go->GetGUID() == northBrazier->GetGUID())
+            {
+                northBrazierLit = true;
+            }
+            else if (go->GetGUID() == southBrazier->GetGUID())
+            {
+                southBrazierLit = true;
+            }
+
             // should only happen on first brazier
             if (instance->GetData(TYPE_LYCEUM) == NOT_STARTED)
             {
                 instance->SetData(TYPE_LYCEUM, IN_PROGRESS);
             }
 
-            // Check if the opposite brazier is lit - if it is, open the gates.
-            if ((go->GetGUID() == northBrazier->GetGUID() && southBrazier->GetGoState() == GO_STATE_ACTIVE) || (go->GetGUID() == southBrazier->GetGUID() && northBrazier->GetGoState() == GO_STATE_ACTIVE))
+            // Check if both braziers are lit locally
+            if (northBrazierLit && southBrazierLit)
             {
                 instance->SetData(TYPE_LYCEUM, DONE);
             }
+
             return false;
         }
         return false;
     };
 };
 
+bool go_shadowforge_brazier::northBrazierLit = false;
+bool go_shadowforge_brazier::southBrazierLit = false;
+//end Dinkle
 class ironhand_guardian : public CreatureScript
 {
 public:
@@ -111,7 +136,7 @@ public:
                     {
                         case SPELL_GOUT_OF_FLAMES:
                             DoCast(SPELL_GOUT_OF_FLAMES);
-                            events.RescheduleEvent(SPELL_GOUT_OF_FLAMES, IRONHAND_FLAMES_TIMER - IRONHAND_FLAMES_TIMER_RAND, IRONHAND_FLAMES_TIMER + IRONHAND_FLAMES_TIMER_RAND);
+                            events.RescheduleEvent(SPELL_GOUT_OF_FLAMES, urand(IRONHAND_FLAMES_TIMER - IRONHAND_FLAMES_TIMER_RAND, IRONHAND_FLAMES_TIMER + IRONHAND_FLAMES_TIMER_RAND));
                             break;
                         default:
                             break;
@@ -359,8 +384,7 @@ public:
                         case 0:
                             Talk(SAY_TEXT5);
                             HandleGameObject(DATA_ARENA4, false);
-                            me->SetWalk(true);
-                            Start(false);
+                            Start(false, false);
                             eventTimer = 0;
                             break;
                         case 1:
@@ -461,6 +485,22 @@ public:
             ThunderClap_Timer = 12000;
             FireballVolley_Timer = 0;
             MightyBlow_Timer = 15000;
+        }
+
+        void JustDied(Unit* /*killer*/) override
+        {
+            Map::PlayerList const& players = me->GetMap()->GetPlayers();
+            if (players.begin() != players.end())
+            {
+                uint32 baseRewardLevel = 1;
+                bool isDungeon = me->GetMap()->IsDungeon();
+
+                Player* player = players.begin()->GetSource();
+                if (player)
+                {
+                    DistributeChallengeRewards(player, me, baseRewardLevel, isDungeon);
+                }
+            }
         }
 
         void UpdateAI(uint32 diff) override
@@ -605,10 +645,7 @@ public:
                 creature->CastSpell(creature, SPELL_DRUNKEN_RAGE, false);
 
                 if (npc_escortAI* escortAI = CAST_AI(npc_rocknot::npc_rocknotAI, creature->AI()))
-                {
-                    creature->SetWalk(true);
-                    escortAI->Start(false);
-                }
+                    escortAI->Start(false, false);
             }
         }
 
@@ -708,6 +745,78 @@ public:
     };
 };
 
+class npc_wandering_flame_custom : public CreatureScript
+{
+public:
+    npc_wandering_flame_custom() : CreatureScript("npc_wandering_flame_custom") {}
+
+    struct npc_wandering_flame_customAI : public ScriptedAI
+    {
+        float center_x, center_y, radius;
+        uint32 moveTimer;
+        uint32 combatStopTimer;
+
+        npc_wandering_flame_customAI(Creature* creature) : ScriptedAI(creature)
+        {
+            me->SetReactState(REACT_PASSIVE);
+            me->SetCanFly(true);
+            me->SetDisableGravity(true);
+
+            center_x = me->GetPositionX();
+            center_y = me->GetPositionY();
+            radius = 15.0f;
+
+            moveTimer = 1;
+            combatStopTimer = 3000; // 3 seconds
+        }
+
+        void MoveToNextPoint()
+        {
+            float angle = frand(0, 2 * M_PI);
+            float x = center_x + cos(angle) * radius;
+            float y = center_y + sin(angle) * radius;
+
+            me->GetMotionMaster()->MovePoint(1, x, y, me->GetPositionZ(), true);
+        }
+
+        void MovementInform(uint32 type, uint32 pointId) override
+        {
+            if (type == POINT_MOTION_TYPE && pointId == 1)
+            {
+                moveTimer = 1;
+            }
+        }
+
+        void UpdateAI(uint32 diff) override
+        {
+            if (moveTimer <= diff)
+            {
+                MoveToNextPoint();
+                moveTimer = 1000; // Move every second
+            }
+            else
+            {
+                moveTimer -= diff;
+            }
+
+            if (combatStopTimer <= diff)
+            {
+                me->CombatStop(); // Force the creature to leave combat
+                combatStopTimer = 3000; // Reset timer for 3 seconds
+            }
+            else
+            {
+                combatStopTimer -= diff;
+            }
+        }
+    };
+
+    CreatureAI* GetAI(Creature* creature) const override
+    {
+        return new npc_wandering_flame_customAI(creature);
+    }
+};
+
 void AddSC_blackrock_depths()
 {
     new go_shadowforge_brazier();
@@ -717,4 +826,5 @@ void AddSC_blackrock_depths()
     new npc_lokhtos_darkbargainer();
     new npc_rocknot();
     new ironhand_guardian();
+    new npc_wandering_flame_custom();
 }

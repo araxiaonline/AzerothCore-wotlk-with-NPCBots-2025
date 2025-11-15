@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -16,7 +16,6 @@
  */
 
 #include "Group.h"
-#include "AreaDefines.h"
 #include "Battleground.h"
 #include "BattlegroundMgr.h"
 #include "Config.h"
@@ -28,7 +27,6 @@
 #include "LFGMgr.h"
 #include "Log.h"
 #include "MapMgr.h"
-#include "MiscPackets.h"
 #include "ObjectMgr.h"
 #include "Opcodes.h"
 #include "Player.h"
@@ -780,14 +778,14 @@ bool Group::RemoveMember(ObjectGuid guid, const RemoveMethod& method /*= GROUP_R
             if (method == GROUP_REMOVEMETHOD_KICK || method == GROUP_REMOVEMETHOD_KICK_LFG)
             {
                 data.Initialize(SMSG_GROUP_UNINVITE, 0);
-                player->SendDirectMessage(&data);
+                player->GetSession()->SendPacket(&data);
             }
 
             // Do we really need to send this opcode?
             data.Initialize(SMSG_GROUP_LIST, 1 + 1 + 1 + 1 + 8 + 4 + 4 + 8);
             data << uint8(0x10) << uint8(0) << uint8(0) << uint8(0);
             data << m_guid << uint32(m_counter) << uint32(0) << uint64(0);
-            player->SendDirectMessage(&data);
+            player->GetSession()->SendPacket(&data);
         }
 
         // Remove player from group in DB
@@ -1022,7 +1020,7 @@ void Group::Disband(bool hideDestroy /* = false */)
         if (!hideDestroy)
         {
             data.Initialize(SMSG_GROUP_DESTROYED, 0);
-            player->SendDirectMessage(&data);
+            player->GetSession()->SendPacket(&data);
         }
 
         //we already removed player from group and in player->GetGroup() is his original group, send update
@@ -1035,7 +1033,7 @@ void Group::Disband(bool hideDestroy /* = false */)
             data.Initialize(SMSG_GROUP_LIST, 1 + 1 + 1 + 1 + 8 + 4 + 4 + 8);
             data << uint8(0x10) << uint8(0) << uint8(0) << uint8(0);
             data << m_guid << uint32(m_counter) << uint32(0) << uint64(0);
-            player->SendDirectMessage(&data);
+            player->GetSession()->SendPacket(&data);
         }
     }
     RollId.clear();
@@ -1099,7 +1097,7 @@ void Group::SendLootStartRoll(uint32 CountDown, uint32 mapid, const Roll& r)
             continue;
 
         if (itr->second == NOT_EMITED_YET)
-            p->SendDirectMessage(&data);
+            p->GetSession()->SendPacket(&data);
     }
 }
 
@@ -1122,7 +1120,7 @@ void Group::SendLootStartRollToPlayer(uint32 countDown, uint32 mapId, Player* p,
         voteMask &= ~ROLL_FLAG_TYPE_NEED;
     data << uint8(voteMask);                                // roll type mask
 
-    p->SendDirectMessage(&data);
+    p->GetSession()->SendPacket(&data);
 }
 
 void Group::SendLootRoll(ObjectGuid sourceGuid, ObjectGuid targetGuid, uint8 rollNumber, uint8 rollType, Roll const& roll, bool autoPass)
@@ -1145,7 +1143,7 @@ void Group::SendLootRoll(ObjectGuid sourceGuid, ObjectGuid targetGuid, uint8 rol
             continue;
 
         if (itr->second != NOT_VALID)
-            p->SendDirectMessage(&data);
+            p->GetSession()->SendPacket(&data);
     }
 }
 
@@ -1168,7 +1166,7 @@ void Group::SendLootRollWon(ObjectGuid sourceGuid, ObjectGuid targetGuid, uint8 
             continue;
 
         if (itr->second != NOT_VALID)
-            p->SendDirectMessage(&data);
+            p->GetSession()->SendPacket(&data);
     }
 }
 
@@ -1188,7 +1186,7 @@ void Group::SendLootAllPassed(Roll const& roll)
             continue;
 
         if (itr->second != NOT_VALID)
-            player->SendDirectMessage(&data);
+            player->GetSession()->SendPacket(&data);
     }
 }
 
@@ -1352,8 +1350,6 @@ void Group::GroupLoot(Loot* loot, WorldObject* pLootedObject)
 
             if (member->IsAtLootRewardDistance(pLootedObject))
             {
-                r->totalPlayersRolling++;
-
                 RollVote vote = NOT_EMITED_YET;
                 if (!CanRollOnItem(*i, member, loot))
                 {
@@ -1592,7 +1588,7 @@ void Group::MasterLoot(Loot* loot, WorldObject* pLootedObject)
 
     for (Player* looter : looters)
     {
-        looter->SendDirectMessage(&data);
+        looter->GetSession()->SendPacket(&data);
     }
 }
 
@@ -1721,7 +1717,7 @@ void Group::CountTheRoll(Rolls::iterator rollI, Map* allowedMap)
                         AllowedLooterSet looters = item->GetAllowedLooters();
                         Item* _item = player->StoreNewItem(dest, roll->itemid, true, item->randomPropertyId, looters);
                         if (_item)
-                            sScriptMgr->OnPlayerGroupRollRewardItem(player, _item, _item->GetCount(), NEED, roll);
+                            sScriptMgr->OnGroupRollRewardItem(player, _item, _item->GetCount(), NEED, roll);
                         player->UpdateLootAchievements(item, roll->getLoot());
                     }
                     else
@@ -1791,7 +1787,7 @@ void Group::CountTheRoll(Rolls::iterator rollI, Map* allowedMap)
                             AllowedLooterSet looters = item->GetAllowedLooters();
                             Item* _item = player->StoreNewItem(dest, roll->itemid, true, item->randomPropertyId, looters);
                             if (_item)
-                                sScriptMgr->OnPlayerGroupRollRewardItem(player, _item, _item->GetCount(), GREED, roll);
+                                sScriptMgr->OnGroupRollRewardItem(player, _item, _item->GetCount(), GREED, roll);
                             player->UpdateLootAchievements(item, roll->getLoot());
                         }
                         else
@@ -2010,7 +2006,7 @@ void Group::SendUpdateToPlayer(ObjectGuid playerGUID, MemberSlot* slot)
         data << uint8(m_raidDifficulty >= RAID_DIFFICULTY_10MAN_HEROIC);    // 3.3 Dynamic Raid Difficulty - 0 normal/1 heroic
     }
 
-    player->SendDirectMessage(&data);
+    player->GetSession()->SendPacket(&data);
 }
 
 //npcbot
@@ -2022,9 +2018,10 @@ void Group::UpdateBotOutOfRange(Creature* creature)
     WorldPacket data;
     BotMgr::BuildBotPartyMemberStatsChangedPacket(creature, &data);
 
+    Player* member;
     for (GroupReference* itr = GetFirstMember(); itr != nullptr; itr = itr->next())
     {
-        Player const*member = itr->GetSource();
+        member = itr->GetSource();
         if (member/* && (!member->IsInMap(creature) || !member->IsWithinDist(creature, member->GetSightRange(), false))*/)
             member->SendDirectMessage(&data);
     }
@@ -2041,9 +2038,9 @@ void Group::UpdatePlayerOutOfRange(Player* player)
 
     for (GroupReference* itr = GetFirstMember(); itr != nullptr; itr = itr->next())
     {
-        Player const* member = itr->GetSource();
+        Player* member = itr->GetSource();
         if (member && (!member->IsInMap(player) || !member->IsWithinDist(player, member->GetSightRange(player), false)))
-            member->SendDirectMessage(&data);
+            member->GetSession()->SendPacket(&data);
     }
 }
 
@@ -2056,7 +2053,7 @@ void Group::BroadcastPacket(WorldPacket const* packet, bool ignorePlayersInBGRai
             continue;
 
         if (group == -1 || itr->getSubGroup() == group)
-            player->SendDirectMessage(packet);
+            player->GetSession()->SendPacket(packet);
     }
 }
 
@@ -2067,7 +2064,7 @@ void Group::BroadcastReadyCheck(WorldPacket const* packet)
         Player* player = itr->GetSource();
         if (player)
             if (IsLeader(player->GetGUID()) || IsAssistant(player->GetGUID()))
-                player->SendDirectMessage(packet);
+                player->GetSession()->SendPacket(packet);
     }
 }
 
@@ -2326,7 +2323,7 @@ GroupJoinBattlegroundResult Group::CanJoinBattlegroundQueue(Battleground const* 
             return ERR_IN_NON_RANDOM_BG;
 
         // don't let Death Knights join BG queues when they are not allowed to be teleported yet
-        if (member->IsClass(CLASS_DEATH_KNIGHT, CLASS_CONTEXT_TELEPORT) && member->GetMapId() == MAP_EBON_HOLD && !member->IsGameMaster() && !member->HasSpell(50977))
+        if (member->IsClass(CLASS_DEATH_KNIGHT, CLASS_CONTEXT_TELEPORT) && member->GetMapId() == 609 && !member->IsGameMaster() && !member->HasSpell(50977))
             return ERR_GROUP_JOIN_BATTLEGROUND_FAIL;
 
         if (!member->GetBGAccessByLevel(bgTemplate->GetBgTypeID()))
@@ -2377,16 +2374,6 @@ GroupJoinBattlegroundResult Group::CanJoinBattlegroundQueue(Battleground const* 
     }
 
     return GroupJoinBattlegroundResult(bgTemplate->GetBgTypeID());
-}
-
-void Group::DoMinimapPing(ObjectGuid sourceGuid, float mapX, float mapY)
-{
-    WorldPackets::Misc::MinimapPing minimapPing;
-    minimapPing.SourceGuid = sourceGuid;
-    minimapPing.MapX = mapX;
-    minimapPing.MapY = mapY;
-
-    BroadcastPacket(minimapPing.Write(), true, -1, sourceGuid);
 }
 
 //===================================================

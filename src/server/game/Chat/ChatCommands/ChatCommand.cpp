@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -233,40 +233,40 @@ namespace Acore::Impl::ChatCommands
 {
     struct FilteredCommandListIterator
     {
-        public:
-            FilteredCommandListIterator(ChatSubCommandMap const& map, ChatHandler const& handler, std::string_view token)
-                : _handler{ handler }, _token{ token }, _it{ map.lower_bound(token) }, _end{ map.end() }
-            {
-                _skip();
-            }
+    public:
+        FilteredCommandListIterator(ChatSubCommandMap const& map, ChatHandler const& handler, std::string_view token)
+            : _handler{ handler }, _token{ token }, _it{ map.lower_bound(token) }, _end{ map.end() }
+        {
+            _skip();
+        }
 
-            decltype(auto) operator*() const { return _it.operator*(); }
-            decltype(auto) operator->() const { return _it.operator->(); }
-            FilteredCommandListIterator& operator++()
+        decltype(auto) operator*() const { return _it.operator*(); }
+        decltype(auto) operator->() const { return _it.operator->(); }
+        FilteredCommandListIterator& operator++()
+        {
+            ++_it;
+            _skip();
+            return *this;
+        }
+        explicit operator bool() const { return (_it != _end); }
+        bool operator!() const { return !static_cast<bool>(*this); }
+
+    private:
+        void _skip()
+        {
+            if ((_it != _end) && !StringStartsWithI(_it->first, _token))
+                _it = _end;
+            while ((_it != _end) && !_it->second.IsVisible(_handler))
             {
                 ++_it;
-                _skip();
-                return *this;
-            }
-            explicit operator bool() const { return (_it != _end); }
-            bool operator!() const { return !static_cast<bool>(*this); }
-
-        private:
-            void _skip()
-            {
                 if ((_it != _end) && !StringStartsWithI(_it->first, _token))
                     _it = _end;
-                while ((_it != _end) && !_it->second.IsVisible(_handler))
-                {
-                    ++_it;
-                    if ((_it != _end) && !StringStartsWithI(_it->first, _token))
-                        _it = _end;
-                }
             }
+        }
 
-            ChatHandler const& _handler;
-            std::string_view const _token;
-            ChatSubCommandMap::const_iterator _it, _end;
+        ChatHandler const& _handler;
+        std::string_view const _token;
+        ChatSubCommandMap::const_iterator _it, _end;
 
     };
 }
@@ -322,12 +322,8 @@ namespace Acore::Impl::ChatCommands
         oldTail = newTail;
     }
 
-    if (!sScriptMgr->OnTryExecuteCommand(handler, cmdStr))
-        return true;
-
-    /* if we matched a command at some point, invoke it */
     if (cmd)
-    {
+    { /* if we matched a command at some point, invoke it */
         handler.SetSentErrorMessage(false);
         if (cmd->IsInvokerVisible(handler) && cmd->_invoker(&handler, oldTail))
         { /* invocation succeeded, log this */
@@ -336,10 +332,20 @@ namespace Acore::Impl::ChatCommands
         }
         else if (!handler.HasSentErrorMessage()) /* invocation failed, we should show usage */
         {
+            if (!sScriptMgr->CanExecuteCommand(handler, cmdStr))
+            {
+                return true;
+            }
+
             cmd->SendCommandHelp(handler);
             handler.SetSentErrorMessage(true);
         }
 
+        return true;
+    }
+
+    if (!sScriptMgr->CanExecuteCommand(handler, cmdStr))
+    {
         return true;
     }
 
@@ -440,16 +446,16 @@ namespace Acore::Impl::ChatCommands
             { /* there are multiple matching subcommands - terminate here and show possibilities */
                 std::vector<std::string> vec;
                 auto possibility = ([prefix = std::string_view(path), suffix = std::string_view(newTail)](std::string_view match)
-                {
-                    if (prefix.empty())
                     {
-                        return Acore::StringFormat("{}{}{}", match, COMMAND_DELIMITER, suffix);
-                    }
-                    else
-                    {
-                        return Acore::StringFormat("{}{}{}{}{}", prefix, COMMAND_DELIMITER, match, COMMAND_DELIMITER, suffix);
-                    }
-                });
+                        if (prefix.empty())
+                        {
+                            return Acore::StringFormat("{}{}{}", match, COMMAND_DELIMITER, suffix);
+                        }
+                        else
+                        {
+                            return Acore::StringFormat("{}{}{}{}{}", prefix, COMMAND_DELIMITER, match, COMMAND_DELIMITER, suffix);
+                        }
+                    });
 
                 vec.emplace_back(possibility(it1->first));
 
@@ -485,14 +491,14 @@ namespace Acore::Impl::ChatCommands
     else
     { /* offer all subcommands */
         auto possibility = ([prefix = std::string_view(path)](std::string_view match)
-        {
-            if (prefix.empty())
-                return std::string(match);
-            else
             {
-                return Acore::StringFormat("{}{}{}", prefix, COMMAND_DELIMITER, match);
-            }
-        });
+                if (prefix.empty())
+                    return std::string(match);
+                else
+                {
+                    return Acore::StringFormat("{}{}{}", prefix, COMMAND_DELIMITER, match);
+                }
+            });
 
         std::vector<std::string> vec;
         for (FilteredCommandListIterator it(*map, handler, ""); it; ++it)

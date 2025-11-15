@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -47,7 +47,6 @@ enum Spells
 
     SPELL_EXPLODE_ORB           = 20037,
     SPELL_EXPLOSION             = 20038, // Instakill everything.
-
     SPELL_WARMING_FLAMES        = 23040,
 };
 
@@ -90,9 +89,19 @@ public:
 
         void JustDied(Unit* /*killer*/) override
         {
+            DoCastSelf(875167, true);
             if (secondPhase)
             {
                 _JustDied();
+                Map::PlayerList const& players = me->GetMap()->GetPlayers();
+                for (auto const& playerPair : players)
+                {
+                    Player* player = playerPair.GetSource();
+                    if (player)
+                    {
+                        DistributeChallengeRewards(player, me, 1, false);
+                    }
+                }
             }
             else
             {
@@ -110,8 +119,34 @@ public:
 
         bool CanAIAttack(Unit const* target) const override
         {
-            return !(target->IsCreature() && !secondPhase);
+            // In the first phase, do not attack non-player units (except NPC bots)
+            if (!secondPhase && target->GetTypeId() == TYPEID_UNIT && !target->ToCreature()->IsNPCBot())
+            {
+                return false;
+            }
+
+            // Check if the target is affected by SPELL_CONFLAGRATION
+            if (me->GetThreatMgr().GetThreatListSize() > 1)
+            {
+                ThreatContainer::StorageType::const_iterator lastRef = me->GetThreatMgr().GetOnlineContainer().GetThreatList().end();
+                --lastRef;
+                if (Unit* lastTarget = (*lastRef)->getTarget())
+                {
+                    if (lastTarget != target)
+                    {
+                        return !target->HasAura(SPELL_CONFLAGRATION);
+                    }
+                }
+            }
+
+            // Consider stunned or feared targets (players or NPC bots) as valid in both phases
+            if (target->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_STUNNED) || target->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_FLEEING))
+                return true;
+
+            // Default behavior for both phases
+            return true;
         }
+
 
         void JustEngagedWith(Unit* /*who*/) override
         {
@@ -123,6 +158,10 @@ public:
             events.ScheduleEvent(EVENT_CONFLAGRATION, 12s);
 
             instance->SetData(DATA_EGG_EVENT, IN_PROGRESS);
+            if (Creature* target = GetClosestCreatureWithEntry(me, 90010, 120.0f))
+            {
+                me->CastSpell(target, 5, false);
+            }
         }
 
         void DoChangePhase()
@@ -130,6 +169,7 @@ public:
             secondPhase = true;
             _charmerGUID.Clear();
             me->RemoveAllAuras();
+            me->SetFullHealth();
 
             DoCastSelf(SPELL_WARMING_FLAMES, true);
 
@@ -152,7 +192,7 @@ public:
             }
         }
 
-        void SetGUID(ObjectGuid const& guid, int32 /*id*/) override
+        void SetGUID(ObjectGuid const guid, int32 /*id*/) override
         {
             _charmerGUID = guid;
         }
@@ -217,6 +257,11 @@ public:
 
         void UpdateAI(uint32 diff) override
         {
+            if (me->HasAura(800139))
+            {
+                DoCast(me, 17683, true);
+            }
+            
             if (!UpdateVictim())
                 return;
 

@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -28,9 +28,6 @@
 #include "Transport.h"
 #include "World.h"
 #include "WorldPacket.h"
-#include "WorldSessionMgr.h"
-#include "WorldStateDefines.h"
-#include "WorldStatePackets.h"
 
 OutdoorPvPSI::OutdoorPvPSI()
 {
@@ -40,26 +37,25 @@ OutdoorPvPSI::OutdoorPvPSI()
     m_LastController = TEAM_NEUTRAL;
 }
 
-void OutdoorPvPSI::FillInitialWorldStates(WorldPackets::WorldState::InitWorldStates& packet)
+void OutdoorPvPSI::FillInitialWorldStates(WorldPacket& data)
 {
-    packet.Worldstates.reserve(3);
-    packet.Worldstates.emplace_back(WORLD_STATE_OPVP_SI_GATHERED_A, m_Gathered_A);
-    packet.Worldstates.emplace_back(WORLD_STATE_OPVP_SI_GATHERED_H, m_Gathered_H);
-    packet.Worldstates.emplace_back(WORLD_STATE_OPVP_SI_SILITHYST_MAX, SI_MAX_RESOURCES);
+    data << SI_GATHERED_A << m_Gathered_A;
+    data << SI_GATHERED_H << m_Gathered_H;
+    data << SI_SILITHYST_MAX << SI_MAX_RESOURCES;
 }
 
 void OutdoorPvPSI::SendRemoveWorldStates(Player* player)
 {
-    player->SendUpdateWorldState(WORLD_STATE_OPVP_SI_GATHERED_A, 0);
-    player->SendUpdateWorldState(WORLD_STATE_OPVP_SI_GATHERED_H, 0);
-    player->SendUpdateWorldState(WORLD_STATE_OPVP_SI_SILITHYST_MAX, 0);
+    player->SendUpdateWorldState(SI_GATHERED_A, 0);
+    player->SendUpdateWorldState(SI_GATHERED_H, 0);
+    player->SendUpdateWorldState(SI_SILITHYST_MAX, 0);
 }
 
 void OutdoorPvPSI::UpdateWorldState()
 {
-    SendUpdateWorldState(WORLD_STATE_OPVP_SI_GATHERED_A, m_Gathered_A);
-    SendUpdateWorldState(WORLD_STATE_OPVP_SI_GATHERED_H, m_Gathered_H);
-    SendUpdateWorldState(WORLD_STATE_OPVP_SI_SILITHYST_MAX, SI_MAX_RESOURCES);
+    SendUpdateWorldState(SI_GATHERED_A, m_Gathered_A);
+    SendUpdateWorldState(SI_GATHERED_H, m_Gathered_H);
+    SendUpdateWorldState(SI_SILITHYST_MAX, SI_MAX_RESOURCES);
 }
 
 bool OutdoorPvPSI::SetupOutdoorPvP()
@@ -106,7 +102,7 @@ bool OutdoorPvPSI::HandleAreaTrigger(Player* player, uint32 trigger)
                 if (m_Gathered_A >= SI_MAX_RESOURCES)
                 {
                     TeamApplyBuff(TEAM_ALLIANCE, SI_CENARION_FAVOR, 0, player);
-                    GetMap()->SendZoneText(OutdoorPvPSIBuffZones[0], sObjectMgr->GetAcoreStringForDBCLocale(LANG_OPVP_SI_CAPTURE_A).c_str());
+                    sWorld->SendZoneText(OutdoorPvPSIBuffZones[0], sObjectMgr->GetAcoreStringForDBCLocale(LANG_OPVP_SI_CAPTURE_A));
                     m_LastController = TEAM_ALLIANCE;
                     m_Gathered_A = 0;
                     m_Gathered_H = 0;
@@ -132,7 +128,7 @@ bool OutdoorPvPSI::HandleAreaTrigger(Player* player, uint32 trigger)
                 if (m_Gathered_H >= SI_MAX_RESOURCES)
                 {
                     TeamApplyBuff(TEAM_HORDE, SI_CENARION_FAVOR, 0, player);
-                    GetMap()->SendZoneText(OutdoorPvPSIBuffZones[0], sObjectMgr->GetAcoreStringForDBCLocale(LANG_OPVP_SI_CAPTURE_H).c_str());
+                    sWorld->SendZoneText(OutdoorPvPSIBuffZones[0], sObjectMgr->GetAcoreStringForDBCLocale(LANG_OPVP_SI_CAPTURE_H));
                     m_LastController = TEAM_HORDE;
                     m_Gathered_A = 0;
                     m_Gathered_H = 0;

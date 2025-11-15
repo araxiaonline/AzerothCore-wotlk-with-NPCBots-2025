@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -23,6 +23,7 @@
 #include "Player.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
+#include "Totem.h"
 #include "Unit.h"
 #include "UnitEvents.h"
 
@@ -80,7 +81,23 @@ bool ThreatCalcHelper::isValidProcess(Unit* hatedUnit, Unit* hatingUnit, SpellIn
     // spell not causing threat
     if (threatSpell && threatSpell->HasAttribute(SPELL_ATTR1_NO_THREAT))
         return false;
-
+    
+    // some player totems not causing threat
+    if (hatedUnit->IsTotem())
+        if (Totem* totem = hatedUnit->ToTotem())
+            if (totem->GetOwner()->IsPlayer())
+                if ((totem->GetEntry() == 3527) || // Healing Stream Totem (Rank 1)
+                    (totem->GetEntry() == 3906) || // Healing Stream Totem (Rank 2)
+                    (totem->GetEntry() == 3907) || // Healing Stream Totem (Rank 3)
+                    (totem->GetEntry() == 3908) || // Healing Stream Totem (Rank 4)
+                    (totem->GetEntry() == 3909) || // Healing Stream Totem (Rank 5)
+                    (totem->GetEntry() == 15488) || // Healing Stream Totem (Rank 6)
+                    (totem->GetEntry() == 31181) || // Healing Stream Totem (Rank 7)
+                    (totem->GetEntry() == 31182) || // Healing Stream Totem (Rank 8)
+                    (totem->GetEntry() == 31185) || // Healing Stream Totem (Rank 9)
+                    (totem->GetEntry() == 5924) || // Cleansing Totem
+                    (totem->GetEntry() == 5913)) // Tremor Totem
+                    return false;
     ASSERT(hatingUnit->IsCreature());
 
     return true;
@@ -328,7 +345,7 @@ HostileReference* ThreatContainer::SelectNextVictim(Creature* attacker, HostileR
         Unit* cvUnit = currentVictim->getTarget();
         if (!attacker->CanCreatureAttack(cvUnit)) // pussywizard: if currentVictim is not valid => don't compare the threat with it, just take the highest threat valid target
             currentVictim = nullptr;
-        else if (cvUnit->IsImmunedToDamageOrSchool(attacker->GetMeleeDamageSchoolMask()) || cvUnit->HasNegativeAuraWithInterruptFlag(AURA_INTERRUPT_FLAG_TAKE_DAMAGE) || cvUnit->HasUnitState(UNIT_STATE_CONFUSED)) // pussywizard: no 10%/30% if currentVictim is immune to damage or has auras breakable by damage
+        else if (cvUnit->IsImmunedToDamageOrSchool(attacker->GetMeleeDamageSchoolMask()) || cvUnit->HasNegativeAuraWithInterruptFlag(AURA_INTERRUPT_FLAG_TAKE_DAMAGE)) // pussywizard: no 10%/30% if currentVictim is immune to damage or has auras breakable by damage
             currentVictim = nullptr;
     }
 
@@ -345,7 +362,7 @@ HostileReference* ThreatContainer::SelectNextVictim(Creature* attacker, HostileR
 
         // pussywizard: don't go to threat comparison if this ref is immune to damage or has aura breakable on damage (second choice target)
         // pussywizard: if this is the last entry on the threat list, then all targets are second choice, set bool to true and loop threat list again, ignoring this section
-        if (!noPriorityTargetFound && (target->IsImmunedToDamageOrSchool(attacker->GetMeleeDamageSchoolMask()) || target->HasNegativeAuraWithInterruptFlag(AURA_INTERRUPT_FLAG_TAKE_DAMAGE) || target->HasUnitState(UNIT_STATE_CONFUSED) || target->HasAuraTypeWithCaster(SPELL_AURA_IGNORED, attacker->GetGUID())))
+        if (!noPriorityTargetFound && (target->IsImmunedToDamageOrSchool(attacker->GetMeleeDamageSchoolMask()) || target->HasNegativeAuraWithInterruptFlag(AURA_INTERRUPT_FLAG_TAKE_DAMAGE) || target->HasAuraTypeWithCaster(SPELL_AURA_IGNORED, attacker->GetGUID())))
         {
             if (iter != lastRef)
             {

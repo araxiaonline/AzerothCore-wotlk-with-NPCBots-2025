@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -23,7 +23,6 @@
 #include <array>
 #include <string>
 #include <vector>
-#include <numbers>
 
 enum ReactStates : uint8;
 
@@ -76,10 +75,10 @@ enum ActionFeedback
     FEEDBACK_CANT_ATT_TARGET    = 3
 };
 
-enum PetAction : int32
+enum PetTalk
 {
-    PET_ACTION_SPECIAL_SPELL    = 0,
-    PET_ACTION_ATTACK           = 1
+    PET_TALK_SPECIAL_SPELL      = 0,
+    PET_TALK_ATTACK             = 1
 };
 
 enum PetLoadState
@@ -135,7 +134,6 @@ enum NPCEntries
 enum PetScalingSpells
 {
     SPELL_PET_AVOIDANCE                 = 32233,
-    SPELL_PET_SCALING_MASTER_03         = 67557, // Serverside - Pet Scaling - Master Spell 03 - Intellect, Spirit, Resilience
     SPELL_PET_SCALING_MASTER_06         = 67561, // Serverside - Pet Scaling - Master Spell 06 - Spell Hit, Expertise, Spell Penetration
 
     // Hunter
@@ -199,14 +197,10 @@ enum PetScalingSpells
     SPELL_DK_PET_SCALING_03             = 61697,
     SPELL_DK_AVOIDANCE                  = 65220,
     SPELL_DK_ARMY_OF_THE_DEAD_PASSIVE   = 49040,
-    SPELL_SUMMON_HEAL                   = 36492, // Serverside - Summon Heal
-    SPELL_RISEN_GHOUL_SELF_STUN         = 47466,
 };
 
-constexpr float PET_FOLLOW_DIST = 2.0f;
-constexpr float PET_FOLLOW_ANGLE = std::numbers::pi_v<float> / 2;
-constexpr float MINI_PET_SUMMON_ANGLE = std::numbers::pi_v<float> / 4;
-constexpr float MINI_PET_FOLLOW_ANGLE = std::numbers::pi_v<float>;
+#define PET_FOLLOW_DIST  1.0f
+#define PET_FOLLOW_ANGLE (M_PI/2)
 
 class PetStable
 {

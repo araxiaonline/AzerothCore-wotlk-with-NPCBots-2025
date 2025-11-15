@@ -1,21 +1,20 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "AreaDefines.h"
 #include "CreatureScript.h"
 #include "ItemScript.h"
 #include "Player.h"
@@ -46,11 +45,11 @@ public:
         switch (itemId)
         {
             case 24538:
-                if (player->GetAreaId() != AREA_HALAA)
+                if (player->GetAreaId() != 3628)
                     disabled = true;
                 break;
             case 34489:
-                if (player->GetZoneId() != AREA_ISLE_OF_QUEL_DANAS)
+                if (player->GetZoneId() != 4080)
                     disabled = true;
                 break;
             case 34475:
@@ -136,7 +135,9 @@ public:
 
 enum PetrovClusterBombs
 {
-    SPELL_PETROV_BOMB           = 42406
+    SPELL_PETROV_BOMB           = 42406,
+    AREA_ID_SHATTERED_STRAITS   = 4064,
+    ZONE_ID_HOWLING             = 495
 };
 
 class item_petrov_cluster_bombs : public ItemScript
@@ -146,10 +147,10 @@ public:
 
     bool OnUse(Player* player, Item* item, const SpellCastTargets& /*targets*/) override
     {
-        if (player->GetZoneId() != AREA_HOWLING_FJORD)
+        if (player->GetZoneId() != ZONE_ID_HOWLING)
             return false;
 
-        if (!player->GetTransport() || player->GetAreaId() != AREA_SHATTERED_STRAITS)
+        if (!player->GetTransport() || player->GetAreaId() != AREA_ID_SHATTERED_STRAITS)
         {
             player->SendEquipError(EQUIP_ERR_NONE, item, nullptr);
 
@@ -196,22 +197,13 @@ class item_generic_limit_chance_above_60 : public ItemScript
 public:
     item_generic_limit_chance_above_60() : ItemScript("item_generic_limit_chance_above_60") { }
 
-    bool OnCastItemCombatSpell(Player* /*player*/, Unit* victim, SpellInfo const* /*spellInfo*/, Item* /*item*/) override
+    bool OnCastItemCombatSpell(Player* /*player*/, Unit* /*victim*/, SpellInfo const* /*spellInfo*/, Item* /*item*/) override
     {
-        // spell proc chance gets severely reduced on victims > 60 (formula unknown)
-        if (victim->GetLevel() > 60)
-        {
-            // gives ~0.1% proc chance at lvl 70
-            float const lvlPenaltyFactor = 9.93f;
-            float const failureChance = (victim->GetLevel() - 60) * lvlPenaltyFactor;
-
-            // base ppm chance was already rolled, only roll success chance
-            return !roll_chance_f(failureChance);
-        }
-
+        // Dinkle Always allow the proc, regardless of victim's level
         return true;
     }
 };
+
 
 void AddSC_item_scripts()
 {

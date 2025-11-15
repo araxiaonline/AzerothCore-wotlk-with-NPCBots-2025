@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -178,6 +178,10 @@ public:
     };
     typedef std::list<MemberSlot> MemberSlotList;
     typedef MemberSlotList::const_iterator member_citerator;
+    //Dinkle
+    ObjectGuid GetRaidMarker(uint8 index) const { return m_targetIcons[index]; }
+    void ClearRaidMarker(uint8 index) { m_targetIcons[index].Clear(); }
+    //end Dinkle
 
 protected:
     typedef MemberSlotList::iterator member_witerator;
@@ -264,8 +268,6 @@ public:
     void SetBattlegroundGroup(Battleground* bg);
     void SetBattlefieldGroup(Battlefield* bf);
     GroupJoinBattlegroundResult CanJoinBattlegroundQueue(Battleground const* bgTemplate, BattlegroundQueueTypeId bgQueueTypeId, uint32 MinPlayerCount, uint32 MaxPlayerCount, bool isRated, uint32 arenaSlot);
-
-    void DoMinimapPing(ObjectGuid sourceGuid, float mapX, float mapY);
 
     void ChangeMembersGroup(ObjectGuid guid, uint8 group);
     void SetTargetIcon(uint8 id, ObjectGuid whoGuid, ObjectGuid targetGuid);
@@ -360,15 +362,15 @@ protected:
     GroupType           m_groupType;
     Difficulty          m_dungeonDifficulty;
     Difficulty          m_raidDifficulty;
-    Battlefield*        m_bfGroup;
-    Battleground*       m_bgGroup;
+    Battlefield* m_bfGroup;
+    Battleground* m_bgGroup;
     ObjectGuid          m_targetIcons[TARGETICONCOUNT];
     LootMethod          m_lootMethod;
     ItemQualities       m_lootThreshold;
     ObjectGuid          m_looterGuid;
     ObjectGuid          m_masterLooterGuid;
     Rolls               RollId;
-    uint8*              m_subGroupsCounts;
+    uint8* m_subGroupsCounts;
     ObjectGuid          m_guid;
     uint32              m_counter;                      // used only in SMSG_GROUP_LIST
     uint32              m_maxEnchantingLevel;
@@ -379,3 +381,4 @@ protected:
     DifficultyPreventionChangeType _difficultyChangePreventionType;
 };
 #endif
+

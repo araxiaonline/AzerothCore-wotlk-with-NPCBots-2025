@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -70,19 +70,19 @@ public:
         {
             context.SetGroup(GROUP_FROST);
 
-            DoCastRandomTarget(SPELL_ICEBOLT);
+            CastSpellOnRandomTarget(SPELL_ICEBOLT, 80.f);
             context.Repeat(9s, 15s);
         }).Schedule(12s, 17s, [this](TaskContext context)
         {
             context.SetGroup(GROUP_FROST);
 
-            if (DoCastRandomTarget(SPELL_FROST_NOVA, 0, 45.f) == SPELL_CAST_OK)
+            if (DoCastRandomTarget(SPELL_FROST_NOVA, 0, 45.f, false) == SPELL_CAST_OK)
                 Talk(SAY_NOVA);
 
             context.Repeat(25s, 30s);
         }).Schedule(21s, 28s, [this](TaskContext context)
         {
-            if (DoCastRandomTarget(SPELL_DEATH_AND_DECAY, 0, 40.f) == SPELL_CAST_OK)
+            if (DoCastRandomTarget(SPELL_DEATH_AND_DECAY, 0, 40.f, false) == SPELL_CAST_OK)
             {
                 Talk(SAY_DECAY);
                 context.DelayGroup(GROUP_FROST, 15s);
@@ -101,7 +101,7 @@ public:
         Talk(SAY_ONSPAWN, 1200ms);
 
         if (action == DATA_WINTERCHILL)
-            me->GetMotionMaster()->MoveWaypoint(urand(ALLIANCE_BASE_CHARGE_1, ALLIANCE_BASE_CHARGE_3), false);
+            me->GetMotionMaster()->MovePath(urand(ALLIANCE_BASE_CHARGE_1, ALLIANCE_BASE_CHARGE_3), false);
     }
 
     void PathEndReached(uint32 pathId) override
@@ -113,7 +113,7 @@ public:
         case ALLIANCE_BASE_CHARGE_3:
             me->m_Events.AddEventAtOffset([this]()
             {
-                me->GetMotionMaster()->MoveWaypoint(urand(ALLIANCE_BASE_PATROL_1, ALLIANCE_BASE_PATROL_3), true);
+                me->GetMotionMaster()->MovePath(urand(ALLIANCE_BASE_PATROL_1, ALLIANCE_BASE_PATROL_3), true);
             }, 1s);
             break;
         }
@@ -121,7 +121,7 @@ public:
 
     void KilledUnit(Unit* victim) override
     {
-        if (!_recentlySpoken && victim->IsPlayer())
+        if (!_recentlySpoken && (victim->IsPlayer() || !_recentlySpoken && victim->ToCreature()->IsNPCBot()))
         {
             Talk(SAY_ONSLAY);
             _recentlySpoken = true;
@@ -137,6 +137,24 @@ public:
     {
         Talk(SAY_ONDEATH);
         BossAI::JustDied(killer);
+    }
+
+    void CastSpellOnRandomTarget(uint32 spellId, float range)
+    {
+        std::list<Unit*> targets;
+        Acore::AnyUnitInObjectRangeCheck check(me, range);
+        Acore::UnitListSearcher<Acore::AnyUnitInObjectRangeCheck> searcher(me, targets, check);
+        Cell::VisitAllObjects(me, searcher, range);
+
+        targets.remove_if([this](Unit* unit) -> bool {
+            return !unit->IsAlive() || unit == me->GetVictim() || !(unit->GetTypeId() == TYPEID_PLAYER || (unit->GetTypeId() == TYPEID_UNIT && static_cast<Creature*>(unit)->IsNPCBot()));
+            });
+
+        if (!targets.empty())
+        {
+            Unit* target = Acore::Containers::SelectRandomContainerElement(targets);
+            DoCast(target, spellId);
+        }
     }
 
 private:

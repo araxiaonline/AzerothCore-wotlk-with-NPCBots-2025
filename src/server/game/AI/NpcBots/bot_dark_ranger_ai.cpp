@@ -31,7 +31,8 @@ enum DarkRangerBaseSpells
     AUTO_SHOT_1                         = 75,
     BLACK_ARROW_1                       = SPELL_BLACK_ARROW,
     DRAIN_LIFE_1                        = SPELL_DRAIN_LIFE,
-    SILENCE_1                           = SPELL_SILENCE
+    SILENCE_1                           = SPELL_SILENCE,
+    SPELL_ID_THORIUM_GRENADE            = 19769
 };
 enum DarkRangerPassives
 {
@@ -39,7 +40,7 @@ enum DarkRangerPassives
 enum DarkRangerSpecial
 {
     DRAINLIFE_COST                      = 75 * 5,
-    MAX_MINIONS                         = 5,
+    MAX_MINIONS                         = 4,
 
     SPELL_SPAWN_ANIM                    = 25035,
     SPELL_BLOODY_EXPLOSION              = 36599,
@@ -47,6 +48,8 @@ enum DarkRangerSpecial
 
     MODEL_BLOODY_BONES                  = 25538
 };
+
+const uint32 THORIUM_GRENADE_SPELL_ID = 19769;
 
 static const uint32 Darkranger_spells_damage_arr[] =
 { BLACK_ARROW_1, DRAIN_LIFE_1 };
@@ -160,6 +163,24 @@ public:
         {
             if (!GlobalUpdate(diff))
                 return;
+            if (IsSpellReady(THORIUM_GRENADE_SPELL_ID, diff))
+            {
+                std::list<Creature*> targets;
+                me->GetCreaturesWithEntryInRange(targets, 35.0f, 15555);
+
+                for (Creature* target : targets)
+                {
+                    if (!target->IsAlive() || me->IsFriendlyTo(target))
+                        continue;
+
+                    if (me->IsWithinDistInMap(target, 35.0f))
+                    {
+                        me->CastSpell(target, THORIUM_GRENADE_SPELL_ID, true);
+                        SetSpellCooldown(THORIUM_GRENADE_SPELL_ID, 3000);
+                        break;
+                    }
+                }
+            }
 
             DoVehicleActions(diff);
             if (!CanBotAttackOnVehicle())
@@ -291,7 +312,7 @@ public:
             float pctbonus = 1.0f;
             //Black Arrow on targets < 20% hp (only direct damage)
             if (baseId == BLACK_ARROW_1 && damageinfo.target && damageinfo.target->HasAuraState(AURA_STATE_HEALTHLESS_20_PERCENT))
-                pctbonus *= 5.f;
+                pctbonus *= 3.8f;
 
             damage = int32(damage * pctbonus + flat_mod);
         }
@@ -400,9 +421,9 @@ public:
                 _blackArrowKillGUID = victim->GetGUID();
         }
 
-        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType, SpellSchoolMask damageSchoolMask) override
+        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType) override
         {
-            bot_ai::DamageDealt(victim, damage, damageType, damageSchoolMask);
+            bot_ai::DamageDealt(victim, damage, damageType);
         }
 
         void DamageTaken(Unit* u, uint32& /*damage*/, DamageEffectType /*damageType*/, SpellSchoolMask /*schoolMask*/) override

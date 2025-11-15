@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -16,7 +16,6 @@
  */
 
 #include "AchievementCriteriaScript.h"
-#include "AreaDefines.h"
 #include "CreatureScript.h"
 #include "PassiveAI.h"
 #include "Player.h"
@@ -58,7 +57,8 @@ enum HodirSpellData
     SPELL_ICE_SHARDS_BIG                = 65370,
     SPELL_SNOWDRIFT                     = 62463,
 
-    SPELL_FROZEN_BLOWS                  = 62478,
+    SPELL_FROZEN_BLOWS_10               = 62478,
+    SPELL_FROZEN_BLOWS_25               = 63512,
 
     // Helpers:
     SPELL_PRIEST_DISPELL_MAGIC          = 63499,
@@ -69,8 +69,9 @@ enum HodirSpellData
     SPELL_DRUID_STARLIGHT_AREA_AURA     = 62807,
 
     SPELL_SHAMAN_LAVA_BURST             = 61924,
-    SPELL_SHAMAN_STORM_CLOUD            = 65123,
-    SPELL_SHAMAN_STORM_POWER            = 63711,
+    SPELL_SHAMAN_STORM_CLOUD_10         = 65123,
+    SPELL_SHAMAN_STORM_CLOUD_25         = 65133,
+    SPELL_SHAMAN_STORM_POWER_10         = 63711,
     SPELL_SHAMAN_STORM_POWER_25         = 65134,
 
     SPELL_MAGE_FIREBALL                 = 61909,
@@ -120,10 +121,11 @@ enum HodirEvents
     EVENT_FROZEN_BLOWS                  = 2,
     EVENT_BERSERK                       = 3,
     EVENT_FREEZE                        = 4,
-    EVENT_SMALL_ICICLES_ENABLE          = 5,
-    EVENT_HARD_MODE_MISSED              = 6,
-    EVENT_DESPAWN_CHEST                 = 7,
-    EVENT_FAIL_HM                       = 8,
+    EVENT_STOP_SMALL_ICICLES = 5,
+    EVENT_SMALL_ICICLES_ENABLE = 6,
+    EVENT_HARD_MODE_MISSED = 7,
+    EVENT_DESPAWN_CHEST = 8,
+    EVENT_FAIL_HM = 9,
 
     EVENT_TRY_FREE_HELPER               = 10,
     EVENT_PRIEST_DISPELL_MAGIC          = 11,
@@ -150,6 +152,9 @@ enum HodirText
     TEXT_EMOTE_FREEZE   = 7,
     TEXT_EMOTE_BLOW     = 8,
 };
+
+#define SPELL_FROZEN_BLOWS              RAID_MODE(SPELL_FROZEN_BLOWS_10, SPELL_FROZEN_BLOWS_25)
+#define SPELL_SHAMAN_STORM_CLOUD        RAID_MODE(SPELL_SHAMAN_STORM_CLOUD_10, SPELL_SHAMAN_STORM_CLOUD_25)
 
 enum HodirSounds
 {
@@ -267,7 +272,8 @@ public:
             me->CastSpell(me, SPELL_BITING_COLD_BOSS_AURA, true);
             SmallIcicles(true);
             events.Reset();
-            events.ScheduleEvent(EVENT_FLASH_FREEZE, 48s, 49s);
+            //events.ScheduleEvent(EVENT_FLASH_FREEZE, 48s, 49s);
+            events.ScheduleEvent(EVENT_STOP_SMALL_ICICLES, 30s, 45s);
             events.ScheduleEvent(EVENT_FREEZE, 17s, 20s);
             events.ScheduleEvent(EVENT_BERSERK, 8min);
             events.ScheduleEvent(EVENT_HARD_MODE_MISSED, 3min);
@@ -469,16 +475,18 @@ public:
                         events.RescheduleEvent(EVENT_FREEZE, 17s, 20s);
                     }
                     break;
-                case EVENT_SMALL_ICICLES_ENABLE:
-                    {
-                        SmallIcicles(true);
-                    }
-                    break;
+                case EVENT_STOP_SMALL_ICICLES:
+                {
+                    SmallIcicles(false);
+                    events.ScheduleEvent(EVENT_SMALL_ICICLES_ENABLE, Is25ManRaid() ? 24s : 48s);
+                    events.ScheduleEvent(EVENT_STOP_SMALL_ICICLES, 60s, 75s);
+                }
+                break;
                 case EVENT_FROZEN_BLOWS:
                     {
                         Talk(TEXT_EMOTE_BLOW);
                         Talk(TEXT_STALACTITE);
-                        me->CastSpell(me, SPELL_FROZEN_BLOWS, true);
+                        me->CastSpell(me, Is25ManRaid()? SPELL_FROZEN_BLOWS_25 : SPELL_FROZEN_BLOWS_10, true);
                     }
                     break;
                 case EVENT_FREEZE:
@@ -699,18 +707,18 @@ public:
                     if (Unit* s = me->ToTempSummon()->GetSummonerUnit())
                     {
                         if ((s->IsPlayer() && !s->HasAura(SPELL_FLASH_FREEZE_TRAPPED_PLAYER)) || (s->IsCreature() && !s->HasAura(SPELL_FLASH_FREEZE_TRAPPED_NPC)))
-                            me->DespawnOrUnsummon(2s);
+                            me->DespawnOrUnsummon(2000);
                         else if (s->IsPlayer())
                             if (InstanceScript* instanceScript = me->GetInstanceScript())
                                 if (instanceScript->GetData(TYPE_HODIR) == NOT_STARTED)
                                 {
                                     s->CastSpell(s, SPELL_FLASH_FREEZE_INSTAKILL, true);
-                                    me->DespawnOrUnsummon(2s);
+                                    me->DespawnOrUnsummon(2000);
                                 }
                     }
                     else
                     {
-                        me->DespawnOrUnsummon(2s);
+                        me->DespawnOrUnsummon(2000);
                     }
                 }
             }
@@ -1003,9 +1011,8 @@ public:
 
         void SpellHitTarget(Unit* target, SpellInfo const* spell) override
         {
-            uint32 spellid = sSpellMgr->GetSpellIdForDifficulty(SPELL_SHAMAN_STORM_CLOUD, me);
-            if (target && spell->Id == spellid)
-                if (Aura* a = target->GetAura(spellid, me->GetGUID()))
+            if (target && spell->Id == SPELL_SHAMAN_STORM_CLOUD)
+                if (Aura* a = target->GetAura(SPELL_SHAMAN_STORM_CLOUD, me->GetGUID()))
                     a->SetStackAmount(spell->StackAmount);
         }
 
@@ -1040,13 +1047,10 @@ public:
                     events.Repeat(2600ms);
                     break;
                 case EVENT_SHAMAN_STORM_CLOUD:
-                    {
-                        uint32 spellid = sSpellMgr->GetSpellIdForDifficulty(SPELL_SHAMAN_STORM_CLOUD, me);
-                        if (Player* target = ScriptedAI::SelectTargetFromPlayerList(35.0f, spellid))
-                            me->CastSpell(target, spellid, false);
-                        events.Repeat(30s);
-                        break;
-                    }
+                    if (Player* target = ScriptedAI::SelectTargetFromPlayerList(35.0f, SPELL_SHAMAN_STORM_CLOUD))
+                        me->CastSpell(target, SPELL_SHAMAN_STORM_CLOUD, false);
+                    events.Repeat(30s);
+                    break;
             }
         }
 
@@ -1244,7 +1248,7 @@ class spell_hodir_biting_cold_player_aura : public AuraScript
     {
         if (Unit* target = GetTarget())
         {
-            if (target->GetMapId() == MAP_ULDUAR)
+            if (target->GetMapId() == 603)
                 SetDuration(GetMaxDuration());
             if (target->HasAura(SPELL_FLASH_FREEZE_TRAPPED_PLAYER))
                 return;
@@ -1402,7 +1406,7 @@ class spell_hodir_storm_power_aura : public AuraScript
     void OnApply(AuraEffect const*  /*aurEff*/, AuraEffectHandleModes /*mode*/)
     {
         if (Unit* caster = GetCaster())
-            if (Aura* a = caster->GetAura(sSpellMgr->GetSpellIdForDifficulty(SPELL_SHAMAN_STORM_CLOUD, caster)))
+            if (Aura* a = caster->GetAura(GetId() == SPELL_SHAMAN_STORM_POWER_10 ? SPELL_SHAMAN_STORM_CLOUD_10 : SPELL_SHAMAN_STORM_CLOUD_25))
                 a->ModStackAmount(-1);
     }
 
@@ -1426,14 +1430,14 @@ class spell_hodir_storm_cloud_aura : public AuraScript
 
     bool Validate(SpellInfo const* /*spellInfo*/) override
     {
-        return ValidateSpellInfo({ SPELL_SHAMAN_STORM_POWER });
+        return ValidateSpellInfo({ SPELL_SHAMAN_STORM_CLOUD_10, SPELL_SHAMAN_STORM_POWER_10, SPELL_SHAMAN_STORM_POWER_25 });
     }
 
     void HandleEffectPeriodic(AuraEffect const*   /*aurEff*/)
     {
         PreventDefaultAction();
         if (Unit* target = GetTarget())
-            target->CastSpell((Unit*)nullptr, (sSpellMgr->GetSpellIdForDifficulty(SPELL_SHAMAN_STORM_POWER, GetCaster())), true);
+            target->CastSpell((Unit*)nullptr, (GetId() == SPELL_SHAMAN_STORM_CLOUD_10 ? SPELL_SHAMAN_STORM_POWER_10 : SPELL_SHAMAN_STORM_POWER_25), true);
     }
 
     void Register() override
@@ -1527,7 +1531,7 @@ public:
 
     bool OnCheck(Player* player, Unit*  /*target*/, uint32 /*criteria_id*/) override
     {
-        return player && player->HasAllAuras(SPELL_MAGE_TOASTY_FIRE_AURA, SPELL_DRUID_STARLIGHT_AREA_AURA, SPELL_SHAMAN_STORM_POWER);
+        return player && player->HasAllAuras(SPELL_MAGE_TOASTY_FIRE_AURA, SPELL_DRUID_STARLIGHT_AREA_AURA, SPELL_SHAMAN_STORM_POWER_10);
     }
 };
 

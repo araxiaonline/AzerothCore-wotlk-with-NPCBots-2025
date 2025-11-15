@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -54,9 +54,12 @@ enum Spells
 
     // FIGHT
     SPELL_GIFT_OF_THE_HERALD                = 56219,
-    SPELL_CYCLONE_STRIKE                    = 56855,
-    SPELL_LIGHTNING_BOLT                    = 56891,
-    SPELL_THUNDERSHOCK                      = 56926,
+    SPELL_CYCLONE_STRIKE                    = 56855, // Self
+    SPELL_CYCLONE_STRIKE_H                  = 60030,
+    SPELL_LIGHTNING_BOLT                    = 56891, // 40Y
+    SPELL_LIGHTNING_BOLT_H                  = 60032, // 40Y
+    SPELL_THUNDERSHOCK                      = 56926, // 30Y
+    SPELL_THUNDERSHOCK_H                    = 60029  // 30Y
 };
 
 enum Events
@@ -170,7 +173,7 @@ struct boss_jedoga_shadowseeker : public BossAI
         me->AddUnitState(UNIT_STATE_NO_ENVIRONMENT_UPD);
         me->SetDisableGravity(true);
         me->SetHover(true);
-        me->GetMotionMaster()->MovePoint(POINT_INITIAL, JedogaPosition[0], FORCED_MOVEMENT_NONE, 0.f, false);
+        me->GetMotionMaster()->MovePoint(POINT_INITIAL, JedogaPosition[0], false);
 
         _Reset();
         events.SetPhase(PHASE_NORMAL);
@@ -244,7 +247,7 @@ struct boss_jedoga_shadowseeker : public BossAI
                 DespawnOOCSummons();
                 DoCastSelf(SPELL_HOVER_FALL);
                 me->GetMotionMaster()->MoveIdle();
-                me->GetMotionMaster()->MovePoint(POINT_DOWN, JedogaPosition[1], FORCED_MOVEMENT_NONE, 0.f, false);
+                me->GetMotionMaster()->MovePoint(POINT_DOWN, JedogaPosition[1], false);
 
                 if (!combatSummonsSummoned)
                 {
@@ -394,7 +397,7 @@ struct boss_jedoga_shadowseeker : public BossAI
                         volunteerWork = false;
                         me->GetMotionMaster()->Clear();
                         DoCastSelf(SPELL_HOVER_FALL);
-                        me->GetMotionMaster()->MovePoint(POINT_DOWN, JedogaPosition[1], FORCED_MOVEMENT_NONE, 0.f, false);
+                        me->GetMotionMaster()->MovePoint(POINT_DOWN, JedogaPosition[1], false);
                     }
                 }
                 break;
@@ -458,7 +461,7 @@ struct boss_jedoga_shadowseeker : public BossAI
                 // Normal phase
                 case EVENT_JEDOGA_CYCLONE:
                 {
-                    DoCastSelf(SPELL_CYCLONE_STRIKE, false);
+                    DoCastSelf(DUNGEON_MODE(SPELL_CYCLONE_STRIKE, SPELL_CYCLONE_STRIKE_H), false);
                     events.Repeat(10s, 14s);
                     break;
                 }
@@ -466,7 +469,7 @@ struct boss_jedoga_shadowseeker : public BossAI
                 {
                     if (Unit* pTarget = SelectTarget(SelectTargetMethod::Random, 0, 100, true))
                     {
-                        DoCast(pTarget, SPELL_LIGHTNING_BOLT, false);
+                        DoCast(pTarget, DUNGEON_MODE(SPELL_LIGHTNING_BOLT, SPELL_LIGHTNING_BOLT_H), false);
                     }
                     events.Repeat(11s, 15s);
                     break;
@@ -475,7 +478,7 @@ struct boss_jedoga_shadowseeker : public BossAI
                 {
                     if (Unit* pTarget = SelectTarget(SelectTargetMethod::Random, 0, 100, true))
                     {
-                        DoCast(pTarget, SPELL_THUNDERSHOCK, false);
+                        DoCast(pTarget, DUNGEON_MODE(SPELL_THUNDERSHOCK, SPELL_THUNDERSHOCK_H), false);
                     }
 
                     events.Repeat(16s, 22s);
@@ -501,7 +504,7 @@ struct boss_jedoga_shadowseeker : public BossAI
                     summons.DespawnEntry(NPC_JEDOGA_CONTROLLER);
                     DoCastSelf(SPELL_HOVER_FALL);
                     me->GetMotionMaster()->Clear();
-                    me->GetMotionMaster()->MovePoint(POINT_DOWN, JedogaPosition[1], FORCED_MOVEMENT_NONE, 0.f, false);
+                    me->GetMotionMaster()->MovePoint(POINT_DOWN, JedogaPosition[1], false);
                     break;
                 }
                 case EVENT_JEDGA_START_RITUAL:
@@ -660,7 +663,7 @@ struct npc_twilight_volunteer : public ScriptedAI
                 me->GetMotionMaster()->Clear();
                 me->SetHomePosition(JedogaPosition[2]);
                 me->SetWalk(true);
-                me->GetMotionMaster()->MovePoint(POINT_RITUAL, JedogaPosition[2], FORCED_MOVEMENT_NONE, 0.f, false);
+                me->GetMotionMaster()->MovePoint(POINT_RITUAL, JedogaPosition[2], false);
 
                 if (Creature* jedoga = pInstance->GetCreature(DATA_JEDOGA_SHADOWSEEKER))
                 {

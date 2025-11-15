@@ -109,12 +109,8 @@ class AC_GAME_API BotMgr
         using delayed_teleport_mutex_type = std::mutex;
         using delayed_teleport_lock_type = std::unique_lock<delayed_teleport_mutex_type>;
 
-        explicit BotMgr(Player* const master);
+        BotMgr(Player* const master);
         ~BotMgr();
-        BotMgr(BotMgr const&) = delete;
-        BotMgr(BotMgr&&) = delete;
-        BotMgr& operator=(BotMgr const&) = delete;
-        BotMgr& operator=(BotMgr&&) = delete;
 
         Player* GetOwner() const { return _owner; }
 
@@ -152,7 +148,9 @@ class AC_GAME_API BotMgr
         static bool IsBotHKEnabled();
         static bool IsBotHKMessageEnabled();
         static bool IsBotHKAchievementsEnabled();
+        static bool IsManaRegenCheatEnabled();
         static uint8 GetMaxClassBots();
+        static uint8 GetMaxDarkRangerBots();
         static uint8 GetMaxAccountBots();
         static uint32 GetGearBankCapacity();
         static uint32 GetGearBankEquipmentSetsCount();
@@ -179,6 +177,11 @@ class AC_GAME_API BotMgr
         static float GetBotWandererDamageMod();
         static float GetBotWandererHealingMod();
         static float GetBotWandererHPMod();
+        static float GetBotHPRaidMod();
+        static float GetBotManaMod();
+        static float GetBotRatesClassic();
+        static float GetBotRatesTBC();
+        static float GetTankHPModifier();
         static float GetBotWandererSpeedMod();
         static float GetBotWandererXPGainMod();
         static PctBrackets GetBotWandererLevelBrackets();
@@ -267,7 +270,7 @@ class AC_GAME_API BotMgr
         bool HasBotPetType(uint32 petType) const;
         bool IsBeingResurrected(WorldObject const* corpse) const;
 
-        static uint32 GetNpcBotCostRent(uint8 level, uint8 botclass);
+        static uint32 GetNpcBotCostRent();
         static uint32 GetNpcBotCostHire(uint8 level, uint8 botclass);
         static std::string GetNpcBotCostStr(uint8 level, uint8 botclass);
         static uint8 BotClassByClassName(std::string const& className);
@@ -297,7 +300,7 @@ class AC_GAME_API BotMgr
         void RemoveBot(ObjectGuid guid, uint8 removetype = BOT_REMOVE_LOGOUT);
         void UnbindBot(ObjectGuid guid);
         [[nodiscard]] BotAddResult RebindBot(Creature* bot);
-        [[nodiscard]] BotAddResult AddBot(Creature* bot);
+        [[nodiscard]] BotAddResult AddBot(Creature* bot, bool costMoney);
         bool AddBotToGroup(Creature* bot);
         void RemoveBotFromBGQueue(Creature const* bot);
         bool RemoveBotFromGroup(Creature* bot);
@@ -349,6 +352,10 @@ class AC_GAME_API BotMgr
 
         //TELEPORT BETWEEN MAPS
         //CONFIRMEND UNSAFE (charmer,owner)
+        static void SetRandomBotTalentsForGroup(Creature const* bot, uint32 botrole);
+
+        static uint32 GetBotTeam(Creature const* bot);
+
         static void TeleportBot(Creature* bot, Map* newMap, Position const* pos, bool quick = false, bool reset = false, bot_ai* detached_ai = nullptr);
 
         AoeSpotsVec const& GetAoeSpots() const { return _aoespots; }
@@ -367,7 +374,6 @@ class AC_GAME_API BotMgr
         static void HandleDelayedTeleports();
 
     private:
-        static uint32 _normalizedCostForLevel(uint32 cost_base, uint8 bot_class, uint8 level);
         static void _teleportBot(Creature* bot, Map* newMap, float x, float y, float z, float ori, bool quick, bool reset, bot_ai* detached_ai);
         static void _reviveBot(Creature* bot, WorldLocation* dest = nullptr);
         void _setBotExactAttackRange(uint8 exactRange);
@@ -375,6 +381,7 @@ class AC_GAME_API BotMgr
 
         Player* const _owner;
         BotMap _bots;
+        std::list<ObjectGuid> _removeList;
         std::list<std::pair<ObjectGuid, BotRemoveType>> _delayedRemoveList;
         DPSTracker* const _dpstracker;
         NpcBotMgrData* _data;

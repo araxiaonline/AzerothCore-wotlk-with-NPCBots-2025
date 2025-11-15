@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -60,6 +60,31 @@ public:
             events.ScheduleEvent(EVENT_SHAZZRAH_GATE, 30s);
         }
 
+        void Reset() override
+        {
+            BossAI::Reset();
+            DoCastSelf(875167, true);
+            if (Creature* npc = me->FindNearestCreature(83000, 500.0f, false))
+            {
+                if (!npc->IsAlive())
+                    npc->Respawn();
+            }
+        }
+
+        void JustDied(Unit* /*killer*/) override
+        {
+            _JustDied();
+            Map::PlayerList const& players = me->GetMap()->GetPlayers();
+            for (auto const& playerPair : players)
+            {
+                Player* player = playerPair.GetSource();
+                if (player)
+                {
+                    DistributeChallengeRewards(player, me, 1, false);
+                }
+            }
+        }
+
         void ExecuteEvent(uint32 eventId) override
         {
             switch (eventId)
@@ -67,7 +92,7 @@ public:
                 case EVENT_ARCANE_EXPLOSION:
                 {
                     DoCastVictim(SPELL_ARCANE_EXPLOSION);
-                    events.Repeat(4s, 5s);
+                    events.RepeatEvent(urand(4000, 5000));
                     break;
                 }
                 case EVENT_SHAZZRAH_CURSE:
@@ -76,26 +101,26 @@ public:
                     {
                         DoCast(target, SPELL_SHAZZRAH_CURSE);
                     }
-                    events.Repeat(23s, 26s);
+                    events.RepeatEvent(urand(23000, 26000));
                     break;
                 }
                 case EVENT_MAGIC_GROUNDING:
                 {
                     DoCastSelf(SPELL_MAGIC_GROUNDING);
-                    events.Repeat(7s, 9s);
+                    events.RepeatEvent(urand(7000, 9000));
                     break;
                 }
                 case EVENT_COUNTERSPELL:
                 {
                     DoCastAOE(SPELL_COUNTERSPELL);
-                    events.Repeat(15s, 18s);
+                    events.RepeatEvent(urand(15000, 18000));
                     break;
                 }
                 case EVENT_SHAZZRAH_GATE:
                 {
                     DoCastAOE(SPELL_SHAZZRAH_GATE_DUMMY);
                     events.RescheduleEvent(EVENT_ARCANE_EXPLOSION, 3s, 6s);
-                    events.Repeat(45s);
+                    events.RepeatEvent(45000);
                     break;
                 }
             }

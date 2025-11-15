@@ -164,8 +164,11 @@ enum RogueSpecial
     MIND_NUMBING_POISON_PROC_1          = 5760,
     //ANESTHETIC_POISON_PROC_1            = 26688,
 
-    THISTLE_TEA                         = 9512 //'Restore Energy' 1 min cd
+    THISTLE_TEA                         = 9512, //'Restore Energy' 1 min cd
+    SPELL_ID_THORIUM_GRENADE            = 19769
 };
+
+const uint32 THORIUM_GRENADE_SPELL_ID = 19769;
 
 static const uint32 Rogue_spells_damage_arr[] =
 { AMBUSH_1, BACKSTAB_1, DEADLY_THROW_1, EVISCERATE_1, ENVENOM_1, FAN_OF_KNIVES_1, GARROTE_1, GHOSTLY_STRIKE_1, GOUGE_1,
@@ -284,6 +287,25 @@ public:
                     DrinkPotion(false);
             }
 
+            if (IsSpellReady(THORIUM_GRENADE_SPELL_ID, diff))
+            {
+                std::list<Creature*> targets;
+                me->GetCreaturesWithEntryInRange(targets, 35.0f, 15555);
+
+                for (Creature* target : targets)
+                {
+                    if (!target->IsAlive() || me->IsFriendlyTo(target))
+                        continue;
+
+                    if (me->IsWithinDistInMap(target, 35.0f))
+                    {
+                        me->CastSpell(target, THORIUM_GRENADE_SPELL_ID, true);
+                        SetSpellCooldown(THORIUM_GRENADE_SPELL_ID, 3000);
+                        break;
+                    }
+                }
+            }
+
             CheckRacials(diff);
 
             if (!me->IsInCombat())
@@ -363,12 +385,40 @@ public:
                 if (doCast(mytar, GetSpell(PREMEDITATION_1)))
                 {}
             }
-            //Kick
+            // Kick
             if (IsSpellReady(KICK_1, diff, false) && !stealthed && dist <= 5 && Rand() < 70 &&
-                energy >= ecost(KICK_1) && mytar->IsNonMeleeSpellCast(false,false,true))
+                energy >= ecost(KICK_1) && mytar->IsNonMeleeSpellCast(false, false, true))
             {
                 if (doCast(mytar, GetSpell(KICK_1)))
-                    getenergy();
+                {
+                    if (!IsWanderer()) // Check if not a wanderer before speaking
+                    {
+                        // Player-like notifications for a successful Kick
+                        const char* kickMessages[] = {
+                            "|cFFFFFFFFWhoops, %s! Looks like your spell got a boot to the face!|r",
+                            "|cFFFFFFFFHey %s, bet you didn't see that kick coming!|r",
+                            "|cFFFFFFFFNot today, %s! Cut that casting out.|r",
+                            "|cFFFFFFFFBoom, %s! Kicked your spell into next week.|r",
+                            "|cFFFFFFFF%s, your spellcasting's been officially booted!|r",
+                            "|cFFFFFFFFDenied, %s! Quick feet, quicker wits.|r",
+                            "|cFFFFFFFFTry again, %s! That kick was just the start.|r",
+                            "|cFFFFFFFFOops, did my boot interrupt your spell, %s?|r",
+                            "|cFFFFFFFFHey %s, how's the view from Interrupt City?|r",
+                            "|cFFFFFFFFSpellcasting's a no-go, %s! Got my kick in first.|r",
+                        };
+
+                        // Select a random message and format it with the target's name
+                        int randomIndex = urand(0, sizeof(kickMessages) / sizeof(char*) - 1);
+                        const char* selectedMessage = kickMessages[randomIndex];
+
+                        char messageBuffer[256];
+                        snprintf(messageBuffer, sizeof(messageBuffer), selectedMessage, mytar->GetName().c_str());
+
+                        // Broadcast the message in a player-like manner
+                        me->Say(messageBuffer, LANG_UNIVERSAL, me->ToUnit());
+                    }
+                    getenergy(); // Refresh energy after a successful Kick
+                }
             }
             //Killing Spree
             if (IsSpellReady(KILLING_SPREE_1, diff) && !stealthed && !shadowdance && HasRole(BOT_ROLE_DPS) &&
@@ -784,7 +834,7 @@ public:
 
             if (needChooseOHEnchant && ohReady)
                 ohEnchant = (GetSpec() == BOT_SPEC_ROGUE_ASSASINATION && GetSpell(ENVENOM_1)) ? DEADLY_POISON_1 :
-                    lvl >= 68 ? ANESTHETIC_POISON_1 :
+                    lvl >= 60 ? ANESTHETIC_POISON_1 :
                     lvl >= 40 ? INSTANT_POISON_1 :
                     lvl >= 20 ? CRIPPLING_POISON_1 : 0;
 
@@ -973,8 +1023,18 @@ public:
             }
 
             if (target)
+            {
                 if (doCast(target, GetSpell(TRICKS_OF_THE_TRADE_1)))
+                {
+                    if (!IsWanderer()) 
+                    {
+                        char messageBuffer[128];
+                        snprintf(messageBuffer, sizeof(messageBuffer), "|cFFFFFFFFTricks cast on %s!|r", target->GetName().c_str());
+                        me->Say(messageBuffer, LANG_UNIVERSAL, me->ToUnit());
+                    }
                     return;
+                }
+            }
         }
 
         void CheckSprint(uint32 diff)
@@ -1701,9 +1761,9 @@ public:
             OnSpellHitTarget(target, spell);
         }
 
-        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType, SpellSchoolMask damageSchoolMask) override
+        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType) override
         {
-            bot_ai::DamageDealt(victim, damage, damageType, damageSchoolMask);
+            bot_ai::DamageDealt(victim, damage, damageType);
         }
 
         void DamageTaken(Unit* u, uint32& /*damage*/, DamageEffectType /*damageType*/, SpellSchoolMask /*schoolMask*/) override

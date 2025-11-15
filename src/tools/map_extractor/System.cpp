@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -23,7 +23,6 @@
 #include <filesystem>
 #include <set>
 #include <unordered_map>
-#include <cstring>
 
 #ifdef _WIN32
 #include "direct.h"
@@ -111,6 +110,36 @@ const char* CONF_mpq_list[] =
     "patch-3.MPQ",
     "patch-4.MPQ",
     "patch-5.MPQ",
+    "patch-6.MPQ",
+    "patch-7.MPQ",
+    "patch-8.MPQ",
+    "patch-9.MPQ",
+    "patch-A.MPQ",
+    "patch-B.MPQ",
+    "patch-C.MPQ",
+    "patch-D.MPQ",
+    "patch-E.MPQ",
+    "patch-F.MPQ",
+    "patch-G.MPQ",
+    "patch-H.MPQ",
+    "patch-I.MPQ",
+    "patch-J.MPQ",
+    "patch-K.MPQ",
+    "patch-L.MPQ",
+    "patch-M.MPQ",
+    "patch-N.MPQ",
+    "patch-O.MPQ",
+    "patch-P.MPQ",
+    "patch-Q.MPQ",
+    "patch-R.MPQ",
+    "patch-S.MPQ",
+    "patch-T.MPQ",
+    "patch-U.MPQ",
+    "patch-V.MPQ",
+    "patch-W.MPQ",
+    "patch-X.MPQ",
+    "patch-Y.MPQ",
+    "patch-Z.MPQ"
 };
 
 static const char* const langs[] = {"enGB", "enUS", "deDE", "esES", "frFR", "koKR", "zhCN", "zhTW", "enCN", "enTW", "esMX", "ruRU" };
@@ -185,8 +214,7 @@ void HandleArgs(int argc, char* arg[])
             case 'i':
                 if (c + 1 < argc)                           // all ok
                 {
-                    std::strncpy(input_path, arg[(c++) + 1], MAX_PATH_LENGTH - 1);
-                    input_path[MAX_PATH_LENGTH - 1] = '\0';
+                    strcpy(input_path, arg[(c++) + 1]);
                 }
                 else
                 {
@@ -196,8 +224,7 @@ void HandleArgs(int argc, char* arg[])
             case 'o':
                 if (c + 1 < argc)                           // all ok
                 {
-                    std::strncpy(output_path, arg[(c++) + 1], MAX_PATH_LENGTH - 1);
-                    output_path[MAX_PATH_LENGTH - 1] = '\0';
+                    strcpy(output_path, arg[(c++) + 1]);
                 }
                 else
                 {
@@ -285,8 +312,7 @@ uint32 ReadMapDBC()
     for (uint32 x = 0; x < map_count; ++x)
     {
         map_ids[x].id = dbc.getRecord(x).getUInt(0);
-        std::strncpy(map_ids[x].name, dbc.getRecord(x).getString(1), sizeof(map_ids[x].name) - 1);
-        map_ids[x].name[sizeof(map_ids[x].name) - 1] = '\0';
+        strcpy(map_ids[x].name, dbc.getRecord(x).getString(1));
     }
     printf("Done! (%u maps loaded)\n", (uint32)map_count);
     return map_count;

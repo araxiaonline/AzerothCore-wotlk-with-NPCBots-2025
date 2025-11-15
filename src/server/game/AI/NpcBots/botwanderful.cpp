@@ -58,14 +58,16 @@ WanderNode* WanderNode::FindInMapWPs(uint32 mapId, Creature const* creature)
 
     lock_type lock(*GetLock());
 
-    auto cim = ALL_WPS_PER_MAP.find(mapId);
-    if (cim == ALL_WPS_PER_MAP.cend())
+    auto mapItr = ALL_WPS_PER_MAP.find(mapId);
+    if (mapItr == ALL_WPS_PER_MAP.end())
         return nullptr;
-    auto ci = std::find_if(ALL_WPS_PER_MAP.at(mapId).cbegin(), ALL_WPS_PER_MAP.at(mapId).cend(), [=](WanderNode const* wp) {
-        return wp->GetCreature() == creature;
-    });
 
-    return ci == ALL_WPS_PER_MAP.at(mapId).cend() ? nullptr : *ci;
+    auto& wpsInMap = mapItr->second;
+    auto wpItr = std::find_if(wpsInMap.begin(), wpsInMap.end(), [=](WanderNode const* wp) {
+        return wp->GetCreature() == creature;
+        });
+
+    return wpItr == wpsInMap.end() ? nullptr : *wpItr;
 }
 
 WanderNode* WanderNode::FindInMapWPs(uint32 mapId, uint32 wpId)
@@ -392,7 +394,7 @@ void WanderNode::Link(WanderNodeLink&& wpl)
     if (!HasLink(wpl))
     {
         _links.push_back(std::move(wpl));
-        _links.back().wp->_setLinkedBy(this);
+        wpl.wp->_setLinkedBy(this);
         SetupLinkFromAura();
     }
 }

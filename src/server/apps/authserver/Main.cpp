@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -29,7 +29,6 @@
 #include "Config.h"
 #include "DatabaseEnv.h"
 #include "DatabaseLoader.h"
-#include "GitRevision.h"
 #include "IPLocation.h"
 #include "IoContext.h"
 #include "Log.h"
@@ -76,7 +75,7 @@ int main(int argc, char** argv)
     auto vm = GetConsoleArguments(argc, argv, configFile);
 
     // exit if help or version is enabled
-    if (vm.count("help") || vm.count("version"))
+    if (vm.count("help"))
         return 0;
 
     // Add file and args in config
@@ -247,7 +246,7 @@ void KeepDatabaseAliveHandler(std::weak_ptr<boost::asio::steady_timer> dbPingTim
     {
         if (std::shared_ptr<boost::asio::steady_timer> dbPingTimer = dbPingTimerRef.lock())
         {
-            LOG_DEBUG("sql.driver", "Ping MySQL to keep connection alive");
+            LOG_INFO("server.authserver", "Ping MySQL to keep connection alive");
             LoginDatabase.KeepAlive();
 
             dbPingTimer->expires_at(Acore::Asio::SteadyTimer::GetExpirationTime(dbPingInterval));
@@ -278,8 +277,7 @@ variables_map GetConsoleArguments(int argc, char** argv, fs::path& configFile)
         ("help,h", "print usage message")
         ("version,v", "print version build info")
         ("dry-run,d", "Dry run")
-        ("config,c", value<fs::path>(&configFile)->default_value(fs::path(sConfigMgr->GetConfigPath() + std::string(_ACORE_REALM_CONFIG))), "use <arg> as configuration file")
-        ("config-policy", value<std::string>()->value_name("policy"), "override config severity policy (e.g. default=skip,critical_option=fatal)");
+        ("config,c", value<fs::path>(&configFile)->default_value(fs::path(sConfigMgr->GetConfigPath() + std::string(_ACORE_REALM_CONFIG))), "use <arg> as configuration file");
 
     variables_map variablesMap;
 
@@ -294,11 +292,13 @@ variables_map GetConsoleArguments(int argc, char** argv, fs::path& configFile)
     }
 
     if (variablesMap.count("help"))
+    {
         std::cout << all << "\n";
-    else if (variablesMap.count("version"))
-        std::cout << GitRevision::GetFullVersion() << "\n";
+    }
     else if (variablesMap.count("dry-run"))
+    {
         sConfigMgr->setDryRun(true);
+    }
 
     return variablesMap;
 }

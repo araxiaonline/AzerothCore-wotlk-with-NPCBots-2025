@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -125,7 +125,7 @@ public:
             std::bind(&Socket<T>::ProxyReadHeaderHandler, this->shared_from_this(), std::placeholders::_1, std::placeholders::_2));
     }
 
-    void AsyncReadWithCallback(void (T::*callback)(boost::system::error_code, std::size_t))
+    void AsyncReadWithCallback(void (T::* callback)(boost::system::error_code, std::size_t))
     {
         if (!IsOpen())
         {
@@ -241,7 +241,7 @@ private:
         uint8* readPointer = packet.GetReadPointer();
 
         const uint8 signatureSize = 12;
-        const uint8 expectedSignature[signatureSize] = {0x0D, 0x0A, 0x0D, 0x0A, 0x00, 0x0D, 0x0A, 0x51, 0x55, 0x49, 0x54, 0x0A};
+        const uint8 expectedSignature[signatureSize] = { 0x0D, 0x0A, 0x0D, 0x0A, 0x00, 0x0D, 0x0A, 0x51, 0x55, 0x49, 0x54, 0x0A };
         if (memcmp(packet.GetReadPointer(), expectedSignature, signatureSize) != 0)
         {
             _proxyHeaderReadingState = PROXY_HEADER_READING_STATE_FAILED;
@@ -261,7 +261,7 @@ private:
 
         const uint8 addressFamily = readPointer[13];
         const uint16 len = (readPointer[14] << 8) | readPointer[15];
-        if (static_cast<size_t>(len+16) > packet.GetActiveSize())
+        if (static_cast<size_t>(len + 16) > packet.GetActiveSize())
         {
             AsyncReadProxyHeader();
             return;
@@ -270,7 +270,7 @@ private:
         // Connection created by a proxy itself (health checks?), ignore and do nothing.
         if (command == 0)
         {
-            packet.ReadCompleted(len+16);
+            packet.ReadCompleted(len + 16);
             _proxyHeaderReadingState = PROXY_HEADER_READING_STATE_FINISHED;
             return;
         }
@@ -279,53 +279,53 @@ private:
         readPointer += 16; // Skip strait to address.
 
         switch (addressFamily) {
-            case PROXY_HEADER_ADDRESS_FAMILY_AND_PROTOCOL_TCP_V4:
+        case PROXY_HEADER_ADDRESS_FAMILY_AND_PROTOCOL_TCP_V4:
+        {
+            if (remainingLen < 12)
             {
-                if (remainingLen < 12)
-                {
-                    AsyncReadProxyHeader();
-                    return;
-                }
-
-                boost::asio::ip::address_v4::bytes_type b;
-                auto addressSize = sizeof(b);
-
-                std::copy(readPointer, readPointer+addressSize, b.begin());
-                _remoteAddress = boost::asio::ip::address_v4(b);
-
-                readPointer += 2 * addressSize; // Skip server address.
-                _remotePort = (readPointer[0] << 8) | readPointer[1];
-
-                break;
-            }
-
-            case PROXY_HEADER_ADDRESS_FAMILY_AND_PROTOCOL_TCP_V6:
-            {
-                if (remainingLen < 36)
-                {
-                    AsyncReadProxyHeader();
-                    return;
-                }
-
-                boost::asio::ip::address_v6::bytes_type b;
-                auto addressSize = sizeof(b);
-
-                std::copy(readPointer, readPointer+addressSize, b.begin());
-                _remoteAddress = boost::asio::ip::address_v6(b);
-
-                readPointer += 2 * addressSize; // Skip server address.
-                _remotePort = (readPointer[0] << 8) | readPointer[1];
-
-                break;
-            }
-
-            default:
-                _proxyHeaderReadingState = PROXY_HEADER_READING_STATE_FAILED;
-                LOG_ERROR("network", "Socket::ProxyReadHeaderHandler: unsupported address family type {}", GetRemoteIpAddress().to_string());
+                AsyncReadProxyHeader();
                 return;
+            }
+
+            boost::asio::ip::address_v4::bytes_type b;
+            auto addressSize = sizeof(b);
+
+            std::copy(readPointer, readPointer + addressSize, b.begin());
+            _remoteAddress = boost::asio::ip::address_v4(b);
+
+            readPointer += 2 * addressSize; // Skip server address.
+            _remotePort = (readPointer[0] << 8) | readPointer[1];
+
+            break;
         }
 
-        packet.ReadCompleted(len+16);
+        case PROXY_HEADER_ADDRESS_FAMILY_AND_PROTOCOL_TCP_V6:
+        {
+            if (remainingLen < 36)
+            {
+                AsyncReadProxyHeader();
+                return;
+            }
+
+            boost::asio::ip::address_v6::bytes_type b;
+            auto addressSize = sizeof(b);
+
+            std::copy(readPointer, readPointer + addressSize, b.begin());
+            _remoteAddress = boost::asio::ip::address_v6(b);
+
+            readPointer += 2 * addressSize; // Skip server address.
+            _remotePort = (readPointer[0] << 8) | readPointer[1];
+
+            break;
+        }
+
+        default:
+            _proxyHeaderReadingState = PROXY_HEADER_READING_STATE_FAILED;
+            LOG_ERROR("network", "Socket::ProxyReadHeaderHandler: unsupported address family type {}", GetRemoteIpAddress().to_string());
+            return;
+        }
+
+        packet.ReadCompleted(len + 16);
         _proxyHeaderReadingState = PROXY_HEADER_READING_STATE_FINISHED;
     }
 

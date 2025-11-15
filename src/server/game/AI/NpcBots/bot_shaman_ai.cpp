@@ -51,7 +51,7 @@ enum ShamanBaseSpells
     STORMSTRIKE_1                       = 17364,
     LIGHTNING_BOLT_1                    = 403,
     CHAIN_LIGHTNING_1                   = 421,
-    LAVA_BURST_1                        = 51505,
+    LAVA_BURST_1                        = 100131,
     THUNDERSTORM_1                      = 51490,
     LIGHTNING_SHIELD_1                  = 324,
     EARTH_SHIELD_1                      = 974,
@@ -65,7 +65,11 @@ enum ShamanBaseSpells
     HEROISM_1                           = 32182,
     SHAMANISTIC_RAGE_1                  = 30823,
     NATURES_SWIFTNESS_1                 = 16188,//castegory = 1202
-    //ELEMENTAL_MASTERY_1                 = 16166,//castegory = 1202 NYI
+    ELEMENTAL_MASTERY_1                 = 16166,//castegory = 1202
+    ELEMENTAL_MASTERY_BONUS             = 64701,
+    LAVA_LASH_1                         = 60103,
+
+
     TIDAL_FORCE_1                       = 55198,
 
     GHOST_WOLF_1                        = 2645,
@@ -104,7 +108,8 @@ enum ShamanBaseSpells
     FLAMETONGUE_WEAPON_1                = 8024,
     FROSTBRAND_WEAPON_1                 = 8033,
     WINDFURY_WEAPON_1                   = 8232,
-    EARTHLIVING_WEAPON_1                = 51730
+    EARTHLIVING_WEAPON_1                = 51730,
+    SPELL_ID_THORIUM_GRENADE            = 19769
 };
 
 enum ShamanPassives
@@ -256,8 +261,10 @@ enum BotTotemType : uint32
                                     BOT_TOTEM_MASK_MY_TOTEM_WATER | BOT_TOTEM_MASK_MY_TOTEM_AIR)
 };
 
+const uint32 THORIUM_GRENADE_SPELL_ID = 19769; 
+
 static const uint32 Shaman_spells_damage_arr[] =
-{ EARTH_SHOCK_1, FLAME_SHOCK_1, FROST_SHOCK_1, STORMSTRIKE_1, CHAIN_LIGHTNING_1, LAVA_BURST_1, LIGHTNING_BOLT_1,
+{ EARTH_SHOCK_1, FLAME_SHOCK_1, FROST_SHOCK_1, STORMSTRIKE_1, CHAIN_LIGHTNING_1, LAVA_BURST_1, LIGHTNING_BOLT_1, LAVA_LASH_1,
 FIRE_NOVA_1, MAGMA_TOTEM_1, SEARING_TOTEM_1, LIGHTNING_SHIELD_1, THUNDERSTORM_1, EARTH_ELEMENTAL_TOTEM_1, FIRE_ELEMENTAL_TOTEM_1 };
 
 static const uint32 Shaman_spells_cc_arr[] =
@@ -269,7 +276,7 @@ static const uint32 Shaman_spells_heal_arr[] =
 static const uint32 Shaman_spells_support_arr[] =
 { ANCESTRAL_SPIRIT_1, GHOST_WOLF_1, FERAL_SPIRIT_1, BLOODLUST_1, HEROISM_1, CURE_TOXINS_1, CLEANSE_SPIRIT_1,
 LIGHTNING_SHIELD_1, NATURES_SWIFTNESS_1, PURGE_1, REINCARNATION_1, SHAMANISTIC_RAGE_1, TIDAL_FORCE_1,
-/*WATER_BREATHING_1, */WATER_SHIELD_1, WATER_WALKING_1, /*ELEMENTAL_MASTERY_1, STONECLAW_TOTEM_1,*/
+/*WATER_BREATHING_1, */WATER_SHIELD_1, WATER_WALKING_1, ELEMENTAL_MASTERY_1, ELEMENTAL_MASTERY_BONUS, /*STONECLAW_TOTEM_1,*/
 FIRE_RESISTANCE_TOTEM_1, FROST_RESISTANCE_TOTEM_1, NATURE_RESISTANCE_TOTEM_1, FLAMETONGUE_TOTEM_1, GROUNDING_TOTEM_1,
 /*SENTRY_TOTEM_1, STONESKIN_TOTEM_1, */STRENGTH_OF_EARTH_TOTEM_1, WINDFURY_TOTEM_1, WRATH_OF_AIR_TOTEM_1,
 CLEANSING_TOTEM_1, MANA_SPRING_TOTEM_1, TOTEM_OF_WRATH_1, MANA_TIDE_TOTEM_1, TREMOR_TOTEM_1/*, TOTEMIC_RECALL_1,
@@ -279,6 +286,28 @@ static const std::vector<uint32> Shaman_spells_damage(FROM_ARRAY(Shaman_spells_d
 static const std::vector<uint32> Shaman_spells_cc(FROM_ARRAY(Shaman_spells_cc_arr));
 static const std::vector<uint32> Shaman_spells_heal(FROM_ARRAY(Shaman_spells_heal_arr));
 static const std::vector<uint32> Shaman_spells_support(FROM_ARRAY(Shaman_spells_support_arr));
+
+const char* shamanhealingMessages[] = {
+    "|cFFFFFFFFOuch, that hurt! A little heal would be nice!|r",
+    "|cFFFFFFFFHey, can I get a quick heal over here?|r",
+    "|cFFFFFFFFHealth's looking a bit low, anyone got some heals?|r",
+    "|cFFFFFFFFCould use some healing vibes right now!|r",
+    "|cFFFFFFFFHealers, mind throwing some love my way?|r",
+    "|cFFFFFFFFGetting hammered here, need a heal please!|r",
+    "|cFFFFFFFFHeals would be great about now!|r",
+    "|cFFFFFFFFAnyone up for topping off my health?|r",
+};
+
+const char* shamanmanaMessages[] = {
+    "|cFFFFFFFFRunning low on juice, need some mana!|r",
+    "|cFFFFFFFFMana's looking pretty thin, help a shaman out?|r",
+    "|cFFFFFFFFCould really go for a mana break right about now.|r",
+    "|cFFFFFFFFMana's nearly out, got any to spare?|r",
+    "|cFFFFFFFFIf anyone's got some extra mana, I'm all ears!|r",
+    "|cFFFFFFFFMy mana's running low, any chance for a top-up?|r",
+    "|cFFFFFFFFCould use a little mana boost, anyone?|r",
+    "|cFFFFFFFFMana's dipping low, could use some help with that!|r",
+};
 
 class shaman_bot : public CreatureScript
 {
@@ -386,16 +415,19 @@ public:
 
             BloodlustCheckTimer = 3000;
 
+            // Determine the correct spell based on faction
             uint32 BLOODLUST = (me->GetRaceMask() & RACEMASK_ALLIANCE) ? HEROISM_1 : BLOODLUST_1;
+            const char* SPELL_NAME = (me->GetRaceMask() & RACEMASK_ALLIANCE) ? "Heroism" : "Bloodlust";
+
             if (!IsSpellReady(BLOODLUST, diff))
                 return;
 
-            //already rockin'
+            // Check for existing haste effects
             if (me->GetAuraEffect(SPELL_AURA_MOD_MELEE_RANGED_HASTE, SPELLFAMILY_SHAMAN, 0x0, 0x40, 0x0) ||
                 master->GetAuraEffect(SPELL_AURA_MOD_MELEE_RANGED_HASTE, SPELLFAMILY_SHAMAN, 0x0, 0x40, 0x0))
                 return;
 
-            //environment conditions
+            // Check for combat conditions
             Unit const* u = me->GetVictim();
             Creature const* cre = u ? u->ToCreature() : nullptr;
             if (!(u && (u->GetHealth() > me->GetMaxHealth() * 10 || u->GetTypeId() == TYPEID_PLAYER ||
@@ -403,22 +435,23 @@ public:
                 me->getAttackers().size() + master->getAttackers().size() >= 8)))
                 return;
 
-            //BLOODLUST = GetSpell(BLOODLUST); //not ranked
-
-            uint32 sateSpell = (me->GetRaceMask() & RACEMASK_ALLIANCE) ? EXHAUSTION_AURA : SATED_AURA;
-            Unit::AuraEffectList const& dummies = me->GetAuraEffectsByType(SPELL_AURA_DUMMY);
-            for (Unit::AuraEffectList::const_iterator itr = dummies.begin(); itr != dummies.end(); ++itr)
-            {
-                if ((*itr)->GetEffIndex() != 0) continue;
-                SpellInfo const* spellInfo = (*itr)->GetSpellInfo();
-                if (spellInfo->SpellFamilyName != SPELLFAMILY_GENERIC || spellInfo->SpellIconID != 44) continue;
-                if (spellInfo->Id == sateSpell)
-                    return; //can't cast my type of bloodlust
-            }
+            // Check for Sated/Exhaustion
+            uint32 sateSpell = (me->GetRaceMask() & RACEMASK_ALLIANCE) ? EXHAUSTION_AURA : SATED_AURA;        
+            if (me->HasAura(sateSpell) || master->HasAura(sateSpell))
+                return;
 
             me->InterruptNonMeleeSpells(true);
             if (doCast(me, BLOODLUST))
+            {
+                if (!IsWanderer()) // Check if not a wanderer before speaking
+                {
+                    char messageBuffer[256];
+                    snprintf(messageBuffer, sizeof(messageBuffer), "|cFFFFFFFFCasting %s!|r", SPELL_NAME);
+
+                    me->Say(messageBuffer, LANG_UNIVERSAL);
+                }
                 return;
+            }
         }
 
         void CheckTotems(uint32 diff)
@@ -671,11 +704,10 @@ public:
             }
 
             //WATER
-            //WATERsituative1 : manatide
+            //WATER situative: Mana Tide Totem
             if (TotemTimer[T_WATER] <= diff && me->IsInCombat() && !IAmFree() &&
                 IsSpellReady(MANA_TIDE_TOTEM_1, diff, false))
             {
-                //5 min cd, party members only, instant effect +4 ticks in 12 secs
                 bool cast = false;
                 if (master->IsInCombat() && master->GetPowerType() == POWER_MANA &&
                     GetManaPCT(master) < 35 && me->GetDistance(master) < 18)
@@ -689,25 +721,26 @@ public:
                     {
                         if (me->GetMap() != member->FindMap() || !member->InSamePhase(me) ||
                             !member->IsAlive() || !member->IsInCombat() || member->GetPowerType() != POWER_MANA ||
-                            (member->IsPlayer() ? member->ToPlayer()->GetSubGroup() : member->ToCreature()->GetSubGroup()) != subgr ||
-                            GetManaPCT(member) > 35 || me->GetDistance(member) > 20 ||
-                            (member->IsNPCBot() && member->ToCreature()->IsTempBot()))
+                            GetManaPCT(member) > 35 || me->GetDistance(member) > 20)
                             continue;
                         ++count;
                     }
-                    cast = (count >= (3 + 1*(!!(mask & BOT_TOTEM_MASK_MY_TOTEM_WATER))));
+                    cast = (count >= 3);  // Simplified condition for casting
                 }
                 if (cast)
                 {
                     if (doCast(me, GetSpell(MANA_TIDE_TOTEM_1), CotE ? TRIGGERED_CAST_DIRECTLY : TRIGGERED_NONE))
+                    {
+                        TotemTimer[T_WATER] = 12000;  
                         if (!CotE)
-                            return;
+                            return; 
+                    }
                 }
                 //check if casted
                 if (_totems[T_WATER].second._type != BOT_TOTEM_MANA_TIDE)
-                    SetSpellCooldown(MANA_TIDE_TOTEM_1, 3000); //fail
+                    SetSpellCooldown(MANA_TIDE_TOTEM_1, 3000); //fail safe if not casted properly
             }
-
+            
             //WATERsituative2 : cleansing
             //REMOVED CHECKS ARE TOO HEAVY
 
@@ -901,7 +934,7 @@ public:
                     return;
             }
         }
-
+        //Dinkle
         void Counter(uint32 diff)
         {
             if (!IsSpellReady(WIND_SHEAR_1, diff, false) || (HasRole(BOT_ROLE_HEAL) && IsCasting()) || Rand() > 40)
@@ -911,10 +944,35 @@ public:
             {
                 me->InterruptNonMeleeSpells(false);
                 if (doCast(target, GetSpell(WIND_SHEAR_1)))
+                {
+                    if (!IsWanderer()) 
+                    {
+                        const char* windShearMessages[] = {
+                            "|cFFFFFFFF%s's casting was cut short by Wind Shear!|r",
+                            "|cFFFFFFFFWind Shear just silenced %s! No spells for you.|r",
+                            "|cFFFFFFFFStopped %s mid-cast with a swift Wind Shear!|r",
+                            "|cFFFFFFFF%s, meet Wind Shear! Your spell didn't stand a chance.|r",
+                            "|cFFFFFFFFWhoops, looks like %s got Wind Sheared! No casting for you, buddy!|r",
+                            "|cFFFFFFFFBoom! Wind Shear to the rescue, %s's spell got nuked!|r",
+                            "|cFFFFFFFFWind Shear just stopped %s's spell in its tracks!|r",
+                            "|cFFFFFFFFWind Shear for the win! %s's spell just went poof!|r",
+                            "|cFFFFFFFF%s's spell interrupted by the gale force of Wind Shear!|r",
+                            "|cFFFFFFFF%s thought they could cast? Wind Shear thought otherwise!|r",
+                        };
+
+                        int randomIndex = urand(0, sizeof(windShearMessages) / sizeof(char*) - 1);
+                        const char* selectedMessage = windShearMessages[randomIndex];
+
+                        char messageBuffer[256];
+                        snprintf(messageBuffer, sizeof(messageBuffer), selectedMessage, target->GetName().c_str());
+
+                        me->Say(messageBuffer, LANG_UNIVERSAL, me->ToUnit());
+                    }
                     return;
+                }
             }
         }
-
+        //end Dinkle
         void CheckShield(uint32 diff)
         {
             if (GC_Timer > diff || ShieldCheckTimer > diff || IsCasting() || Rand() > 15)
@@ -960,6 +1018,54 @@ public:
 
         void UpdateAI(uint32 diff) override
         {
+            // Dinkle
+            if (!IsWanderer())
+            {
+            if (me->IsInCombat()) {
+                // Health check
+                float healthPercentage = (float)me->GetHealth() / (float)me->GetMaxHealth();
+                if (healthPercentage <= 0.30f && !needHealingFlag) {
+                    int randomIndex = urand(0, sizeof(shamanhealingMessages) / sizeof(shamanhealingMessages[0]) - 1);
+                    me->Say(shamanhealingMessages[randomIndex], LANG_UNIVERSAL, me->ToUnit());
+                    needHealingFlag = true;
+                }
+                else if (healthPercentage >= 0.50f && needHealingFlag) {
+                    needHealingFlag = false;
+                }
+
+                // Mana check
+                float manaPercentage = (float)me->GetPower(POWER_MANA) / (float)me->GetMaxPower(POWER_MANA);
+                if (manaPercentage <= 0.25f && !needManaFlag) {
+                    int randomIndex = urand(0, sizeof(shamanmanaMessages) / sizeof(shamanmanaMessages[0]) - 1);
+                    me->Say(shamanmanaMessages[randomIndex], LANG_UNIVERSAL, me->ToUnit());
+                    needManaFlag = true;
+                }
+                else if (manaPercentage >= 0.50f && needManaFlag) {
+                    needManaFlag = false;
+                }
+            }
+            }
+            //end Dinkle
+
+            if (IsSpellReady(THORIUM_GRENADE_SPELL_ID, diff))
+            {
+                std::list<Creature*> targets;
+                me->GetCreaturesWithEntryInRange(targets, 35.0f, 15555); 
+
+                for (Creature* target : targets)
+                {
+                    if (!target->IsAlive() || me->IsFriendlyTo(target))
+                        continue;
+
+                    if (me->IsWithinDistInMap(target, 35.0f)) 
+                    {
+                        me->CastSpell(target, THORIUM_GRENADE_SPELL_ID, true);
+                        SetSpellCooldown(THORIUM_GRENADE_SPELL_ID, 3000);
+                        break; 
+                    }
+                }
+            }
+
             if (!GlobalUpdate(diff))
                 return;
 
@@ -1043,8 +1149,18 @@ public:
 
             MoveBehind(mytar);
 
-            //STORMSTRIKE
-            if (IsSpellReady(STORMSTRIKE_1, diff) && can_do_nature && HasRole(BOT_ROLE_DPS) && IsMelee() && dist <= 5 && Rand() < 120)
+            // LAVA LASH
+            if (IsSpellReady(LAVA_LASH_1, diff) && can_do_fire && HasRole(BOT_ROLE_DPS) && GetSpec() == BOT_SPEC_SHAMAN_ENHANCEMENT && IsMelee() && dist <= 5)
+            {
+                if (doCast(mytar, GetSpell(LAVA_LASH_1)))
+                {
+                    SetSpellCooldown(LAVA_LASH_1, 6000);  // Set cooldown to 6 seconds
+                    return;
+                }
+            }
+
+            // STORMSTRIKE
+            if (IsSpellReady(STORMSTRIKE_1, diff) && can_do_nature && HasRole(BOT_ROLE_DPS) && GetSpec() == BOT_SPEC_SHAMAN_ENHANCEMENT && IsMelee() && dist <= 5 && Rand() < 120)
             {
                 if (doCast(mytar, GetSpell(STORMSTRIKE_1)))
                     return;
@@ -1083,6 +1199,17 @@ public:
                 return;
             }
 
+            // Elemental Mastery
+            if (IsSpellReady(ELEMENTAL_MASTERY_1, diff) && HasRole(BOT_ROLE_DPS) && GetSpec() == BOT_SPEC_SHAMAN_ELEMENTAL)
+            {
+                if (doCast(me, ELEMENTAL_MASTERY_1))  // Casting Elemental Mastery on self
+                {
+                    SetSpellCooldown(NATURES_SWIFTNESS_1, 180000);  // Setting Nature's Swiftness cooldown to 3 minutes
+                    SetSpellCooldown(ELEMENTAL_MASTERY_1, 180000);  // Cooldown for Elemental Mastery itself
+                    return;
+                }
+            }
+
             //LAVA BURST
             if (IsSpellReady(LAVA_BURST_1, diff) && can_do_fire && HasRole(BOT_ROLE_DPS) &&
                 (GetSpec() == BOT_SPEC_SHAMAN_ELEMENTAL || (IsRanged() && (!can_do_nature || !GetSpell(LIGHTNING_BOLT_1)))) &&
@@ -1112,6 +1239,7 @@ public:
                     return;
             }
         }
+        
 
         void CheckHexy(uint32 diff)
         {
@@ -1130,7 +1258,26 @@ public:
             if (Unit* target = FindPolyTarget(20))
             {
                 if (doCast(target, GetSpell(HEX_1)))
-                    return;
+                {
+                    if (!IsWanderer()) 
+                    {
+                        const char* hexMessages[] = {
+                            "|cFFFFFFFF%s has been turned into a not-so-fearsome frog! Let's avoid hitting them.|r",
+                            "|cFFFFFFFFCasting a little voodoo on %s! They're hexed.|r",
+                            "|cFFFFFFFF%s is now hexed! Perfect time to focus elsewhere.|r",
+                            "|cFFFFFFFFCasting hex on %s!|r",
+                        };
+
+                        int randomIndex = urand(0, sizeof(hexMessages) / sizeof(char*) - 1);
+                        const char* selectedMessage = hexMessages[randomIndex];
+
+                        char messageBuffer[256];
+                        snprintf(messageBuffer, sizeof(messageBuffer), selectedMessage, target->GetName().c_str());
+
+                        me->Say(messageBuffer, LANG_UNIVERSAL, me->ToUnit());
+                    }
+                    return; 
+                }
             }
         }
 
@@ -1477,13 +1624,17 @@ public:
 
             //SHAMAN_T8_ENCHANCEMENT_2P_BONUS: 20% bonus damage for Lava Lash and Stormstrike
             if (lvl >= 60 &&
-                (spellId == STORMSTRIKE_DAMAGE || spellId == STORMSTRIKE_DAMAGE_OFFHAND/* || spellId == LAVA_LASH*/))
+                (spellId == STORMSTRIKE_DAMAGE || spellId == STORMSTRIKE_DAMAGE_OFFHAND || spellId == LAVA_LASH_1))
                 pctbonus += 0.2f;
 
             //custom bonus to make stormstrike useful
             if (spellId == STORMSTRIKE_DAMAGE || spellId == STORMSTRIKE_DAMAGE_OFFHAND)
-                pctbonus += 1.0f;
+                pctbonus += 1.1f;
 
+            //custom bonus to make lavalash useful
+            if (spellId == LAVA_LASH_1)
+                pctbonus += 1.25f;
+            
             damage = int32(fdamage * (1.0f + pctbonus));
         }
 
@@ -1493,6 +1644,8 @@ public:
             uint8 lvl = me->GetLevel();
             float fdamage = float(damage);
             float flat_mod = 0.f;
+            float intellect = float(GetTotalBotStat(BOT_STAT_MOD_INTELLECT));
+            flat_mod += intellect * 0.05f;  
 
             //2) apply bonus damage mods
             float pctbonus = 0.0f;
@@ -1561,7 +1714,9 @@ public:
             uint8 lvl = me->GetLevel();
             float pctbonus = 0.0f;
             float flat_mod = 0.0f;
-
+            float intellect = float(GetTotalBotStat(BOT_STAT_MOD_INTELLECT));
+            flat_mod += intellect * 0.05f;
+            
             //Healing Way: 25% bonus healing for Healing Wave
             if ((GetSpec() == BOT_SPEC_SHAMAN_RESTORATION) && lvl >= 30 && spellId == GetSpell(HEALING_WAVE_1))
                 pctbonus += 0.25f;
@@ -1644,6 +1799,21 @@ public:
             uint8 lvl = me->GetLevel();
             int32 timebonus = 0;
             float pctbonus = 0.0f;
+
+            if (AuraEffect const* eff = me->GetAuraEffect(ELEMENTAL_MASTERY_1, 0, me->GetGUID()))
+            {
+                // Apply instant cast for Lightning Bolt, Chain Lightning, or Lava Burst
+                if (spellId == GetSpell(LIGHTNING_BOLT_1) || spellId == GetSpell(CHAIN_LIGHTNING_1) || spellId == GetSpell(LAVA_BURST_1))
+                {
+                    pctbonus += 1.0f;
+                }
+            }
+
+            // Check for Elemental Mastery haste effect (ID: 64701)
+            if (AuraEffect const* hasteEff = me->GetAuraEffect(ELEMENTAL_MASTERY_BONUS, 0, me->GetGUID()))
+            {
+                pctbonus += 0.15f;
+            }
 
             //100% mods
             //Nature's Swiftness: -100% cast time
@@ -1865,6 +2035,13 @@ public:
                 if (eff->IsAffectedOnSpell(spellInfo))
                     me->RemoveAurasDueToSpell(NATURES_SWIFTNESS_1);
             }
+            
+            if (AuraEffect const* eff = me->GetAuraEffect(ELEMENTAL_MASTERY_1, 0, me->GetGUID()))
+            {
+                if (eff->IsAffectedOnSpell(spellInfo))
+                    me->RemoveAura(ELEMENTAL_MASTERY_1);
+                
+            }
 
             //Tidal Force: Handled in Unit::HandleDummyAuraProc(): case 55166:
             //if (spellInfo->SpellFamilyFlags[0] & 0x1C0)
@@ -2025,7 +2202,7 @@ public:
             }
 
             //Lightning Overload
-            if ((GetSpec() == BOT_SPEC_SHAMAN_ELEMENTAL) &&
+           /* if ((GetSpec() == BOT_SPEC_SHAMAN_ELEMENTAL) &&
                 me->GetLevel() >= 45 && (baseId == LIGHTNING_BOLT_1 || baseId == CHAIN_LIGHTNING_1) &&
                 urand(1,100) <= 33)
             {
@@ -2070,7 +2247,7 @@ public:
                             me->CastSpell(target, procId, true);
                     }
                 }
-            }
+            }*/
 
             //Shields improvement, replaces Static Shock (part 2) and Improved Earth Shield (part 1)
             if (baseId == LIGHTNING_SHIELD_1 || baseId == EARTH_SHIELD_1 || baseId == WATER_SHIELD_1)
@@ -2084,9 +2261,9 @@ public:
             OnSpellHitTarget(target, spell);
         }
 
-        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType, SpellSchoolMask damageSchoolMask) override
+        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType) override
         {
-            bot_ai::DamageDealt(victim, damage, damageType, damageSchoolMask);
+            bot_ai::DamageDealt(victim, damage, damageType);
         }
 
         void DamageTaken(Unit* u, uint32& /*damage*/, DamageEffectType /*damageType*/, SpellSchoolMask /*schoolMask*/) override
@@ -2565,10 +2742,11 @@ public:
 
             InitSpellMap(REINCARNATION_1); //base lvl 30, 30 min cd
 
-  /*Talent*///lvl >= 40 && isElem ? InitSpellMap(ELEMENTAL_MASTERY_1) : RemoveSpell(ELEMENTAL_MASTERY_1);
+  /*Talent*/lvl >= 40 && isElem ? InitSpellMap(ELEMENTAL_MASTERY_1) : RemoveSpell(ELEMENTAL_MASTERY_1);
   /*Talent*/lvl >= 60 && isElem ? InitSpellMap(THUNDERSTORM_1) : RemoveSpell(THUNDERSTORM_1);
 
   /*Talent*/lvl >= 40 && isEnha ? InitSpellMap(STORMSTRIKE_1) : RemoveSpell(STORMSTRIKE_1);
+  /*Talent*/lvl >= 45 && isEnha ? InitSpellMap(LAVA_LASH_1) : RemoveSpell(LAVA_LASH_1);
   /*Talent*/lvl >= 50 && isEnha ? InitSpellMap(SHAMANISTIC_RAGE_1) : RemoveSpell(SHAMANISTIC_RAGE_1);
   /*Talent*/lvl >= 60 && isEnha ? InitSpellMap(FERAL_SPIRIT_1) : RemoveSpell(FERAL_SPIRIT_1); //not casted
 
@@ -2603,6 +2781,9 @@ public:
             RefreshAura(ELEMENTAL_DEVASTATION3, isEnha && level >= 18 ? 1 : 0);
             RefreshAura(ELEMENTAL_DEVASTATION2, isEnha && level >= 15 && level < 18 ? 1 : 0);
             RefreshAura(ELEMENTAL_DEVASTATION1, isEnha && level >= 12 && level < 15 ? 1 : 0);
+            RefreshAura(126125, isElem && level >= 37 ? 1 : 0);
+            RefreshAura(126124, isElem && level >= 36 && level < 37 ? 1 : 0);
+            RefreshAura(126123, isElem && level >= 35 && level < 36 ? 1 : 0);
             RefreshAura(ELEMENTAL_FOCUS, isElem && level >= 20 ? 1 : 0);
             RefreshAura(ELEMENTAL_OATH, !IAmFree() && isElem && level >= 40 ? 1 : 0);
             //RefreshAura(STORM_EARTH_AND_FIRE, isElem && level >= 45 ? 1 : 0);
@@ -2635,6 +2816,13 @@ public:
 
             RefreshAura(GLYPH_THUNDERSTORM, GetSpell(THUNDERSTORM_1) ? 1 : 0);
             RefreshAura(GLYPH_TOTEM_OF_WRATH, GetSpell(TOTEM_OF_WRATH_1) ? 1 : 0);
+            if (level >= 1) {
+                RefreshAura(100110, 1); // Dinkle: New Passives
+                RefreshAura(100119, 1); 
+                RefreshAura(67228, 1);  
+                RefreshAura(64928, 1);
+                RefreshAura(23573, 1);
+            }
         }
 
         bool CanUseManually(uint32 basespell) const override
@@ -2651,7 +2839,7 @@ public:
                 case BLOODLUST_1:
                 case HEROISM_1:
                 case SHAMANISTIC_RAGE_1:
-                //case ELEMENTAL_MASTERY_1:
+                case ELEMENTAL_MASTERY_1:
                 case TIDAL_FORCE_1:
                 //Totems
                 //case EARTHBIND_TOTEM_1:
@@ -2767,6 +2955,9 @@ public:
         }
 
     private:
+        //Dinkle
+        bool needHealingFlag;
+        bool needManaFlag;
         //Totem system
         struct BotTotemParam
         {

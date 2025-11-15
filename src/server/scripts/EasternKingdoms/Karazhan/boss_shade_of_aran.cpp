@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -151,7 +151,7 @@ struct boss_shade_of_aran : public BossAI
         return me->GetDistance2d(roomCenter.GetPositionX(), roomCenter.GetPositionY()) < 45.0f;
     }
 
-    void SetGUID(ObjectGuid const& guid, int32 id) override
+    void SetGUID(ObjectGuid guid, int32 id) override
     {
         if (id == ACTION_ATIESH_REACT && !_atieshReaction)
         {
@@ -279,7 +279,7 @@ struct boss_shade_of_aran : public BossAI
                     // If we are able to cast spells, cast them.
                     _currentNormalSpell = Acore::Containers::SelectRandomContainerElement(normalSpells);
 
-                    DoCastRandomTarget(_currentNormalSpell, 0, 100.0f);
+                    CastSpellOnRandomTarget(_currentNormalSpell, 100.0f);
                     if (me->GetVictim())
                     {
                         me->GetMotionMaster()->MoveChase(me->GetVictim(), 45.0f);
@@ -383,6 +383,24 @@ struct boss_shade_of_aran : public BossAI
 
         if (!_drinking)
             DoMeleeAttackIfReady();
+    }
+
+    void CastSpellOnRandomTarget(uint32 spellId, float range)
+    {
+        std::list<Unit*> targets;
+        Acore::AnyUnitInObjectRangeCheck check(me, range);
+        Acore::UnitListSearcher<Acore::AnyUnitInObjectRangeCheck> searcher(me, targets, check);
+        Cell::VisitAllObjects(me, searcher, range);
+
+        targets.remove_if([this](Unit* unit) -> bool {
+            return !unit->IsAlive() || !(unit->GetTypeId() == TYPEID_PLAYER || (unit->GetTypeId() == TYPEID_UNIT && static_cast<Creature*>(unit)->IsNPCBot()));
+            });
+
+        if (!targets.empty())
+        {
+            Unit* target = Acore::Containers::SelectRandomContainerElement(targets);
+            DoCast(target, spellId);
+        }
     }
 
 private:

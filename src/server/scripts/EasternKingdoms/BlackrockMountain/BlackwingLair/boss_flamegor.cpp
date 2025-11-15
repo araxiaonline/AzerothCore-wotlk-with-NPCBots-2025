@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -33,10 +33,13 @@ enum Spells
 
 enum Events
 {
-    EVENT_SHADOWFLAME       = 1,
-    EVENT_WINGBUFFET        = 2,
-    EVENT_FRENZY            = 3
+    EVENT_SHADOWFLAME = 1,
+    EVENT_WINGBUFFET = 2,
+    EVENT_FRENZY = 3,
+    EVENT_SPAWN_SHADES = 4
 };
+
+const uint32 NPC_SHADE_OF_FLAMEGOR = 400149;
 
 class boss_flamegor : public CreatureScript
 {
@@ -54,6 +57,29 @@ public:
             events.ScheduleEvent(EVENT_SHADOWFLAME, 18s);
             events.ScheduleEvent(EVENT_WINGBUFFET, 30s);
             events.ScheduleEvent(EVENT_FRENZY, 10s);
+            events.ScheduleEvent(EVENT_SPAWN_SHADES, 20s);
+        }
+
+        void Reset() override
+        {
+            BossAI::Reset();
+            DespawnShades();
+        }
+
+        void JustDied(Unit* /*killer*/) override
+        {
+            BossAI::JustDied(nullptr);
+            DespawnShades();
+            DoCastSelf(875167, true);
+            Map::PlayerList const& players = me->GetMap()->GetPlayers();
+            for (auto const& playerPair : players)
+            {
+                Player* player = playerPair.GetSource();
+                if (player)
+                {
+                    DistributeChallengeRewards(player, me, 1, false);
+                }
+            }
         }
 
         void UpdateAI(uint32 diff) override
@@ -85,6 +111,10 @@ public:
                         DoCast(me, SPELL_FRENZY);
                         events.ScheduleEvent(EVENT_FRENZY, 8s, 10s);
                         break;
+                    case EVENT_SPAWN_SHADES:
+                        SpawnShades();
+                        events.ScheduleEvent(EVENT_SPAWN_SHADES, 50s); 
+                        break;
                 }
 
                 if (me->HasUnitState(UNIT_STATE_CASTING))
@@ -92,6 +122,27 @@ public:
             }
 
             DoMeleeAttackIfReady();
+        }
+
+        void SpawnShades()
+        {
+            for (int i = 0; i < 2; ++i)  
+            {
+                Creature* shade = DoSummon(NPC_SHADE_OF_FLAMEGOR, me, 10.0f, 180000, TEMPSUMMON_CORPSE_DESPAWN);
+                if (shade)
+                    shade->SetInCombatWithZone();
+            }
+        }
+
+        void DespawnShades()
+        {
+            std::list<Creature*> shades;
+            GetCreatureListWithEntryInGrid(shades, me, NPC_SHADE_OF_FLAMEGOR, 150.0f);
+            for (Creature* shade : shades)
+            {
+                if (shade)
+                    shade->DespawnOrUnsummon();
+            }
         }
     };
 

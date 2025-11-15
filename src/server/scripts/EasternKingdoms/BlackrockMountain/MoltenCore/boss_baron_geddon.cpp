@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -59,6 +59,13 @@ public:
         {
             _Reset();
             armageddonCasted = false;
+            std::list<Creature*> firewalkerList;
+            me->GetCreatureListWithEntryInGrid(firewalkerList, 11666, 180.0f); // Dinkle: Despawn Flamewalkers
+            for (Creature* firewalker : firewalkerList)
+            {
+                if (firewalker && !firewalker->IsInCombat())
+                    firewalker->DespawnOrUnsummon();
+            }
         }
 
         void JustEngagedWith(Unit* /*attacker*/) override
@@ -69,10 +76,24 @@ public:
             events.ScheduleEvent(EVENT_LIVING_BOMB, 11s, 16s);
         }
 
+        void JustDied(Unit* /*killer*/) override
+        {
+            _JustDied();
+            Map::PlayerList const& players = me->GetMap()->GetPlayers();
+            for (auto const& playerPair : players)
+            {
+                Player* player = playerPair.GetSource();
+                if (player)
+                {
+                    DistributeChallengeRewards(player, me, 1, false);
+                }
+            }
+        }
+
         void DamageTaken(Unit* /*attacker*/, uint32& damage, DamageEffectType /*dmgType*/, SpellSchoolMask /*school*/) override
         {
-            // If boss is below 2% hp - cast Armageddon
-            if (!armageddonCasted && damage < me->GetHealth() && me->HealthBelowPctDamaged(2, damage))
+            // If boss is below 11% hp - cast Armageddon
+            if (!armageddonCasted && damage < me->GetHealth() && me->HealthBelowPctDamaged(11, damage))
             {
                 me->RemoveAurasDueToSpell(SPELL_INFERNO);
                 me->StopMoving();
@@ -91,7 +112,7 @@ public:
                 case EVENT_INFERNO:
                 {
                     DoCastAOE(SPELL_INFERNO);
-                    events.Repeat(21s, 26s);
+                    events.RepeatEvent(urand(40000, 55000));
                     break;
                 }
                 case EVENT_IGNITE_MANA:
@@ -101,17 +122,28 @@ public:
                         DoCast(target, SPELL_IGNITE_MANA);
                     }
 
-                    events.Repeat(27s, 32s);
+                    events.RepeatEvent(urand(27000, 32000));
                     break;
                 }
                 case EVENT_LIVING_BOMB:
                 {
-                    if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, 0.0f, true))
+                    std::list<Player*> players;
+                    Acore::AnyPlayerInObjectRangeCheck checker(me, 200.0f, true);
+                    Acore::PlayerListSearcher<Acore::AnyPlayerInObjectRangeCheck> searcher(me, players, checker);
+                    Cell::VisitWorldObjects(me, searcher, 200.0f);
+
+                    // Filter out NPC bots or pets
+                    players.remove_if([](Player* player) { return player->IsNPCBotOrPet(); });
+
+                    if (!players.empty())
                     {
-                        DoCast(target, SPELL_LIVING_BOMB);
+                        if (Player* target = Acore::Containers::SelectRandomContainerElement(players))
+                        {
+                            DoCast(target, SPELL_LIVING_BOMB);
+                        }
                     }
 
-                    events.Repeat(11s, 16s);
+                    events.RepeatEvent(urand(17000, 25000));
                     break;
                 }
             }

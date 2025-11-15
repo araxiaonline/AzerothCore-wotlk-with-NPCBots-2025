@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -77,6 +77,8 @@ const Position hadronoxSteps[4] =
     {534.87f, 554.0f, 733.0f, 0.0f}
 };
 
+bool lazyFix = false;
+
 class boss_hadronox : public CreatureScript
 {
 public:
@@ -84,22 +86,24 @@ public:
 
     struct boss_hadronoxAI : public BossAI
     {
-        boss_hadronoxAI(Creature* creature) : BossAI(creature, DATA_HADRONOX)
+        boss_hadronoxAI(Creature* creature) : BossAI(creature, DATA_HADRONOX_EVENT)
         {
         }
 
         void Reset() override
         {
-            summons.DoAction(ACTION_DESPAWN_ADDS);
-            BossAI::Reset();
-            me->SummonCreature(NPC_ANUB_AR_CRUSHER, 542.9f, 519.5f, 741.24f, 2.14f);
+            if (lazyFix == false) {
+                summons.DoAction(ACTION_DESPAWN_ADDS);
+                BossAI::Reset();
+                me->SummonCreature(NPC_ANUB_AR_CRUSHER, 542.9f, 519.5f, 741.24f, 2.14f);
+            }
         }
 
         void DoAction(int32 param) override
         {
             if (param == ACTION_START_EVENT)
             {
-                instance->SetBossState(DATA_HADRONOX, IN_PROGRESS);
+                instance->SetBossState(DATA_HADRONOX_EVENT, IN_PROGRESS);
                 me->setActive(true);
                 events.ScheduleEvent(EVENT_HADRONOX_MOVE1, 20s);
                 events.ScheduleEvent(EVENT_HADRONOX_MOVE2, 40s);
@@ -111,7 +115,7 @@ public:
         uint32 GetData(uint32 data) const override
         {
             if (data == me->GetEntry())
-                return !me->isActiveObject() || events.HasTimeUntilEvent(EVENT_HADRONOX_MOVE4) ? 1 : 0;
+                return !me->isActiveObject() || events.GetNextEventTime(EVENT_HADRONOX_MOVE4) != 0;
             return 0;
         }
 
@@ -121,11 +125,11 @@ public:
 
             // Xinef: cannot use pathfinding...
             if (summon->GetDistance(477.0f, 618.0f, 771.0f) < 5.0f)
-                summon->GetMotionMaster()->MoveWaypoint(3000012, false);
+                summon->GetMotionMaster()->MovePath(3000012, false);
             else if (summon->GetDistance(583.0f, 617.0f, 771.0f) < 5.0f)
-                summon->GetMotionMaster()->MoveWaypoint(3000013, false);
+                summon->GetMotionMaster()->MovePath(3000013, false);
             else if (summon->GetDistance(581.0f, 608.5f, 739.0f) < 5.0f)
-                summon->GetMotionMaster()->MoveWaypoint(3000014, false);
+                summon->GetMotionMaster()->MovePath(3000014, false);
         }
 
         void KilledUnit(Unit* victim) override
@@ -182,6 +186,9 @@ public:
             events.Update(diff);
             if (me->HasUnitState(UNIT_STATE_CASTING))
                 return;
+
+            if (CheckEvadeIfOutOfCombatArea() && lazyFix == true)
+                lazyFix = false;
 
             switch (uint32 eventId = events.ExecuteEvent())
             {
@@ -242,23 +249,26 @@ public:
 
         void Reset() override
         {
-            summons.DespawnAll();
-            events.Reset();
+            if (lazyFix == false)
+            {
+                summons.DespawnAll();
+                events.Reset();
 
-            if (me->ToTempSummon())
-                if (Unit* summoner = me->ToTempSummon()->GetSummonerUnit())
-                    if (summoner->GetEntry() == me->GetEntry())
-                    {
-                        me->CastSpell(me, RAND(SPELL_SUMMON_ANUBAR_CHAMPION, SPELL_SUMMON_ANUBAR_CRYPT_FIEND, SPELL_SUMMON_ANUBAR_NECROMANCER), true);
-                        me->CastSpell(me, RAND(SPELL_SUMMON_ANUBAR_CHAMPION, SPELL_SUMMON_ANUBAR_CRYPT_FIEND, SPELL_SUMMON_ANUBAR_NECROMANCER), true);
-                    }
+                if (me->ToTempSummon())
+                    if (Unit* summoner = me->ToTempSummon()->GetSummonerUnit())
+                        if (summoner->GetEntry() == me->GetEntry())
+                        {
+                            me->CastSpell(me, RAND(SPELL_SUMMON_ANUBAR_CHAMPION, SPELL_SUMMON_ANUBAR_CRYPT_FIEND, SPELL_SUMMON_ANUBAR_NECROMANCER), true);
+                            me->CastSpell(me, RAND(SPELL_SUMMON_ANUBAR_CHAMPION, SPELL_SUMMON_ANUBAR_CRYPT_FIEND, SPELL_SUMMON_ANUBAR_NECROMANCER), true);
+                        }
+            }
         }
 
         void JustSummoned(Creature* summon) override
         {
             if (summon->GetEntry() != me->GetEntry())
             {
-                summon->GetMotionMaster()->MovePoint(0, *me, FORCED_MOVEMENT_NONE, 0.f, false);
+                summon->GetMotionMaster()->MovePoint(0, *me, false);
                 summon->GetMotionMaster()->MoveFollow(me, 0.1f, 0.0f + M_PI * 0.3f * summons.size());
             }
             summons.Summon(summon);
@@ -283,6 +293,7 @@ public:
                         me->SummonCreature(NPC_ANUB_AR_CRUSHER, 519.58f, 573.73f, 734.30f, 4.50f);
                         me->SummonCreature(NPC_ANUB_AR_CRUSHER, 539.38f, 573.25f, 732.20f, 4.738f);
                         Talk(SAY_CRUSHER_AGGRO);
+                        lazyFix = true;
                     }
 
             events.ScheduleEvent(EVENT_CRUSHER_SMASH, 8s, 0, 0);
@@ -342,7 +353,7 @@ public:
         PreventDefaultAction();
         Unit* owner = GetUnitOwner();
         if (InstanceScript* instance = owner->GetInstanceScript())
-            if (!instance->IsBossDone(DATA_HADRONOX))
+            if (instance->GetBossState(DATA_HADRONOX_EVENT) != DONE)
             {
                 if (!owner->HasAura(SPELL_WEB_FRONT_DOORS))
                     owner->CastSpell(owner, _spellEntry, true);

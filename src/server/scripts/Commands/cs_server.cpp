@@ -1,19 +1,26 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
+
+ /* ScriptData
+ Name: server_commandscript
+ %Complete: 100
+ Comment: All server related commands
+ Category: commandscripts
+ EndScriptData */
 
 #include "Chat.h"
 #include "CommandScript.h"
@@ -21,7 +28,6 @@
 #include "GameTime.h"
 #include "GitRevision.h"
 #include "Log.h"
-#include "MapMgr.h"
 #include "ModuleMgr.h"
 #include "MotdMgr.h"
 #include "MySQLThreading.h"
@@ -30,7 +36,6 @@
 #include "UpdateTime.h"
 #include "VMapFactory.h"
 #include "VMapMgr2.h"
-#include "WorldSessionMgr.h"
 #include <boost/version.hpp>
 #include <filesystem>
 #include <numeric>
@@ -102,10 +107,7 @@ public:
     // Triggering corpses expire check in world
     static bool HandleServerCorpsesCommand(ChatHandler* /*handler*/)
     {
-        sMapMgr->DoForAllMaps([](Map* map)
-        {
-            map->RemoveOldCorpses();
-        });
+        sWorld->RemoveOldCorpses();
         return true;
     }
 
@@ -257,39 +259,41 @@ public:
     static bool HandleServerInfoCommand(ChatHandler* handler)
     {
         std::string realmName = sWorld->GetRealmName();
-        uint32 playerCount = sWorldSessionMgr->GetPlayerCount();
-        uint32 activeSessionCount = sWorldSessionMgr->GetActiveSessionCount();
-        uint32 queuedSessionCount = sWorldSessionMgr->GetQueuedSessionCount();
-        uint32 connPeak = sWorldSessionMgr->GetMaxActiveSessionCount();
+        uint32 playerCount = sWorld->GetPlayerCount();
+        uint32 activeSessionCount = sWorld->GetActiveSessionCount();
+        uint32 queuedSessionCount = sWorld->GetQueuedSessionCount();
+        uint32 connPeak = sWorld->GetMaxActiveSessionCount();
 
         handler->PSendSysMessage("{}", GitRevision::GetFullVersion());
-        if (!queuedSessionCount)
-            handler->PSendSysMessage("Connected players: {}. Characters in world: {}.", activeSessionCount, playerCount);
-        else
-            handler->PSendSysMessage("Connected players: {}. Characters in world: {}. Queue: {}.", activeSessionCount, playerCount, queuedSessionCount);
+       // if (!queuedSessionCount)
+       //      handler->PSendSysMessage("Connected players: %u. Characters in world: %u.", activeSessionCount, playerCount);
+       // else
+       //      handler->PSendSysMessage("Connected players: %u. Characters in world: %u. Queue: %u.", activeSessionCount, playerCount, queuedSessionCount);
 
-        handler->PSendSysMessage("Connection peak: {}.", connPeak);
-        handler->PSendSysMessage(LANG_UPTIME, secsToTimeString(GameTime::GetUptime().count()));
-        handler->PSendSysMessage("Update time diff: {}ms. Last {} diffs summary:", sWorldUpdateTime.GetLastUpdateTime(), sWorldUpdateTime.GetDatasetSize());
-        handler->PSendSysMessage("|- Mean: {}ms", sWorldUpdateTime.GetAverageUpdateTime());
-        handler->PSendSysMessage("|- Median: {}ms", sWorldUpdateTime.GetPercentile(50));
-        handler->PSendSysMessage("|- Percentiles (95, 99, max): {}ms, {}ms, {}ms",
-                                 sWorldUpdateTime.GetPercentile(95),
-                                 sWorldUpdateTime.GetPercentile(99),
-                                 sWorldUpdateTime.GetPercentile(100));
+        // handler->PSendSysMessage("Connection peak: %u.", connPeak);
+        // handler->PSendSysMessage(LANG_UPTIME, secsToTimeString(GameTime::GetUptime().count()).c_str());
+        // handler->PSendSysMessage("Update time diff: %ums. Last %d diffs summary:", sWorldUpdateTime.GetLastUpdateTime(), sWorldUpdateTime.GetDatasetSize());
+        // handler->PSendSysMessage("- Mean: %ums", sWorldUpdateTime.GetAverageUpdateTime());
+        // handler->PSendSysMessage("- Median: %ums", sWorldUpdateTime.GetPercentile(50));
+        // handler->PSendSysMessage("- Percentiles (95, 99, max): %ums, %ums, %ums",
+        //                          sWorldUpdateTime.GetPercentile(95),
+        //                          sWorldUpdateTime.GetPercentile(99),
+        //                          sWorldUpdateTime.GetPercentile(100));
 
         //! Can't use sWorld->ShutdownMsg here in case of console command
-        if (sWorld->IsShuttingDown())
-            handler->PSendSysMessage(LANG_SHUTDOWN_TIMELEFT, secsToTimeString(sWorld->GetShutDownTimeLeft()).append("."));
+            if (sWorld->IsShuttingDown())
+                handler->PSendSysMessage(LANG_SHUTDOWN_TIMELEFT, secsToTimeString(sWorld->GetShutDownTimeLeft()).append(".").c_str());
 
-        return true;
+                return true;
     }
     // Display the 'Message of the day' for the realm
     static bool HandleServerMotdCommand(ChatHandler* handler)
     {
-        handler->PSendSysMessage(LANG_MOTD_CURRENT);
-        for (uint32 i = 0; i < TOTAL_LOCALES; ++i)
-            handler->PSendSysMessage(LANG_GENERIC_TWO_CURLIES_WITH_COLON, GetNameByLocaleConstant(LocaleConstant(i)), sMotdMgr->GetMotd(LocaleConstant(i)));
+        LocaleConstant localeConstant = DEFAULT_LOCALE;
+        if (Player* player = handler->GetPlayer())
+            localeConstant = player->GetSession()->GetSessionDbLocaleIndex();
+
+        handler->PSendSysMessage(LANG_MOTD_CURRENT, sMotdMgr->GetMotd(localeConstant));
         return true;
     }
 
@@ -521,7 +525,7 @@ public:
     }
 
     // Define the 'Message of the day' for the realm
-    static bool HandleServerSetMotdCommand(ChatHandler* handler, Optional<int32> realmId, std::string locale, Tail motd)
+    static bool HandleServerSetMotdCommand(ChatHandler* handler, Optional<int32> realmId, Optional<std::string> locale, Tail motd)
     {
         std::wstring wMotd = std::wstring();
         std::string strMotd = std::string();
@@ -530,21 +534,39 @@ public:
         if (!realmId)
             realmId = static_cast<int32>(realm.Id.Realm);
 
-        // Determine the locale; default to "enUS" if not provided
-        LocaleConstant localeConstant;
-        if (IsLocaleValid(locale))
-            localeConstant = GetLocaleByName(locale);
-        else
-        {
-            handler->SendErrorMessage("locale ({}) is not valid. Valid locales: enUS, koKR, frFR, deDE, zhCN, zhWE, esES, esMX, ruRU.", locale);
-            return false;
-        }
-
         if (motd.empty())
             return false;
 
+        // Convert Tail (motd) to std::string
+        std::ostringstream motdStream;
+        motdStream << motd;
+        std::string motdString = motdStream.str(); // Convert Tail to std::string
+        // Determine the locale; default to "enUS" if not provided
+        LocaleConstant localeConstant = DEFAULT_LOCALE;
+        if (locale.has_value())
+        {
+            if (sMotdMgr->IsValidLocale(locale.value()))
+            {
+                localeConstant = GetLocaleByName(locale.value());
+            }
+            else
+            {
+                motdStream.str("");
+                motdStream << locale.value() << " " << motd;
+                motdString = motdStream.str();
+                localeConstant = DEFAULT_LOCALE;
+                locale = GetNameByLocaleConstant(localeConstant);
+            }
+        }
+        else
+        {
+            // Set to default locale string
+            localeConstant = DEFAULT_LOCALE;
+            locale = GetNameByLocaleConstant(localeConstant);
+        }
+
         // Convert the concatenated motdString to UTF-8 and ensure encoding consistency
-        if (!Utf8toWStr(motd, wMotd))
+        if (!Utf8toWStr(motdString, wMotd))
             return false;
 
         if (!WStrToUtf8(wMotd, strMotd))
@@ -553,29 +575,34 @@ public:
         // Start a transaction for the database operations
         LoginDatabaseTransaction trans = LoginDatabase.BeginTransaction();
 
-        if (localeConstant == LOCALE_enUS)
+        if (localeConstant == DEFAULT_LOCALE)
         {
             // Insert or update in the main motd table for enUS
-            LoginDatabasePreparedStatement* stmt = LoginDatabase.GetPreparedStatement(LOGIN_REP_MOTD);
+            LoginDatabasePreparedStatement* stmt = LoginDatabase.GetPreparedStatement(LOGIN_INS_MOTD);
             stmt->SetData(0, realmId.value());  // realmId for insertion
             stmt->SetData(1, strMotd);          // motd text for insertion
+            stmt->SetData(2, strMotd);          // motd text for ON DUPLICATE KEY UPDATE
             trans->Append(stmt);
         }
         else
         {
             // Insert or update in the motd_localized table for other locales
-            LoginDatabasePreparedStatement* stmt = LoginDatabase.GetPreparedStatement(LOGIN_REP_MOTD_LOCALE);
+            LoginDatabasePreparedStatement* stmt = LoginDatabase.GetPreparedStatement(LOGIN_INS_MOTD_LOCALE);
             stmt->SetData(0, realmId.value());  // realmId for insertion
-            stmt->SetData(1, locale);           // locale for insertion
+            stmt->SetData(1, locale.value());           // locale for insertion
             stmt->SetData(2, strMotd);          // motd text for insertion
+            stmt->SetData(3, strMotd);          // motd text for ON DUPLICATE KEY UPDATE
             trans->Append(stmt);
         }
 
         // Commit the transaction & update db
         LoginDatabase.CommitTransaction(trans);
 
-        sMotdMgr->SetMotd(strMotd, localeConstant);
-        handler->PSendSysMessage(LANG_MOTD_NEW, realmId.value(), locale, strMotd);
+        // Update the in-memory maps for the current realm. Otherwise, do not update
+        if (realmId == -1 || realmId == static_cast<int32>(realm.Id.Realm))
+            sMotdMgr->SetMotd(strMotd, localeConstant);
+
+        handler->PSendSysMessage(LANG_MOTD_NEW, realmId.value(), locale.value(), strMotd);
         return true;
     }
 

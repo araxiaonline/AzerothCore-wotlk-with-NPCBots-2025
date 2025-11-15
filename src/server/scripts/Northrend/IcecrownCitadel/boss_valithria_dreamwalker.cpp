@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -52,8 +52,8 @@ enum Spells
     SPELL_NIGHTMARE_PORTAL_VISUAL_PRE   = 71986,
     SPELL_NIGHTMARE_CLOUD               = 71970,
     SPELL_NIGHTMARE_CLOUD_VISUAL        = 71939,
-    SPELL_PRE_SUMMON_DREAM_PORTAL       = 72224, // normal
-    SPELL_PRE_SUMMON_NIGHTMARE_PORTAL   = 72480, // heroic
+    SPELL_PRE_SUMMON_DREAM_PORTAL       = 72224,
+    SPELL_PRE_SUMMON_NIGHTMARE_PORTAL   = 72480,
     SPELL_SUMMON_DREAM_PORTAL           = 71305,
     SPELL_SUMMON_NIGHTMARE_PORTAL       = 71987,
     SPELL_DREAMWALKERS_RAGE             = 71189,
@@ -94,12 +94,15 @@ enum Spells
     SPELL_GUT_SPRAY                     = 70633,
     SPELL_ROT_WORM_SPAWNER              = 70675,
 
-    // Dream Cloud (normal)
+    // Dream Cloud
     SPELL_EMERALD_VIGOR                 = 70873,
 
-    // Nightmare Cloud (heroic)
+    // Nightmare Cloud
     SPELL_TWISTED_NIGHTMARE             = 71941,
 };
+
+#define SUMMON_PORTAL RAID_MODE<uint32>(SPELL_PRE_SUMMON_DREAM_PORTAL, SPELL_PRE_SUMMON_DREAM_PORTAL, SPELL_PRE_SUMMON_NIGHTMARE_PORTAL, SPELL_PRE_SUMMON_NIGHTMARE_PORTAL)
+#define EMERALD_VIGOR RAID_MODE<uint32>(SPELL_EMERALD_VIGOR, SPELL_EMERALD_VIGOR, SPELL_TWISTED_NIGHTMARE, SPELL_TWISTED_NIGHTMARE)
 
 enum Events
 {
@@ -174,14 +177,14 @@ private:
 class DelayedCastEvent : public BasicEvent
 {
 public:
-    DelayedCastEvent(Creature* trigger, uint32 spellId, ObjectGuid originalCaster, Milliseconds despawnTime) : _trigger(trigger), _originalCaster(originalCaster), _spellId(spellId), _despawnTime(despawnTime)
+    DelayedCastEvent(Creature* trigger, uint32 spellId, ObjectGuid originalCaster, uint32 despawnTime) : _trigger(trigger), _originalCaster(originalCaster), _spellId(spellId), _despawnTime(despawnTime)
     {
     }
 
     bool Execute(uint64 /*time*/, uint32 /*diff*/) override
     {
         _trigger->CastSpell(_trigger, _spellId, false, nullptr, nullptr, _originalCaster);
-        if (_despawnTime > 0ms)
+        if (_despawnTime)
             _trigger->DespawnOrUnsummon(_despawnTime);
         return true;
     }
@@ -190,7 +193,7 @@ private:
     Creature* _trigger;
     ObjectGuid _originalCaster;
     uint32 _spellId;
-    Milliseconds _despawnTime;
+    uint32 _despawnTime;
 };
 
 class AuraRemoveEvent : public BasicEvent
@@ -221,7 +224,7 @@ public:
     bool Execute(uint64 /*currTime*/, uint32 /*diff*/) override
     {
         Acore::CreatureWorker<ValithriaDespawner> worker(_creature, *this);
-        Cell::VisitObjects(_creature, worker, 333.0f);
+        Cell::VisitGridObjects(_creature, worker, 333.0f);
         _creature->AI()->Reset();
         _creature->setActive(false);
         return true;
@@ -403,7 +406,7 @@ public:
                 // this display id was found in sniff instead of the one on aura
                 me->SetDisplayId(11686);
                 me->SetUnitFlag(UNIT_FLAG_NOT_SELECTABLE);
-                me->DespawnOrUnsummon(4s);
+                me->DespawnOrUnsummon(4000);
                 if (Creature* lichKing = ObjectAccessor::GetCreature(*me, _instance->GetGuidData(DATA_VALITHRIA_LICH_KING)))
                     lichKing->CastSpell(lichKing, SPELL_SPAWN_CHEST, false);
                 _instance->SetData(DATA_WEEKLY_QUEST_ID, 0); // show hidden npc if necessary
@@ -414,13 +417,13 @@ public:
         {
             if (summon->GetEntry() == NPC_DREAM_PORTAL_PRE_EFFECT)
             {
-                summon->m_Events.AddEventAtOffset(new DelayedCastEvent(summon, SPELL_SUMMON_DREAM_PORTAL, me->GetGUID(), 6s), 15s);
-                summon->m_Events.AddEventAtOffset(new AuraRemoveEvent(summon, SPELL_DREAM_PORTAL_VISUAL_PRE), 15s);
+                summon->m_Events.AddEvent(new DelayedCastEvent(summon, SPELL_SUMMON_DREAM_PORTAL, me->GetGUID(), 6000), summon->m_Events.CalculateTime(15000));
+                summon->m_Events.AddEvent(new AuraRemoveEvent(summon, SPELL_DREAM_PORTAL_VISUAL_PRE), summon->m_Events.CalculateTime(15000));
             }
             else if (summon->GetEntry() == NPC_NIGHTMARE_PORTAL_PRE_EFFECT)
             {
-                summon->m_Events.AddEventAtOffset(new DelayedCastEvent(summon, SPELL_SUMMON_NIGHTMARE_PORTAL, me->GetGUID(), 6s), 15s);
-                summon->m_Events.AddEventAtOffset(new AuraRemoveEvent(summon, SPELL_NIGHTMARE_PORTAL_VISUAL_PRE), 15s);
+                summon->m_Events.AddEvent(new DelayedCastEvent(summon, SPELL_SUMMON_NIGHTMARE_PORTAL, me->GetGUID(), 6000), summon->m_Events.CalculateTime(15000));
+                summon->m_Events.AddEvent(new AuraRemoveEvent(summon, SPELL_NIGHTMARE_PORTAL_VISUAL_PRE), summon->m_Events.CalculateTime(15000));
             }
         }
 
@@ -459,7 +462,7 @@ public:
                     if (!IsHeroic())
                         Talk(SAY_VALITHRIA_DREAM_PORTAL);
                     for (uint32 i = 0; i < _portalCount; ++i)
-                        me->CastSpell(me, SPELL_PRE_SUMMON_DREAM_PORTAL, false);
+                        me->CastSpell(me, SUMMON_PORTAL, false);
                     _events.ScheduleEvent(EVENT_DREAM_PORTAL, 45s, 48s);
                     break;
                 case EVENT_DREAM_SLIP:
@@ -542,7 +545,7 @@ public:
             std::list<Creature*> archmages;
             RisenArchmageCheck check;
             Acore::CreatureListSearcher<RisenArchmageCheck> searcher(me, archmages, check);
-            Cell::VisitObjects(me, searcher, 100.0f);
+            Cell::VisitGridObjects(me, searcher, 100.0f);
             for (std::list<Creature*>::iterator itr = archmages.begin(); itr != archmages.end(); ++itr)
                 (*itr)->AI()->DoAction(ACTION_ENTER_COMBAT);
         }
@@ -576,7 +579,7 @@ public:
         void DoAction(int32 action) override
         {
             if (action == ACTION_DEATH)
-                me->m_Events.AddEventAtOffset(new ValithriaDespawner(me), 5s);
+                me->m_Events.AddEvent(new ValithriaDespawner(me), me->m_Events.CalculateTime(5000));
             else if (action == ACTION_ENTER_COMBAT)
             {
                 if (!me->IsInCombat())
@@ -747,9 +750,9 @@ public:
         void JustSummoned(Creature* summon) override
         {
             if (summon->GetEntry() == NPC_COLUMN_OF_FROST)
-                summon->m_Events.AddEventAtOffset(new DelayedCastEvent(summon, SPELL_COLUMN_OF_FROST_DAMAGE, ObjectGuid::Empty, 8s), 2s);
+                summon->m_Events.AddEvent(new DelayedCastEvent(summon, SPELL_COLUMN_OF_FROST_DAMAGE, ObjectGuid::Empty, 8000), summon->m_Events.CalculateTime(2000));
             else if (summon->GetEntry() == NPC_MANA_VOID)
-                summon->DespawnOrUnsummon(36s);
+                summon->DespawnOrUnsummon(36000);
         }
 
         void UpdateAI(uint32 diff) override
@@ -882,8 +885,8 @@ public:
                     me->GetMotionMaster()->Clear(false);
                     me->GetMotionMaster()->MoveIdle();
                     // must use originalCaster the same for all clouds to allow stacking
-                    me->CastSpell(me, SPELL_EMERALD_VIGOR, false, nullptr, nullptr, _instance->GetGuidData(DATA_VALITHRIA_DREAMWALKER));
-                    me->DespawnOrUnsummon(1s);
+                    me->CastSpell(me, EMERALD_VIGOR, false, nullptr, nullptr, _instance->GetGuidData(DATA_VALITHRIA_DREAMWALKER));
+                    me->DespawnOrUnsummon(1000);
                     break;
                 default:
                     break;
@@ -1051,7 +1054,7 @@ public:
                     timer = 0;
                     me->SetDisplayId(11686);
                     me->SetUnitFlag(UNIT_FLAG_NOT_SELECTABLE);
-                    me->DespawnOrUnsummon(2s);
+                    me->DespawnOrUnsummon(2000);
                 }
                 else
                     timer -= diff;
@@ -1093,7 +1096,7 @@ public:
         void JustSummoned(Creature* summon) override
         {
             if (me->GetInstanceScript() && me->GetInstanceScript()->GetBossState(DATA_VALITHRIA_DREAMWALKER) == DONE)
-                summon->DespawnOrUnsummon(1ms);
+                summon->DespawnOrUnsummon(1);
             else if (Unit* target = SelectTargetFromPlayerList(200.0f))
                 summon->AI()->AttackStart(target);
         }

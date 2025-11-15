@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -53,7 +53,6 @@ enum Spells
     SPELL_BERSERK               = 27680,
     SPELL_SHADOW_GRASP          = 30410,
     SPELL_SHADOW_GRASP_VISUAL   = 30166,
-    SPELL_SHADOW_CAGE_STUN      = 30168,
     SPELL_MIND_EXHAUSTION       = 44032,
     SPELL_QUAKE                 = 30657,
     SPELL_QUAKE_KNOCKBACK       = 30571,
@@ -67,13 +66,13 @@ enum Spells
 
 enum Groups
 {
-    GROUP_EARLY_RELEASE_CHECK   = 0
+    GROUP_INTERRUPT_CHECK       = 0,
+    GROUP_EARLY_RELEASE_CHECK   = 1
 };
 
 enum Actions
 {
-    ACTION_INCREASE_HELLFIRE_CHANNELER_DEATH_COUNT  = 1,
-    ACTION_BANISH_SELF = 2
+    ACTION_INCREASE_HELLFIRE_CHANNELER_DEATH_COUNT  = 1
 };
 
 struct boss_magtheridon : public BossAI
@@ -190,6 +189,21 @@ struct boss_magtheridon : public BossAI
         {
             DoCastSelf(SPELL_BLAST_NOVA);
             scheduler.DelayAll(10s);
+
+            _interruptScheduler.Schedule(50ms, GROUP_INTERRUPT_CHECK, [this](TaskContext context)
+            {
+                if (me->GetAuraCount(SPELL_SHADOW_GRASP_VISUAL) >= 1)  // Changed from 5 to 1
+                    {
+                    Talk(SAY_BANISH);
+                    me->InterruptNonMeleeSpells(true);
+                    scheduler.CancelGroup(GROUP_INTERRUPT_CHECK);
+                }
+                else
+                    context.Repeat(50ms);
+            }).Schedule(12s, GROUP_INTERRUPT_CHECK, [this](TaskContext /*context*/)
+            {
+                _interruptScheduler.CancelGroup(GROUP_INTERRUPT_CHECK);
+            });
             context.Repeat(54350ms, 55400ms);
         }).Schedule(22min, [this](TaskContext /*context*/)
         {
@@ -210,15 +224,10 @@ struct boss_magtheridon : public BossAI
                 scheduler.CancelGroup(GROUP_EARLY_RELEASE_CHECK); //cancel regular countdown
                 _magReleased = true;
                 scheduler.Schedule(3s, [this](TaskContext)
-                {
-                    ScheduleCombatEvents();
-                });
+                    {
+                        ScheduleCombatEvents();
+                    });
             }
-        }
-        else if (action == ACTION_BANISH_SELF)
-        {
-            Talk(SAY_BANISH);
-            me->CastSpell(me, SPELL_SHADOW_CAGE_STUN, true);
         }
     }
 
@@ -284,7 +293,7 @@ struct npc_target_trigger : public ScriptedAI
             _scheduler.Schedule(5s, [this](TaskContext /*context*/)
             {
                 DoCastSelf(SPELL_DEBRIS_DAMAGE);
-                me->DespawnOrUnsummon(6s);
+                me->DespawnOrUnsummon(6000);
             });
         }
     }
@@ -339,30 +348,6 @@ class spell_magtheridon_shadow_grasp : public AuraScript
         OnEffectApply += AuraEffectApplyFn(spell_magtheridon_shadow_grasp::HandleDummyApply, EFFECT_0, SPELL_AURA_DUMMY, AURA_EFFECT_HANDLE_REAL);
         OnEffectRemove += AuraEffectRemoveFn(spell_magtheridon_shadow_grasp::HandleDummyRemove, EFFECT_0, SPELL_AURA_DUMMY, AURA_EFFECT_HANDLE_REAL);
         OnEffectRemove += AuraEffectRemoveFn(spell_magtheridon_shadow_grasp::HandlePeriodicRemove, EFFECT_1, SPELL_AURA_PERIODIC_DAMAGE, AURA_EFFECT_HANDLE_REAL);
-    }
-};
-
-class spell_magtheridon_shadow_grasp_visual : public AuraScript
-{
-    PrepareAuraScript(spell_magtheridon_shadow_grasp_visual);
-
-    void HandleDummyApply(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/)
-    {
-        if (GetTarget()->GetAuraCount(SPELL_SHADOW_GRASP_VISUAL) == 5)
-        {
-            GetTarget()->GetAI()->DoAction(ACTION_BANISH_SELF);
-        }
-    }
-
-    void HandleDummyRemove(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/)
-    {
-        GetTarget()->RemoveAurasDueToSpell(SPELL_SHADOW_CAGE_STUN);
-    }
-
-    void Register() override
-    {
-        OnEffectApply += AuraEffectApplyFn(spell_magtheridon_shadow_grasp_visual::HandleDummyApply, EFFECT_0, SPELL_AURA_DUMMY, AURA_EFFECT_HANDLE_REAL);
-        OnEffectRemove += AuraEffectRemoveFn(spell_magtheridon_shadow_grasp_visual::HandleDummyRemove, EFFECT_0, SPELL_AURA_DUMMY, AURA_EFFECT_HANDLE_REAL);
     }
 };
 
@@ -433,7 +418,6 @@ void AddSC_boss_magtheridon()
     RegisterMagtheridonsLairCreatureAI(npc_target_trigger);
     RegisterSpellScript(spell_magtheridon_blaze);
     RegisterSpellScript(spell_magtheridon_shadow_grasp);
-    RegisterSpellScript(spell_magtheridon_shadow_grasp_visual);
     RegisterSpellScript(spell_magtheridon_quake);
     RegisterSpellScript(spell_magtheridon_debris_target_selector);
     new go_manticron_cube();

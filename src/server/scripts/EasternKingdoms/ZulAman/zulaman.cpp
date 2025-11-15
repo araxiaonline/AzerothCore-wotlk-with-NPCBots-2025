@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -20,7 +20,6 @@
 #include "Player.h"
 #include "ScriptedCreature.h"
 #include "ScriptedGossip.h"
-#include "SpellAuraEffects.h"
 #include "SpellInfo.h"
 #include "SpellScript.h"
 #include "SpellScriptLoader.h"
@@ -39,7 +38,6 @@ enum ForestFrog
     SPELL_SUMMON_AMANI_CHARM_CHEST_2  = 43756, // Amani Charm Box (186734)
     SPELL_SUMMON_MONEY_BAG            = 43774, // Money Bag (186736)
     SPELL_STEALTH_                    = 34189,
-    SPELL_FIXATE                      = 43360,
 
     // Creatures
     NPC_FOREST_FROG                   = 24396,
@@ -78,7 +76,7 @@ struct npc_forest_frog : public ScriptedAI
     void MovementInform(uint32 type, uint32 data) override
     {
         if (type == POINT_MOTION_TYPE && data == POINT_DESPAWN)
-            me->DespawnOrUnsummon(1s);
+            me->DespawnOrUnsummon(1000);
     }
 
     void UpdateAI(uint32 diff) override
@@ -87,12 +85,6 @@ struct npc_forest_frog : public ScriptedAI
         if (eventTimer)
         {
             Player* player = ObjectAccessor::GetPlayer(me->GetMap(), PlayerGUID);
-            if (!player)
-            {
-                events.CancelEvent(eventTimer);
-                eventTimer = 0;
-                return;
-            }
             switch (events.ExecuteEvent())
             {
             case 1:
@@ -103,7 +95,7 @@ struct npc_forest_frog : public ScriptedAI
                     Talk(SAY_THANKS_FREED, player);
 
                 eventTimer = 2;
-                events.ScheduleEvent(eventTimer, 4s, 5s);
+                events.ScheduleEvent(eventTimer, urand(4000, 5000));
                 break;
             case 2:
                 if (me->GetEntry() != NPC_GUNTER && me->GetEntry() != NPC_KYREN) // vendors don't kneel?
@@ -140,7 +132,7 @@ struct npc_forest_frog : public ScriptedAI
                     break;
                 }
                 eventTimer = 3;
-                events.ScheduleEvent(eventTimer, 6s, 7s);
+                events.ScheduleEvent(eventTimer, urand(6000, 7000));
                 break;
             case 3:
                 me->SetStandState(EMOTE_ONESHOT_NONE);
@@ -148,13 +140,13 @@ struct npc_forest_frog : public ScriptedAI
                 if (me->GetEntry() == NPC_ADARRAH)
                     Talk(SAY_CHEST_TALK + 1, player);
                 else
-                    Talk(SAY_CHEST_TALK, player);
+                    Talk(SAY_CHEST_TALK);
 
                 eventTimer = 4;
                 if (me->GetEntry() == NPC_GUNTER || me->GetEntry() == NPC_KYREN)
-                    events.ScheduleEvent(eventTimer, 300s); // vendors wait for 5 minutes before running away and despawning
+                    events.ScheduleEvent(eventTimer, 5 * MINUTE * IN_MILLISECONDS); // vendors wait for 5 minutes before running away and despawning
                 else
-                    events.ScheduleEvent(eventTimer, 6s);
+                    events.ScheduleEvent(eventTimer, 6000);
                 break;
             case 4:
                 me->HandleEmoteCommand(EMOTE_ONESHOT_WAVE);
@@ -162,10 +154,10 @@ struct npc_forest_frog : public ScriptedAI
                 if (me->GetEntry() == NPC_ADARRAH)
                     Talk(SAY_GOODBYE + 1, player);
                 else
-                    Talk(SAY_GOODBYE, player);
+                    Talk(SAY_GOODBYE);
 
                 eventTimer = 5;
-                events.ScheduleEvent(eventTimer, 2s);
+                events.ScheduleEvent(eventTimer, 2000);
                 break;
             case 5:
 
@@ -205,12 +197,9 @@ struct npc_forest_frog : public ScriptedAI
 
         // start generic rp
         eventTimer = 1;
-        events.ScheduleEvent(eventTimer, 3s);
+        events.ScheduleEvent(eventTimer, 3000);
 
         me->UpdateEntry(cEntry);
-
-        if (Player* player = ObjectAccessor::GetPlayer(me->GetMap(), PlayerGUID))
-            me->SetFacingToObject(player);
     }
 
     void SpellHit(Unit* caster, SpellInfo const* spell) override
@@ -218,6 +207,7 @@ struct npc_forest_frog : public ScriptedAI
         if (spell->Id == SPELL_REMOVE_AMANI_CURSE && caster->IsPlayer() && me->GetEntry() == NPC_FOREST_FROG)
         {
             me->GetMotionMaster()->MoveIdle();
+            me->SetFacingToObject(caster);
             PlayerGUID = caster->GetGUID();
 
             if (roll_chance_i(2))
@@ -232,6 +222,7 @@ struct npc_forest_frog : public ScriptedAI
 
     private:
         InstanceScript* instance;
+        EventMap events;
         uint8 eventTimer;
         ObjectGuid PlayerGUID;
 };
@@ -366,7 +357,8 @@ enum DisplayIds
 enum EntryIds
 {
     NPC_HARRISON_JONES_1                = 24375,
-    NPC_HARRISON_JONES_2                = 24365
+    NPC_HARRISON_JONES_2                = 24365,
+    NPC_AMANISHI_GUARDIAN               = 23597,
 };
 
 enum Weapons
@@ -400,7 +392,7 @@ struct npc_harrison_jones : public ScriptedAI
             Talk(SAY_HARRISON_0);
             scheduler.Schedule(2s, [this](TaskContext /*task*/)
             {
-                me->GetMotionMaster()->MoveWaypoint(HARRISON_MOVE_1, false);
+                me->GetMotionMaster()->MovePath(HARRISON_MOVE_1, false);
             });
         }
     }
@@ -418,16 +410,6 @@ struct npc_harrison_jones : public ScriptedAI
             scheduler.Schedule(1s, [this](TaskContext /*task*/)
             {
                 me->SetStandState(UNIT_STAND_STATE_DEAD);
-            }).Schedule(2s, [this](TaskContext /*task*/)
-            {
-                // Send savages to attack players
-                std::list<Creature*> creatures;
-                me->GetCreatureListWithEntryInGrid(creatures, NPC_AMANISHI_SAVAGE, 100.0f);
-                for (Creature* creature : creatures)
-                {
-                    creature->SetImmuneToAll(false);
-                    creature->SetInCombatWithZone();
-                }
             });
             _instance->StorePersistentData(DATA_TIMED_RUN, 21);
             _instance->DoAction(ACTION_START_TIMED_RUN);
@@ -448,7 +430,7 @@ struct npc_harrison_jones : public ScriptedAI
             // Players are Now Saved to instance at SPECIAL (Player should be notified?)
             scheduler.Schedule(500ms, [this](TaskContext /*task*/)
             {
-                me->GetMotionMaster()->MoveWaypoint(HARRISON_MOVE_2, false);
+                me->GetMotionMaster()->MovePath(HARRISON_MOVE_2, false);
             });
         }
     }
@@ -486,7 +468,7 @@ struct npc_harrison_jones : public ScriptedAI
     void MovementInform(uint32 type, uint32 id) override
     {
         // at gong
-        if (type == WAYPOINT_MOTION_TYPE && id == 3 && _phase == PHASE_GONG)
+        if (type == WAYPOINT_MOTION_TYPE && id == 2 && _phase == PHASE_GONG)
         {
             if (GameObject* gong = _instance->GetGameObject(DATA_STRANGE_GONG))
                 me->SetFacingToObject(gong);
@@ -503,13 +485,13 @@ struct npc_harrison_jones : public ScriptedAI
             });
         }
         // to the massive gate
-        else if (type == WAYPOINT_MOTION_TYPE && id == 2 && _phase == PHASE_GATE_CLOSED)
+        else if (type == WAYPOINT_MOTION_TYPE && id == 1 && _phase == PHASE_GATE_CLOSED)
         {
             me->SetEntry(NPC_HARRISON_JONES_1);
             Talk(SAY_HARRISON_2);
         }
         // at massive gate
-        else if (type == WAYPOINT_MOTION_TYPE && id == 3 && _phase == PHASE_GATE_CLOSED)
+        else if (type == WAYPOINT_MOTION_TYPE && id == 2 && _phase == PHASE_GATE_CLOSED)
         {
             me->SetUInt32Value(UNIT_NPC_EMOTESTATE, EMOTE_STATE_USE_STANDING);
             Talk(SAY_HARRISON_3);
@@ -521,7 +503,7 @@ struct npc_harrison_jones : public ScriptedAI
             {
                 DoCastSelf(SPELL_STEALTH);
                 me->SetUInt32Value(UNIT_NPC_EMOTESTATE, EMOTE_ONESHOT_NONE);
-                me->GetMotionMaster()->MoveWaypoint(HARRISON_MOVE_3, false);
+                me->GetMotionMaster()->MovePath(HARRISON_MOVE_3, false);
             });
         }
     }
@@ -571,7 +553,7 @@ struct npc_amanishi_lookout : public NullCreatureAI
 
     void MoveInLineOfSight(Unit* who) override
     {
-        if (!me->IsWithinDist(who, me->GetAggroRange(who), false))
+        if (!me->IsWithinDist(who, 25.0f, false)) // distance not confirmed
                 return;
 
         Player* player = who->GetCharmerOrOwnerPlayerOrPlayerItself();
@@ -592,38 +574,15 @@ struct npc_amanishi_lookout : public NullCreatureAI
             Talk(SAY_INVADERS);
             me->SetUnitFlag(UNIT_FLAG_IMMUNE_TO_PC);
             me->SetUnitFlag(UNIT_FLAG_RENAME);
-            me->GetMotionMaster()->MoveWaypoint(PATH_LOOKOUT, false);
+            me->GetMotionMaster()->MovePath(PATH_LOOKOUT, false);
         }
     }
 
     void MovementInform(uint32 type, uint32 id) override
     {
         // at boss
-        if (type == WAYPOINT_MOTION_TYPE && id == 9) // should despawn with waypoint script
+        if (type == WAYPOINT_MOTION_TYPE && id == 8) // should despawn with waypoint script
             me->DespawnOrUnsummon(0s, 0s);
-    }
-private:
-    InstanceScript* _instance;
-};
-
-struct npc_eagle_trash_aggro_trigger : public ScriptedAI
-{
-    npc_eagle_trash_aggro_trigger(Creature* creature) : ScriptedAI(creature), _instance(creature->GetInstanceScript()) {}
-
-    void MoveInLineOfSight(Unit* who) override
-    {
-        if (who->GetLevel() > 70)
-            return;
-
-        if (!me->IsWithinDist(who, me->GetAggroRange(who), false))
-            return;
-
-        Player* player = who->GetCharmerOrOwnerPlayerOrPlayerItself();
-        if (!player || player->IsGameMaster())
-            return;
-
-        if (_instance->GetData(TYPE_AKILZON_GAUNTLET) == NOT_STARTED)
-            _instance->SetData(TYPE_AKILZON_GAUNTLET, IN_PROGRESS);
     }
 private:
     InstanceScript* _instance;
@@ -715,196 +674,6 @@ private:
     SummonList _summons;
 };
 
-enum AmanishiScout
-{
-    NPC_WORLD_TRIGGER               = 22515,
-    SAY_AGGRO                       = 0,
-    SPELL_ALERT_DRUMS               = 42177,
-    SPELL_MULTI_SHOT                = 43205,
-    SPELL_SHOOT                     = 16496
-};
-
-inline bool IsHut(Creature* trigger)
-{
-    return trigger->GetPositionX() < -90.0f // South of Jan'alai area
-        && ((trigger->GetOrientation() > 2.7f) || (trigger->GetOrientation() < 2.7f && 1270.0f < trigger->GetPositionY() && trigger->GetPositionY() < 1280.0f));
-}
-
-inline bool IsDrum(Creature* trigger)
-{
-    return trigger->GetPositionX() < -90.0f // South of Jan'alai area
-        && !IsHut(trigger);
-}
-
-struct npc_amanishi_scout : public ScriptedAI
-{
-    npc_amanishi_scout(Creature* creature) : ScriptedAI(creature) { }
-
-    void Reset() override
-    {
-        scheduler.CancelAll();
-        me->SetCombatMovement(false);
-        me->SetReactState(REACT_AGGRESSIVE);
-        _drumGUID.Clear();
-    }
-
-    void JustEngagedWith(Unit* /*who*/) override
-    {
-        me->SetInCombatWithZone();
-        Talk(SAY_AGGRO);
-        // Move to Drum
-        std::list<Creature*> triggers;
-        GetCreatureListWithEntryInGrid(triggers, me, NPC_WORLD_TRIGGER, 50.0f);
-        triggers.remove_if([](Creature* trigger) {return !IsDrum(trigger);});
-        triggers.sort(Acore::ObjectDistanceOrderPred(me));
-        if (triggers.empty())
-        {
-            ScheduleCombat();
-            return;
-        }
-        Creature* closestDrum = triggers.front();
-        me->GetMotionMaster()->MoveFollow(closestDrum, 0.0f, 0.0f);
-        _drumGUID = closestDrum->GetGUID();
-        me->ClearTarget();
-        me->SetReactState(REACT_PASSIVE);
-        scheduler.Schedule(1s, [this](TaskContext context)
-        {
-            if (_drumGUID)
-                if (Creature* drum = ObjectAccessor::GetCreature(*me, _drumGUID))
-                {
-                    if (me->IsWithinRange(drum, INTERACTION_DISTANCE))
-                    {
-                        me->SetFacingToObject(drum);
-                        DoCastSelf(SPELL_ALERT_DRUMS);
-                        scheduler.Schedule(5s, [this](TaskContext /*context*/)
-                        {
-                            ScheduleCombat();
-                        });
-                        return;
-                    }
-                    context.Repeat(1s);
-                    return;
-                }
-            ScheduleCombat();
-        });
-    }
-
-    void ScheduleCombat()
-    {
-        me->SetReactState(REACT_AGGRESSIVE);
-        me->SetCombatMovement(true);
-        if (Unit* victim = me->GetVictim())
-            me->GetMotionMaster()->MoveChase(victim);
-        scheduler.Schedule(2s, [this](TaskContext context)
-        {
-            DoCastVictim(SPELL_SHOOT);
-            context.Repeat(4s, 5s);
-        }).Schedule(6s, [this](TaskContext context)
-        {
-            DoCastAOE(SPELL_MULTI_SHOT);
-            context.Repeat(20s, 24s);
-        });
-    }
-
-    void UpdateAI(uint32 diff) override
-    {
-        scheduler.Update(diff);
-
-        if (!me->IsCombatMovementAllowed() || !UpdateVictim())
-            return;
-
-        DoMeleeAttackIfReady();
-    }
-private:
-    ObjectGuid _drumGUID;
-};
-
-enum SpellAlertDrums
-{
-    SPELL_SUMMON_AMANISHI_SENTRIES  = 42179
-};
-
-class spell_alert_drums : public AuraScript
-{
-    PrepareAuraScript(spell_alert_drums);
-
-    bool Validate(SpellInfo const* /*spellInfo*/) override
-    {
-        return ValidateSpellInfo({ SPELL_SUMMON_AMANISHI_SENTRIES });
-    }
-
-    void HandleTriggerSpell(AuraEffect const* aurEff)
-    {
-        PreventDefaultAction();
-        if (aurEff->GetTickNumber() == 1)
-            GetCaster()->CastSpell(GetCaster(), SPELL_SUMMON_AMANISHI_SENTRIES, true);
-    }
-
-    void Register() override
-    {
-        OnEffectPeriodic += AuraEffectPeriodicFn(spell_alert_drums::HandleTriggerSpell, EFFECT_0, SPELL_AURA_PERIODIC_TRIGGER_SPELL);
-    }
-};
-
-enum AmanishiSentries
-{
-    SUMMON_AMANISHI_SENTRIES_1 = 42180,
-    SUMMON_AMANISHI_SENTRIES_2 = 42181,
-    SUMMON_AMANISHI_SENTRIES_3 = 42182,
-    SUMMON_AMANISHI_SENTRIES_4 = 42183,
-};
-
-class spell_summon_amanishi_sentries : public SpellScript
-{
-    PrepareSpellScript(spell_summon_amanishi_sentries);
-
-    constexpr static uint32 spells[4] = { SUMMON_AMANISHI_SENTRIES_1, SUMMON_AMANISHI_SENTRIES_2, SUMMON_AMANISHI_SENTRIES_3, SUMMON_AMANISHI_SENTRIES_4 };
-
-    bool Validate(SpellInfo const* /*spellInfo*/) override
-    {
-        return ValidateSpellInfo(spells);
-    }
-
-    void HandleScriptEffect(SpellEffIndex /*effIndex*/)
-    {
-        std::list<Creature*> triggers;
-        GetCreatureListWithEntryInGrid(triggers, GetHitUnit(), NPC_WORLD_TRIGGER, 50.0f);
-        triggers.remove_if([](Creature* trigger) {return !IsHut(trigger);});
-        if (triggers.empty())
-            return;
-        Creature* trigger = Acore::Containers::SelectRandomContainerElement(triggers);
-        uint8 index_1 = urand(0, 3);
-        uint8 index_2 = (index_1 + 1) % 4;
-        trigger->CastSpell(trigger, spells[index_1], true);
-        trigger->CastSpell(trigger, spells[index_2], true);
-    }
-
-    void Register() override
-    {
-        OnEffectHitTarget += SpellEffectFn(spell_summon_amanishi_sentries::HandleScriptEffect, EFFECT_0, SPELL_EFFECT_SCRIPT_EFFECT);
-    }
-};
-
-class spell_call_of_the_beast : public SpellScript
-{
-    PrepareSpellScript(spell_call_of_the_beast);
-
-    bool Validate(SpellInfo const* /*spellInfo*/) override
-    {
-        return ValidateSpellInfo({ SPELL_FIXATE });
-    }
-
-    void HandleEffect(SpellEffIndex /*effIndex*/)
-    {
-        GetHitUnit()->CastSpell(GetHitUnit(), SPELL_FIXATE, true);
-    }
-
-    void Register() override
-    {
-        OnEffectHitTarget += SpellEffectFn(spell_call_of_the_beast::HandleEffect, EFFECT_0, SPELL_EFFECT_APPLY_AURA);
-    }
-};
-
 void AddSC_zulaman()
 {
     RegisterZulAmanCreatureAI(npc_forest_frog);
@@ -912,10 +681,5 @@ void AddSC_zulaman()
     RegisterZulAmanCreatureAI(npc_harrison_jones);
     RegisterSpellScript(spell_ritual_of_power);
     RegisterZulAmanCreatureAI(npc_amanishi_lookout);
-    RegisterZulAmanCreatureAI(npc_eagle_trash_aggro_trigger);
     RegisterZulAmanCreatureAI(npc_amanishi_tempest);
-    RegisterZulAmanCreatureAI(npc_amanishi_scout);
-    RegisterSpellScript(spell_alert_drums);
-    RegisterSpellScript(spell_summon_amanishi_sentries);
-    RegisterSpellScript(spell_call_of_the_beast);
 }

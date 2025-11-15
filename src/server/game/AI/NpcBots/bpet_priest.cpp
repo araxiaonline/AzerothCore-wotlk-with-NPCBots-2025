@@ -63,7 +63,7 @@ public:
             if ((liveTimer += diff) >= SHADOWFIEND_DURATION)
             {
                 canUpdate = false;
-                me->ToTempSummon()->UnSummon(1ms);
+                me->ToTempSummon()->UnSummon(1);
                 return;
             }
 
@@ -117,13 +117,13 @@ public:
         {
         }
 
-        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType, SpellSchoolMask damageSchoolMask) override
+        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType) override
         {
             //Handled by spell scripts
             //if (damage && victim && damageType == DIRECT_DAMAGE)
             //    victim->CastSpell(petOwner, MANA_LEECH_PROC, true);
 
-            bot_pet_ai::DamageDealt(victim, damage, damageType, damageSchoolMask);
+            bot_pet_ai::DamageDealt(victim, damage, damageType);
         }
 
         void DamageTaken(Unit* u, uint32& damage, DamageEffectType /*damageType*/, SpellSchoolMask /*schoolMask*/) override

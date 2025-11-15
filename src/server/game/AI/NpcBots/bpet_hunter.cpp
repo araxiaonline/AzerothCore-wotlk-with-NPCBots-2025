@@ -173,7 +173,7 @@ public:
                 WorldObject* result = nullptr;
                 Bcore::AnyDeadUnitSpellTargetInRangeCheck check(me, 5.f, sSpellMgr->GetSpellInfo(CARRION_FEEDER_1), TARGET_CHECK_ENEMY);
                 Bcore::WorldObjectSearcher<Bcore::AnyDeadUnitSpellTargetInRangeCheck> searcher(me, result, check);
-                Cell::VisitObjects(me, searcher, 5.f);
+                Cell::VisitWorldObjects(me, searcher, 5.f);
 
                 if (result)
                 {
@@ -244,7 +244,7 @@ public:
 
             //improved + Longevity applied to cds
 
-            if (IsSpellReady(BESTIAL_WRATH_1, diff, false) && canDPS && dist < 10 &&
+            if (IsSpellReady(BESTIAL_WRATH_1, diff, false) && canDPS && opponent && dist < 10 &&
                 (opponent->GetHealth() > petOwner->GetMaxHealth()/4 * (1 + opponent->getAttackers().size()) ||
                 opponent->GetTypeId() == TYPEID_PLAYER))
             {
@@ -318,7 +318,7 @@ public:
                 return;
             }
 
-            if (IsSpellReady(CALL_OF_THE_WILD_1, diff, false) && canDPS && dist < 10)
+            if (IsSpellReady(CALL_OF_THE_WILD_1, diff, false) && canDPS && opponent && dist < 10)
             {
                 me->CastSpell(me, GetSpell(CALL_OF_THE_WILD_1), false);
                 SetSpellCooldown(CALL_OF_THE_WILD_1, 210000);
@@ -692,9 +692,9 @@ public:
         {
         }
 
-        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType, SpellSchoolMask damageSchoolMask) override
+        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType) override
         {
-            bot_pet_ai::DamageDealt(victim, damage, damageType, damageSchoolMask);
+            bot_pet_ai::DamageDealt(victim, damage, damageType);
         }
 
         void DamageTaken(Unit* u, uint32& /*damage*/, DamageEffectType /*damageType*/, SpellSchoolMask /*schoolMask*/) override

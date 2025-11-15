@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -21,19 +21,24 @@
 
 enum Spells
 {
-    SPELL_REND                      = 13738,
-    SPELL_THRASH                    = 3391,
-};
-
-enum Says
-{
-    EMOTE_DEATH                     = 0
+    SPELL_REND = 13738,
+    SPELL_THRASH = 3391,
+    SPELL_HEROIC_LEAP = 52174,
+    SPELL_ENRAGE = 8269
 };
 
 enum Events
 {
-    EVENT_REND                      = 1,
-    EVENT_THRASH                    = 2,
+    EVENT_REND = 1,
+    EVENT_THRASH = 2,
+    EVENT_HEROIC_LEAP = 3,
+    EVENT_ENRAGE = 4
+};
+
+
+enum Says
+{
+    EMOTE_DEATH                     = 0
 };
 
 const Position SummonLocation = { -167.9561f, -411.7844f, 76.23057f, 1.53589f };
@@ -57,6 +62,8 @@ public:
             _JustEngagedWith();
             events.ScheduleEvent(EVENT_REND, 17s, 20s);
             events.ScheduleEvent(EVENT_THRASH, 10s, 12s);
+            events.ScheduleEvent(EVENT_HEROIC_LEAP, 8s, 15s);
+            events.ScheduleEvent(EVENT_ENRAGE, 2min);
         }
 
         void JustDied(Unit* /*killer*/) override
@@ -64,6 +71,20 @@ public:
             _JustDied();
             me->SummonCreature(NPC_GIZRUL_THE_SLAVENER, SummonLocation, TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 300000);
             Talk(EMOTE_DEATH);
+            Map::PlayerList const& players = me->GetMap()->GetPlayers();
+            if (!players.IsEmpty())
+            {
+                uint32 baseRewardLevel = 1;
+                bool isDungeon = me->GetMap()->IsDungeon();
+
+                for (auto const& playerPair : players)
+                {
+                    if (Player* player = playerPair.GetSource())
+                    {
+                        DistributeChallengeRewards(player, me, baseRewardLevel, isDungeon);
+                    }
+                }
+            }
         }
 
         void UpdateAI(uint32 diff) override
@@ -86,6 +107,13 @@ public:
                         break;
                     case EVENT_THRASH:
                         DoCast(me, SPELL_THRASH);
+                        break;
+                    case EVENT_HEROIC_LEAP:
+                        DoCastRandomTarget(SPELL_HEROIC_LEAP, 0, 35.0f, false, true); 
+                        events.ScheduleEvent(EVENT_HEROIC_LEAP, 20s, 30s); 
+                        break;
+                    case EVENT_ENRAGE:
+                        DoCast(me, SPELL_ENRAGE, true);
                         break;
                     default:
                         break;

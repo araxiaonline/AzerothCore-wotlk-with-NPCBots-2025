@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -56,6 +56,11 @@ public:
     {
         boss_sulfuronAI(Creature* creature) : BossAI(creature, DATA_SULFURON) {}
 
+        void Reset() override
+        {
+            _Reset();
+        }
+
         void JustEngagedWith(Unit* /*who*/) override
         {
             _JustEngagedWith();
@@ -65,6 +70,20 @@ public:
             events.ScheduleEvent(EVENT_FLAMESPEAR, 2s);
         }
 
+        void JustDied(Unit* /*killer*/) override
+        {
+            _JustDied();
+            Map::PlayerList const& players = me->GetMap()->GetPlayers();
+            for (auto const& playerPair : players)
+            {
+                Player* player = playerPair.GetSource();
+                if (player)
+                {
+                    DistributeChallengeRewards(player, me, 1, false);
+                }
+            }
+        }
+
         void ExecuteEvent(uint32 eventId) override
         {
             switch (eventId)
@@ -72,7 +91,7 @@ public:
                 case EVENT_DEMORALIZING_SHOUT:
                 {
                     DoCastVictim(SPELL_DEMORALIZING_SHOUT);
-                    events.Repeat(12s, 18s);
+                    events.RepeatEvent(urand(12000, 18000));
                     break;
                 }
                 case EVENT_INSPIRE:
@@ -84,19 +103,19 @@ public:
                     }
 
                     DoCastSelf(SPELL_INSPIRE);
-                    events.Repeat(13s, 20s);
+                    events.RepeatEvent(urand(13000, 20000));
                     break;
                 }
                 case EVENT_KNOCKDOWN:
                 {
                     DoCastVictim(SPELL_KNOCKDOWN);
-                    events.Repeat(10s, 20s);
+                    events.RepeatEvent(urand(10000, 20000));
                     break;
                 }
                 case EVENT_FLAMESPEAR:
                 {
                     DoCastRandomTarget(SPELL_FLAMESPEAR);
-                    events.Repeat(12s, 16s);
+                    events.RepeatEvent(urand(12000, 16000));
                     break;
                 }
             }
@@ -133,7 +152,7 @@ public:
             events.ScheduleEvent(EVENT_DARK_STRIKE, 4s, 7s);
             events.ScheduleEvent(EVENT_DARK_MENDING, 15s, 30s);
             events.ScheduleEvent(EVENT_SHADOW_WORD_PAIN, 2s, 4s);
-            events.ScheduleEvent(EVENT_IMMOLATE, 3500ms, 6s);
+            events.ScheduleEvent(EVENT_IMMOLATE, 3500ms, 6000ms);
         }
 
         void UpdateAI(uint32 diff) override
@@ -157,7 +176,7 @@ public:
                     case EVENT_DARK_STRIKE:
                     {
                         DoCastVictim(SPELL_DARK_STRIKE);
-                        events.Repeat(4s, 7s);
+                        events.RepeatEvent(urand(4000, 7000));
                         break;
                     }
                     case EVENT_DARK_MENDING:
@@ -169,7 +188,7 @@ public:
                                 DoCast(target, SPELL_DARK_MENDING);
                             }
                         }
-                        events.Repeat(15s, 20s);
+                        events.RepeatEvent(urand(15000, 20000));
                         break;
                     }
                     case EVENT_SHADOW_WORD_PAIN:
@@ -178,7 +197,7 @@ public:
                         {
                             DoCast(target, SPELL_SHADOW_WORD_PAIN);
                         }
-                        events.Repeat(2500ms, 5s);
+                        events.RepeatEvent(urand(2500, 5000));
                         break;
                     }
                     case EVENT_IMMOLATE:
@@ -187,7 +206,7 @@ public:
                         {
                             DoCast(target, SPELL_IMMOLATE);
                         }
-                        events.Repeat(5s, 7s);
+                        events.RepeatEvent(urand(5000, 7000));
                         break;
                     }
                 }

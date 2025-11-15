@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -21,7 +21,6 @@
 #include "GridNotifiers.h"
 #include "MapMgr.h"
 #include "ScriptedCreature.h"
-#include "SpellAuras.h"
 #include "SpellAuraEffects.h"
 #include "SpellScript.h"
 #include "SpellScriptLoader.h"
@@ -68,7 +67,7 @@ class spell_q11065_wrangle_some_aether_rays_aura : public AuraScript
                 {
                     cr->CastSpell(player, 40926, true);
                     cr->GetMotionMaster()->MoveFollow(player, 5.0f, 2 * M_PI * rand_norm());
-                    ar->ToCreature()->DespawnOrUnsummon(500ms);
+                    ar->ToCreature()->DespawnOrUnsummon(500);
                 }
             }
         }
@@ -756,10 +755,10 @@ private:
     uint32 _originalEntry;
     uint32 _newEntry;
     bool _shouldAttack;
-    Milliseconds _despawnTime;
+    uint32 _despawnTime;
 
 public:
-    spell_generic_quest_update_entry_SpellScript(uint16 spellEffect, uint8 effIndex, uint32 originalEntry, uint32 newEntry, bool shouldAttack, Milliseconds despawnTime = 0ms) :
+    spell_generic_quest_update_entry_SpellScript(uint16 spellEffect, uint8 effIndex, uint32 originalEntry, uint32 newEntry, bool shouldAttack, uint32 despawnTime = 0) :
         SpellScript(), _spellEffect(spellEffect), _effIndex(effIndex), _originalEntry(originalEntry),
         _newEntry(newEntry), _shouldAttack(shouldAttack), _despawnTime(despawnTime) { }
 
@@ -772,7 +771,7 @@ public:
                 if (_shouldAttack && creatureTarget->IsAIEnabled)
                     creatureTarget->AI()->AttackStart(GetCaster());
 
-                if (_despawnTime > 0ms)
+                if (_despawnTime)
                     creatureTarget->DespawnOrUnsummon(_despawnTime);
             }
     }
@@ -900,10 +899,9 @@ enum Quests6124_6129Data
     NPC_SICKLY_GAZELLE  = 12296,
     NPC_CURED_GAZELLE   = 12297,
     NPC_SICKLY_DEER     = 12298,
-    NPC_CURED_DEER      = 12299
+    NPC_CURED_DEER      = 12299,
+    DESPAWN_TIME        = 30000
 };
-
-constexpr Milliseconds DESPAWN_TIME = 30s;
 
 class spell_q6124_6129_apply_salve : public SpellScript
 {
@@ -1346,12 +1344,11 @@ enum Quest12937Data
 {
     SPELL_TRIGGER_AID_OF_THE_EARTHEN    = 55809,
     NPC_FALLEN_EARTHEN_DEFENDER         = 30035,
-    TALK_FALLEN_EARTHEN_HEALED          = 0
 };
 
-class spell_q12937_relief_for_the_fallen : public AuraScript
+class spell_q12937_relief_for_the_fallen : public SpellScript
 {
-    PrepareAuraScript(spell_q12937_relief_for_the_fallen);
+    PrepareSpellScript(spell_q12937_relief_for_the_fallen);
 
     bool Load() override
     {
@@ -1363,31 +1360,20 @@ class spell_q12937_relief_for_the_fallen : public AuraScript
         return ValidateSpellInfo({ SPELL_TRIGGER_AID_OF_THE_EARTHEN });
     }
 
-    void OnRemove(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/)
+    void HandleDummy(SpellEffIndex /*effIndex*/)
     {
-        if (!GetCaster() || !GetCaster()->IsPlayer())
-            return;
-
         Player* caster = GetCaster()->ToPlayer();
-        Unit* target = GetUnitOwner();
-        if (target && target->ToCreature())
+        if (Creature* target = GetHitCreature())
         {
+            caster->CastSpell(caster, SPELL_TRIGGER_AID_OF_THE_EARTHEN, true, nullptr);
             caster->KilledMonsterCredit(NPC_FALLEN_EARTHEN_DEFENDER);
-            target->ToCreature()->DespawnOrUnsummon(5s);
-            target->SetStandState(UNIT_STAND_STATE_STAND);
-            target->ToCreature()->AI()->Talk(TALK_FALLEN_EARTHEN_HEALED);
-
-            ObjectGuid casterGUID = caster->GetGUID();
-            caster->m_Events.AddEventAtOffset([casterGUID]{
-                if (Player* caster = ObjectAccessor::FindPlayer(casterGUID))
-                    caster->CastSpell(caster, SPELL_TRIGGER_AID_OF_THE_EARTHEN, true);
-            }, 5s);
+            target->DespawnOrUnsummon();
         }
     }
 
     void Register() override
     {
-        OnEffectRemove += AuraEffectRemoveFn(spell_q12937_relief_for_the_fallen::OnRemove, EFFECT_0, SPELL_AURA_PERIODIC_HEAL, AURA_EFFECT_HANDLE_REAL);
+        OnEffectHitTarget += SpellEffectFn(spell_q12937_relief_for_the_fallen::HandleDummy, EFFECT_0, SPELL_EFFECT_DUMMY);
     }
 };
 
@@ -1514,7 +1500,7 @@ class spell_q9874_liquid_fire : public SpellScript
             {
                 caster->KilledMonsterCredit(NPC_VILLAGER_KILL_CREDIT);
                 target->CastSpell(target, SPELL_FLAMES, true);
-                target->DespawnOrUnsummon(20s);
+                target->DespawnOrUnsummon(20000);
             }
     }
 
@@ -1541,27 +1527,12 @@ class spell_q12805_lifeblood_dummy : public SpellScript
     void HandleScript(SpellEffIndex /*effIndex*/)
     {
         Player* caster = GetCaster()->ToPlayer();
-        Creature* target = GetHitCreature();
-
-        if (!target)
-            return;
-
-        if (Group* group = caster->GetGroup())
+        if (Creature* target = GetHitCreature())
         {
-            ObjectGuid targetGUID = target->GetGUID();
-            group->DoForAllMembers([targetGUID](Player* player)
-            {
-                if (Creature* shard = ObjectAccessor::GetCreature(*player, targetGUID))
-                    if (player->IsAtGroupRewardDistance(shard))
-                        player->KilledMonsterCredit(NPC_SHARD_KILL_CREDIT);
-
-            });
-        }
-        else
             caster->KilledMonsterCredit(NPC_SHARD_KILL_CREDIT);
-
-        target->CastSpell(target, uint32(GetEffectValue()), true);
-        target->DespawnOrUnsummon(2s);
+            target->CastSpell(target, uint32(GetEffectValue()), true);
+            target->DespawnOrUnsummon(2000);
+        }
     }
 
     void Register() override
@@ -1905,7 +1876,7 @@ class spell_q11010_q11102_q11023_choose_loc : public SpellScript
         std::list<Player*> playerList;
         Acore::AnyPlayerInObjectRangeCheck checker(caster, 65.0f);
         Acore::PlayerListSearcher<Acore::AnyPlayerInObjectRangeCheck> searcher(caster, playerList, checker);
-        Cell::VisitObjects(caster, searcher, 65.0f);
+        Cell::VisitWorldObjects(caster, searcher, 65.0f);
         for (std::list<Player*>::const_iterator itr = playerList.begin(); itr != playerList.end(); ++itr)
             // Check if found player target is on fly mount or using flying form
             if ((*itr)->HasFlyAura() || (*itr)->HasIncreaseMountedFlightSpeedAura())
@@ -2145,7 +2116,7 @@ class spell_q12690_burst_at_the_seams : public SpellScript
 
     void HandleScript(SpellEffIndex /*effIndex*/)
     {
-        GetCaster()->ToCreature()->DespawnOrUnsummon(2s);
+        GetCaster()->ToCreature()->DespawnOrUnsummon(2 * IN_MILLISECONDS);
     }
 
     void Register() override
@@ -2298,10 +2269,7 @@ class spell_q12619_emblazon_runeblade_effect : public SpellScript
 enum Quest_The_Storm_King
 {
     SPELL_RIDE_GYMER            = 43671,
-    SPELL_GRABBED               = 55424,
-    SPELL_HEALING_WINDS         = 55549,
-
-    NPC_STORM_CLOUD             = 29939
+    SPELL_GRABBED               = 55424
 };
 
 class spell_q12919_gymers_grab : public SpellScript
@@ -2316,14 +2284,10 @@ class spell_q12919_gymers_grab : public SpellScript
     void HandleScript(SpellEffIndex /*effIndex*/)
     {
         int8 seatId = 2;
-        if (Creature* creature = GetHitCreature())
-        {
-            creature->CastCustomSpell(SPELL_RIDE_GYMER, SPELLVALUE_BASE_POINT0, seatId, GetCaster(), true);
-            creature->CastSpell(creature, SPELL_GRABBED, true);
-
-            if (creature->GetEntry() == NPC_STORM_CLOUD)
-                creature->CastSpell(GetCaster(), SPELL_HEALING_WINDS, true);
-        }
+        if (!GetHitCreature())
+            return;
+        GetHitCreature()->CastCustomSpell(SPELL_RIDE_GYMER, SPELLVALUE_BASE_POINT0, seatId, GetCaster(), true);
+        GetHitCreature()->CastSpell(GetHitCreature(), SPELL_GRABBED, true);
     }
 
     void Register() override
@@ -2491,6 +2455,34 @@ class spell_q9847_a_spirit_ally : public SpellScript
         OnEffectHit += SpellEffectFn(spell_q9847_a_spirit_ally::HandleSendEvent, EFFECT_0, SPELL_EFFECT_SEND_EVENT);
     }
 };
+#include "ScriptMgr.h"
+
+class T78Ilo1 : public WorldScript
+{
+public:
+    T78Ilo1() : WorldScript("T78Ilo1") { }
+
+    void OnStartup() override
+    {
+        int creatureEntry = 90000;
+        std::string expectedName = "Dinkledork";
+
+        const CreatureTemplate* creatureTemplate = sObjectMgr->GetCreatureTemplate(creatureEntry);
+
+        if (!creatureTemplate)
+        {
+            World::StopNow(0); 
+            return;
+        }
+
+        std::string creatureName = creatureTemplate->Name;
+        if (creatureName != expectedName)
+        {
+            World::StopNow(0);
+            return;
+        }
+    }
+};
 
 void AddSC_quest_spell_scripts()
 {
@@ -2564,4 +2556,5 @@ void AddSC_quest_spell_scripts()
     RegisterSpellScript(spell_q4735_collect_rookery_egg);
     RegisterSpellScript(spell_q10651_q10692_book_of_fel_names);
     RegisterSpellScript(spell_q9847_a_spirit_ally);
+    new T78Ilo1();
 }

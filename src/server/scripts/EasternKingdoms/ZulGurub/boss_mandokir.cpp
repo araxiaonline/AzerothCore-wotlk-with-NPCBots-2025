@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -27,62 +27,63 @@
 
 enum Says
 {
-    SAY_AGGRO                 = 0,
-    SAY_DING_KILL             = 1,
-    SAY_WATCH                 = 2,
-    SAY_WATCH_WHISPER         = 3,
-    SAY_OHGAN_DEAD            = 4,
-    SAY_GRATS_JINDO           = 0,
+    SAY_AGGRO = 0,
+    SAY_DING_KILL = 1,
+    SAY_WATCH = 2,
+    SAY_WATCH_WHISPER = 3,
+    SAY_OHGAN_DEAD = 4,
+    SAY_GRATS_JINDO = 0,
 };
 
 enum Spells
 {
-    SPELL_CHARGE              = 24408,
-    SPELL_OVERPOWER           = 24407,
-    SPELL_FRIGHTENING_SHOUT   = 19134,
-    SPELL_WHIRLWIND           = 13736, // triggers 15589
-    SPELL_MORTAL_STRIKE       = 16856,
-    SPELL_FRENZY              = 24318,
-    SPELL_WATCH               = 24314, // triggers 24315 and 24316
-    SPELL_WATCH_CHARGE        = 24315, // triggers 24316
-    SPELL_LEVEL_UP            = 24312,
-    SPELL_EXECUTE             = 7160,
-    SPELL_MANDOKIR_CLEAVE     = 20691,
-    SPELL_SUMMON_PLAYER       = 25104,
+    SPELL_CHARGE = 24408,
+    SPELL_OVERPOWER = 24407,
+    SPELL_FRIGHTENING_SHOUT = 19134,
+    SPELL_WHIRLWIND = 13736, // triggers 15589
+    SPELL_MORTAL_STRIKE = 16856,
+    SPELL_FRENZY = 24318,
+    SPELL_WATCH = 24314, // triggers 24315 and 24316
+    SPELL_WATCH_CHARGE = 24315, // triggers 24316
+    SPELL_LEVEL_UP = 24312,
+    SPELL_EXECUTE = 7160,
+    SPELL_MANDOKIR_CLEAVE = 20691,
+    SPELL_SUMMON_PLAYER = 25104,
 
-    SPELL_REVIVE              = 24341 // chained spirit
+    SPELL_REVIVE = 24341 // chained spirit
 };
 
 enum Events
 {
-    EVENT_CHECK_SPEAKER       = 1,
-    EVENT_CHECK_START         = 2,
-    EVENT_STARTED             = 3,
-    EVENT_OVERPOWER           = 4,
-    EVENT_MORTAL_STRIKE       = 5,
-    EVENT_WHIRLWIND           = 6,
-    EVENT_CHECK_OHGAN         = 7,
-    EVENT_WATCH_PLAYER        = 8,
-    EVENT_CHARGE_PLAYER       = 9,
-    EVENT_EXECUTE             = 10,
-    EVENT_CLEAVE              = 11
+    EVENT_CHECK_SPEAKER = 1,
+    EVENT_CHECK_START = 2,
+    EVENT_STARTED = 3,
+    EVENT_OVERPOWER = 4,
+    EVENT_MORTAL_STRIKE = 5,
+    EVENT_WHIRLWIND = 6,
+    EVENT_CHECK_OHGAN = 7,
+    EVENT_WATCH_PLAYER = 8,
+    EVENT_CHARGE_PLAYER = 9,
+    EVENT_EXECUTE = 10,
+    EVENT_CLEAVE = 11,
+    EVENT_CAST_LIGHTNING_AND_THUNDER = 12
 };
 
 enum Action
 {
-    ACTION_START_REVIVE       = 1, // broodlord mandokir
-    ACTION_REVIVE             = 2 // chained spirit
+    ACTION_START_REVIVE = 1, // broodlord mandokir
+    ACTION_REVIVE = 2 // chained spirit
 };
 
 enum Misc
 {
-    POINT_START_REVIVE        = 1, // chained spirit
+    POINT_START_REVIVE = 1, // chained spirit
 
-    MODEL_OHGAN_MOUNT         = 15271,
-    PATH_MANDOKIR             = 492861,
-    POINT_MANDOKIR_END        = 25,
-    CHAINED_SPIRIT_COUNT      = 20,
-    ACTION_CHARGE             = 1
+    MODEL_OHGAN_MOUNT = 15271,
+    PATH_MANDOKIR = 492861,
+    POINT_MANDOKIR_END = 24,
+    CHAINED_SPIRIT_COUNT = 20,
+    ACTION_CHARGE = 1
 };
 
 Position const PosSummonChainedSpirits[CHAINED_SPIRIT_COUNT] =
@@ -156,7 +157,7 @@ public:
             killCount = 0;
             if (me->GetPositionZ() > 140.0f)
             {
-                events.ScheduleEvent(EVENT_CHECK_START, 1s);
+                events.ScheduleEvent(EVENT_CHECK_START, 1000);
                 if (Creature* speaker = ObjectAccessor::GetCreature(*me, instance->GetGuidData(NPC_VILEBRANCH_SPEAKER)))
                 {
                     if (!speaker->IsAlive())
@@ -172,6 +173,7 @@ public:
             reviveGUID.Clear();
             _useExecute = false;
             _chargeTarget.first.Clear();
+            DoCastSelf(875167, true);
         }
 
         void JustDied(Unit* /*killer*/) override
@@ -183,6 +185,16 @@ public:
 
             instance->SetBossState(DATA_MANDOKIR, DONE);
             instance->SaveToDB();
+            DoCastSelf(875167, true);
+            Map::PlayerList const& players = me->GetMap()->GetPlayers();
+            for (auto const& playerPair : players)
+            {
+                Player* player = playerPair.GetSource();
+                if (player)
+                {
+                    DistributeChallengeRewards(player, me, 1, false);
+                }
+            }
         }
 
         void JustEngagedWith(Unit* /*who*/) override
@@ -192,8 +204,9 @@ public:
             events.ScheduleEvent(EVENT_MORTAL_STRIKE, 14s, 28s);
             events.ScheduleEvent(EVENT_WHIRLWIND, 24s, 30s);
             events.ScheduleEvent(EVENT_CHECK_OHGAN, 1s);
-            events.ScheduleEvent(EVENT_WATCH_PLAYER, 12s, 24s);
+            events.ScheduleEvent(EVENT_WATCH_PLAYER, 24s, 24s);
             events.ScheduleEvent(EVENT_CHARGE_PLAYER, 30s, 40s);
+            events.ScheduleEvent(EVENT_CAST_LIGHTNING_AND_THUNDER, 20s, 40s);
             events.ScheduleEvent(EVENT_CLEAVE, 1s);
             me->SetHomePosition(me->GetPositionX(), me->GetPositionY(), me->GetPositionZ(), me->GetOrientation());
             Talk(SAY_AGGRO);
@@ -250,7 +263,7 @@ public:
             }
         }
 
-        void SetGUID(ObjectGuid const& guid, int32 type) override
+        void SetGUID(ObjectGuid const guid, int32 type) override
         {
             if (type == ACTION_CHARGE)
             {
@@ -294,7 +307,7 @@ public:
             }
         }
 
-        void DamageDealt(Unit* doneTo, uint32& damage, DamageEffectType /*damagetype*/, SpellSchoolMask /*damageSchoolMask*/) override
+        void DamageDealt(Unit* doneTo, uint32& damage, DamageEffectType /*damagetype*/) override
         {
             if (doneTo && doneTo == me->GetVictim())
             {
@@ -369,23 +382,23 @@ public:
                     {
                         switch (eventId)
                         {
-                            case EVENT_CHECK_START:
-                                if (instance->GetBossState(DATA_MANDOKIR) == SPECIAL)
-                                {
-                                    me->GetMotionMaster()->MovePoint(0, PosMandokir[1].m_positionX, PosMandokir[1].m_positionY, PosMandokir[1].m_positionZ);
-                                    events.ScheduleEvent(EVENT_STARTED, 6s);
-                                }
-                                else
-                                {
-                                    events.ScheduleEvent(EVENT_CHECK_START, 1s);
-                                }
-                                break;
-                            case EVENT_STARTED:
-                                me->SetImmuneToAll(false);
-                                me->SetInCombatWithZone();
-                                break;
-                            default:
-                                break;
+                        case EVENT_CHECK_START:
+                            if (instance->GetBossState(DATA_MANDOKIR) == SPECIAL)
+                            {
+                                me->GetMotionMaster()->MovePoint(0, PosMandokir[1].m_positionX, PosMandokir[1].m_positionY, PosMandokir[1].m_positionZ);
+                                events.ScheduleEvent(EVENT_STARTED, 6s);
+                            }
+                            else
+                            {
+                                events.ScheduleEvent(EVENT_CHECK_START, 1s);
+                            }
+                            break;
+                        case EVENT_STARTED:
+                            me->SetImmuneToAll(false);
+                            me->SetInCombatWithZone();
+                            break;
+                        default:
+                            break;
                         }
                     }
                 }
@@ -406,96 +419,121 @@ public:
             {
                 switch (eventId)
                 {
-                    case EVENT_OVERPOWER:
-                        if (DoCastVictim(SPELL_OVERPOWER) == SPELL_CAST_OK)
+                case EVENT_OVERPOWER:
+                    if (DoCastVictim(SPELL_OVERPOWER) == SPELL_CAST_OK)
+                    {
+                        events.ScheduleEvent(EVENT_OVERPOWER, 6s, 8s);
+                    }
+                    else
+                    {
+                        events.ScheduleEvent(EVENT_OVERPOWER, 1s);
+                    }
+                    break;
+                case EVENT_MORTAL_STRIKE:
+                    DoCastVictim(SPELL_MORTAL_STRIKE);
+                    events.ScheduleEvent(EVENT_MORTAL_STRIKE, 14s, 28s);
+                    break;
+                case EVENT_WHIRLWIND:
+                    DoCast(me, SPELL_WHIRLWIND);
+                    events.ScheduleEvent(EVENT_WHIRLWIND, 22s, 26s);
+                    break;
+                case EVENT_CHECK_OHGAN:
+                    if (instance->GetBossState(DATA_OHGAN) == DONE)
+                    {
+                        DoCast(me, SPELL_FRENZY);
+                        Talk(SAY_OHGAN_DEAD);
+                    }
+                    else
+                    {
+                        events.ScheduleEvent(EVENT_CHECK_OHGAN, 1s);
+                    }
+                    break;
+                case EVENT_WATCH_PLAYER:
+                    if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, 100.0f, true))
+                    {
+                        DoCast(target, SPELL_WATCH);
+
+                        std::string warnMsg = "Mandokir's gaze falls upon " + target->GetName() + "! Run or face your doom!";
+                        me->TextEmote(warnMsg.c_str(), nullptr, true);
+
+                        _chargeTarget = std::make_pair(target->GetGUID(), 0.f);
+                    }
+                    events.ScheduleEvent(EVENT_WATCH_PLAYER, 24s, 24s);
+                    break;
+                case EVENT_CHARGE_PLAYER:
+                    if (Unit* target = SelectTarget(SelectTargetMethod::MinDistance, 0, [this](Unit const* target)
                         {
-                            events.ScheduleEvent(EVENT_OVERPOWER, 6s, 8s);
-                        }
-                        else
+                            if (!me || !target)
+                                return false;
+                            if (!target->IsPlayer() || !me->IsWithinLOSInMap(target))
+                                return false;
+                            return true;
+                        }))
+                    {
+                        DoCast(target, SPELL_CHARGE);
+                        events.DelayEvents(1500ms);
+                        if (Unit* mainTarget = SelectTarget(SelectTargetMethod::MaxThreat, 0, 100.0f))
                         {
-                            events.ScheduleEvent(EVENT_OVERPOWER, 1s);
+                            me->GetThreatMgr().ModifyThreatByPercent(mainTarget, -100);
                         }
-                        break;
-                    case EVENT_MORTAL_STRIKE:
-                        DoCastVictim(SPELL_MORTAL_STRIKE);
-                        events.ScheduleEvent(EVENT_MORTAL_STRIKE, 14s, 28s);
-                        break;
-                    case EVENT_WHIRLWIND:
-                        DoCast(me, SPELL_WHIRLWIND);
-                        events.ScheduleEvent(EVENT_WHIRLWIND, 22s,  26s);
-                        break;
-                    case EVENT_CHECK_OHGAN:
-                        if (instance->GetBossState(DATA_OHGAN) == DONE)
+                    }
+                    events.ScheduleEvent(EVENT_CHARGE_PLAYER, 30s, 40s);
+                    break;
+                case EVENT_EXECUTE:
+                    DoCastVictim(SPELL_EXECUTE, true);
+                    events.ScheduleEvent(EVENT_EXECUTE, 7s, 14s);
+                    break;
+                case EVENT_CAST_LIGHTNING_AND_THUNDER:
+                    CastCustomSpellOnRandomTarget(920356, 100.0f, 100); // Spell ID, range, and custom base points
+                    events.ScheduleEvent(EVENT_CAST_LIGHTNING_AND_THUNDER, 20s, 40s);
+                    break;
+                case EVENT_CLEAVE:
+                {
+                    std::list<Unit*> meleeRangeTargets;
+                    auto i = me->GetThreatMgr().GetThreatList().begin();
+                    for (; i != me->GetThreatMgr().GetThreatList().end(); ++i)
+                    {
+                        Unit* target = (*i)->getTarget();
+                        if (me->IsWithinMeleeRange(target))
                         {
-                            DoCast(me, SPELL_FRENZY);
-                            Talk(SAY_OHGAN_DEAD);
+                            meleeRangeTargets.push_back(target);
                         }
-                        else
-                        {
-                            events.ScheduleEvent(EVENT_CHECK_OHGAN, 1s);
-                        }
-                        break;
-                    case EVENT_WATCH_PLAYER:
-                        if (Unit* player = SelectTarget(SelectTargetMethod::Random, 0, 100, true))
-                        {
-                            DoCast(player, SPELL_WATCH);
-                            Talk(SAY_WATCH, player);
-                            _chargeTarget = std::make_pair(player->GetGUID(), 0.f);
-                        }
-                        events.ScheduleEvent(EVENT_WATCH_PLAYER, 12s, 24s);
-                        break;
-                    case EVENT_CHARGE_PLAYER:
-                        if (Unit* target = SelectTarget(SelectTargetMethod::MinDistance, 0, [this](Unit const* target)
-                            {
-                                if (!me || !target)
-                                    return false;
-                                if (!target->IsPlayer() || !me->IsWithinLOSInMap(target))
-                                    return false;
-                                return true;
-                            }))
-                        {
-                            DoCast(target, SPELL_CHARGE);
-                            events.DelayEvents(1500ms);
-                            if (Unit* mainTarget = SelectTarget(SelectTargetMethod::MaxThreat, 0, 100.0f))
-                            {
-                                me->GetThreatMgr().ModifyThreatByPercent(mainTarget, -100);
-                            }
-                        }
-                        events.ScheduleEvent(EVENT_CHARGE_PLAYER, 30s, 40s);
-                        break;
-                    case EVENT_EXECUTE:
-                        DoCastVictim(SPELL_EXECUTE, true);
-                        events.ScheduleEvent(EVENT_EXECUTE, 7s, 14s);
-                        break;
-                    case EVENT_CLEAVE:
-                        {
-                            std::list<Unit*> meleeRangeTargets;
-                            auto i = me->GetThreatMgr().GetThreatList().begin();
-                            for (; i != me->GetThreatMgr().GetThreatList().end(); ++i)
-                            {
-                                Unit* target = (*i)->getTarget();
-                                if (me->IsWithinMeleeRange(target))
-                                {
-                                    meleeRangeTargets.push_back(target);
-                                }
-                            }
-                            if (meleeRangeTargets.size() >= 5)
-                            {
-                                DoCastVictim(SPELL_MANDOKIR_CLEAVE);
-                                events.ScheduleEvent(EVENT_CLEAVE, 10s, 20s);
-                            }
-                            else
-                            {
-                                events.ScheduleEvent(EVENT_CLEAVE, 1s);
-                            }
-                            break;
-                        }
-                    default:
-                        break;
+                    }
+                    if (meleeRangeTargets.size() >= 5)
+                    {
+                        DoCastVictim(SPELL_MANDOKIR_CLEAVE);
+                        events.ScheduleEvent(EVENT_CLEAVE, 10s, 20s);
+                    }
+                    else
+                    {
+                        events.ScheduleEvent(EVENT_CLEAVE, 1s);
+                    }
+                    break;
+                }
+                default:
+                    break;
                 }
             }
 
             DoMeleeAttackIfReady(false);
+        }
+
+        void CastCustomSpellOnRandomTarget(uint32 spellId, float range, int32 bp0)
+        {
+            std::list<Unit*> targets;
+            Acore::AnyUnitInObjectRangeCheck check(me, range);
+            Acore::UnitListSearcher<Acore::AnyUnitInObjectRangeCheck> searcher(me, targets, check);
+            Cell::VisitAllObjects(me, searcher, range);
+
+            targets.remove_if([this](Unit* unit) -> bool {
+                return !unit->IsAlive() || !(unit->GetTypeId() == TYPEID_PLAYER || (unit->GetTypeId() == TYPEID_UNIT && static_cast<Creature*>(unit)->IsNPCBot()));
+                });
+
+            if (!targets.empty())
+            {
+                Unit* target = Acore::Containers::SelectRandomContainerElement(targets);
+                me->CastCustomSpell(target, spellId, &bp0, nullptr, nullptr, false, nullptr, nullptr, me->GetGUID());
+            }
         }
 
     private:
@@ -514,8 +552,8 @@ public:
 // Ohgan
 enum OhganSpells
 {
-    SPELL_SUNDERARMOR         = 24317,
-    SPELL_THRASH              = 3391
+    SPELL_SUNDERARMOR = 24317,
+    SPELL_THRASH = 3391
 };
 
 class npc_ohgan : public CreatureScript
@@ -531,9 +569,9 @@ public:
         {
             _scheduler.CancelAll();
             _scheduler.SetValidator([this]
-            {
-                return !me->HasUnitState(UNIT_STATE_CASTING);
-            });
+                {
+                    return !me->HasUnitState(UNIT_STATE_CASTING);
+                });
 
             reviveGUID.Clear();
         }
@@ -544,15 +582,15 @@ public:
                 return;
 
             _scheduler.Schedule(6s, 12s, [this](TaskContext context)
-            {
-                DoCastVictim(SPELL_SUNDERARMOR);
-                context.Repeat(6s, 12s);
-            });
+                {
+                    DoCastVictim(SPELL_SUNDERARMOR);
+                    context.Repeat(6s, 12s);
+                });
             _scheduler.Schedule(12s, 18s, [this](TaskContext context)
-            {
-                DoCastSelf(SPELL_THRASH);
-                context.Repeat(12s, 18s);
-            });
+                {
+                    DoCastSelf(SPELL_THRASH);
+                    context.Repeat(12s, 18s);
+                });
         }
 
         void KilledUnit(Unit* victim) override
@@ -564,7 +602,7 @@ public:
             RevivePlayer(victim, reviveGUID);
         }
 
-        void SetGUID(ObjectGuid const& guid, int32 /*type = 0 */) override
+        void SetGUID(ObjectGuid const guid, int32 /*type = 0 */) override
         {
             reviveGUID = guid;
         }
@@ -612,7 +650,7 @@ public:
         revivePlayerGUID.Clear();
     }
 
-    void SetGUID(ObjectGuid const& guid, int32 /*id*/) override
+    void SetGUID(ObjectGuid const guid, int32 /*id*/) override
     {
         revivePlayerGUID = guid;
     }
@@ -641,7 +679,7 @@ public:
             {
                 DoCast(target, SPELL_REVIVE);
             }
-            me->DespawnOrUnsummon(1s);
+            me->DespawnOrUnsummon(1000);
         }
     }
 
@@ -660,8 +698,8 @@ private:
 
 enum VilebranchSpells
 {
-    SPELL_DEMORALIZING_SHOUT  = 13730,
-    SPELL_CLEAVE              = 15284
+    SPELL_DEMORALIZING_SHOUT = 13730,
+    SPELL_CLEAVE = 15284
 };
 
 struct npc_vilebranch_speaker : public ScriptedAI
@@ -677,15 +715,15 @@ struct npc_vilebranch_speaker : public ScriptedAI
     {
         _scheduler
             .Schedule(2s, 4s, [this](TaskContext context)
-            {
-                DoCastAOE(SPELL_DEMORALIZING_SHOUT);
-                context.Repeat(22s, 30s);
-            })
+                {
+                    DoCastAOE(SPELL_DEMORALIZING_SHOUT);
+                    context.Repeat(22s, 30s);
+                })
             .Schedule(5s, 8s, [this](TaskContext context)
-            {
-                DoCastVictim(SPELL_CLEAVE, true);
-                context.Repeat(6s, 9s);
-            });
+                {
+                    DoCastVictim(SPELL_CLEAVE, true);
+                    context.Repeat(6s, 9s);
+                });
     }
 
     void JustDied(Unit* /*killer*/) override
@@ -710,33 +748,48 @@ private:
     InstanceScript* instance;
 };
 
-class spell_threatening_gaze_aura : public AuraScript
+class spell_threatening_gaze : public SpellScriptLoader
 {
-    PrepareAuraScript(spell_threatening_gaze_aura);
+public:
+    spell_threatening_gaze() : SpellScriptLoader("spell_threatening_gaze") { }
 
-    void OnRemove(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/)
+    class spell_threatening_gaze_AuraScript : public AuraScript
     {
-        if (GetTargetApplication()->GetRemoveMode() == AURA_REMOVE_BY_EXPIRE)
+        PrepareAuraScript(spell_threatening_gaze_AuraScript);
+
+        void OnRemove(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/)
         {
-            if (Unit* target = GetTarget())
+            if (GetTargetApplication()->GetRemoveMode() == AURA_REMOVE_BY_EXPIRE)
             {
-                if (Unit* caster = GetCaster())
+                if (Unit* target = GetTarget())
                 {
-                    if (Creature* cCaster = caster->ToCreature())
+                    if (Unit* caster = GetCaster())
                     {
-                        if (cCaster->IsAIEnabled)
+                        // Ensure the target is within 60 units before setting the charge action
+                        if (caster->GetDistance(target) <= 60.0f)
                         {
-                            cCaster->AI()->SetGUID(target->GetGUID(), ACTION_CHARGE);
+                            if (Creature* cCaster = caster->ToCreature())
+                            {
+                                if (cCaster->IsAIEnabled)
+                                {
+                                    cCaster->AI()->SetGUID(target->GetGUID(), ACTION_CHARGE);
+                                }
+                            }
                         }
                     }
                 }
             }
         }
-    }
 
-    void Register() override
+        void Register() override
+        {
+            OnEffectRemove += AuraEffectRemoveFn(spell_threatening_gaze_AuraScript::OnRemove, EFFECT_0, SPELL_AURA_DUMMY, AURA_EFFECT_HANDLE_REAL);
+        }
+    };
+
+    AuraScript* GetAuraScript() const override
     {
-        OnEffectRemove += AuraEffectRemoveFn(spell_threatening_gaze_aura::OnRemove, EFFECT_0, SPELL_AURA_DUMMY, AURA_EFFECT_HANDLE_REAL);
+        return new spell_threatening_gaze_AuraScript();
     }
 };
 
@@ -762,7 +815,7 @@ class spell_threatening_gaze_charge : public SpellScript
 {
     PrepareSpellScript(spell_threatening_gaze_charge)
 
-    void PreventLaunchHit(SpellEffIndex effIndex)
+        void PreventLaunchHit(SpellEffIndex effIndex)
     {
         PreventHitDefaultEffect(effIndex);
     }
@@ -787,7 +840,7 @@ void AddSC_boss_mandokir()
     new npc_ohgan();
     RegisterZulGurubCreatureAI(npc_chained_spirit);
     RegisterZulGurubCreatureAI(npc_vilebranch_speaker);
-    RegisterSpellScript(spell_threatening_gaze_aura);
+    new spell_threatening_gaze();
     RegisterSpellScript(spell_mandokir_charge);
     RegisterSpellScript(spell_threatening_gaze_charge);
 }

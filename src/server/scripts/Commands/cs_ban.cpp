@@ -1,19 +1,26 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
+
+/* ScriptData
+Name: ban_commandscript
+%Complete: 100
+Comment: All ban related commands
+Category: commandscripts
+EndScriptData */
 
 #include "AccountMgr.h"
 #include "BanMgr.h"
@@ -200,14 +207,14 @@ public:
         switch (mode)
         {
             case BAN_ACCOUNT:
-                banReturn = sBan->BanAccount(nameOrIP, durationStr, reasonStr, handler->GetSession() ? handler->GetSession()->GetPlayerName() : "Console");
+                banReturn = sBan->BanAccount(nameOrIP, durationStr, reasonStr, handler->GetSession() ? handler->GetSession()->GetPlayerName() : "");
                 break;
             case BAN_CHARACTER:
-                banReturn = sBan->BanAccountByPlayerName(nameOrIP, durationStr, reasonStr, handler->GetSession() ? handler->GetSession()->GetPlayerName() : "Console");
+                banReturn = sBan->BanAccountByPlayerName(nameOrIP, durationStr, reasonStr, handler->GetSession() ? handler->GetSession()->GetPlayerName() : "");
                 break;
             case BAN_IP:
             default:
-                banReturn = sBan->BanIP(nameOrIP, durationStr, reasonStr, handler->GetSession() ? handler->GetSession()->GetPlayerName() : "Console");
+                banReturn = sBan->BanIP(nameOrIP, durationStr, reasonStr, handler->GetSession() ? handler->GetSession()->GetPlayerName() : "");
                 break;
         }
 
@@ -437,7 +444,7 @@ public:
                 if (banResult)
                 {
                     Field* fields2 = banResult->Fetch();
-                    handler->PSendSysMessage("{}", fields2[0].Get<std::string>());
+                    handler->PSendSysMessage("%s", fields2[0].Get<std::string>());
                 }
             } while (result->NextRow());
         }
@@ -473,14 +480,14 @@ public:
 
                         if (fields2[0].Get<uint32>() == fields2[1].Get<uint32>())
                         {
-                            handler->PSendSysMessage("|{:<15.15}|{:02}-{:02}-{:02} {:02}:{:02}|   permanent  |{:<15.15}|{:<15.15}|",
+                            handler->PSendSysMessage("|%-15.15s|%02d-%02d-%02d %02d:%02d|   permanent  |%-15.15s|%-15.15s|",
                                                      accountName, tmBan.tm_year % 100, tmBan.tm_mon + 1, tmBan.tm_mday, tmBan.tm_hour, tmBan.tm_min,
                                                      fields2[2].Get<std::string>(), fields2[3].Get<std::string>());
                         }
                         else
                         {
                             tm tmUnban = Acore::Time::TimeBreakdown(fields2[1].Get<uint32>());
-                            handler->PSendSysMessage("|{:<15.15}|{:02}-{:02}-{:02} {:02}:{:02}|{:02}-{:02}-{:02} {:02}:{:02}|{:<15.15}|{:<15.15}|",
+                            handler->PSendSysMessage("|%-15.15s|%02d-%02d-%02d %02d:%02d|%02d-%02d-%02d %02d:%02d|%-15.15s|%-15.15s|",
                                                      accountName, tmBan.tm_year % 100, tmBan.tm_mon + 1, tmBan.tm_mday, tmBan.tm_hour, tmBan.tm_min,
                                                      tmUnban.tm_year % 100, tmUnban.tm_mon + 1, tmUnban.tm_mday, tmUnban.tm_hour, tmUnban.tm_min,
                                                      fields2[2].Get<std::string>(), fields2[3].Get<std::string>());
@@ -527,7 +534,7 @@ public:
 
                 PreparedQueryResult banResult = CharacterDatabase.Query(stmt2);
                 if (banResult)
-                    handler->PSendSysMessage("{}", (*banResult)[0].Get<std::string>());
+                    handler->PSendSysMessage("%s", (*banResult)[0].Get<std::string>());
             } while (result->NextRow());
         }
         // Console wide output
@@ -557,14 +564,14 @@ public:
 
                         if (banFields[0].Get<uint32>() == banFields[1].Get<uint32>())
                         {
-                            handler->PSendSysMessage("|{:<15.15}|{:02}-{:02}-{:02} {:02}:{:02}|   permanent  |{:<15.15}|{:<15.15}|",
+                            handler->PSendSysMessage("|%-15.15s|%02d-%02d-%02d %02d:%02d|   permanent  |%-15.15s|%-15.15s|",
                                                      char_name, tmBan.tm_year % 100, tmBan.tm_mon + 1, tmBan.tm_mday, tmBan.tm_hour, tmBan.tm_min,
                                                      banFields[2].Get<std::string>(), banFields[3].Get<std::string>());
                         }
                         else
                         {
                             tm tmUnban = Acore::Time::TimeBreakdown(banFields[1].Get<uint32>());
-                            handler->PSendSysMessage("|{:<15.15}|{:02}-{:02}-{:02} {:02}:{:02}|{:02}-{:02}-{:02} {:02}:{:02}|{:<15.15}|{:<15.15}|",
+                            handler->PSendSysMessage("|%-15.15s|%02d-%02d-%02d %02d:%02d|%02d-%02d-%02d %02d:%02d|%-15.15s|%-15.15s|",
                                                      char_name, tmBan.tm_year % 100, tmBan.tm_mon + 1, tmBan.tm_mday, tmBan.tm_hour, tmBan.tm_min,
                                                      tmUnban.tm_year % 100, tmUnban.tm_mon + 1, tmUnban.tm_mday, tmUnban.tm_hour, tmUnban.tm_min,
                                                      banFields[2].Get<std::string>(), banFields[3].Get<std::string>());
@@ -614,7 +621,7 @@ public:
             do
             {
                 Field* fields = result->Fetch();
-                handler->PSendSysMessage("{}", fields[0].Get<std::string>());
+                handler->PSendSysMessage("%s", fields[0].Get<std::string>());
             } while (result->NextRow());
         }
         // Console wide output
@@ -630,14 +637,14 @@ public:
                 tm tmBan = Acore::Time::TimeBreakdown(fields[1].Get<uint32>());
                 if (fields[1].Get<uint32>() == fields[2].Get<uint32>())
                 {
-                    handler->PSendSysMessage("{:<15.15}|{:02}-{:02}-{:02} {:02}:{:02}|   permanent  |{:<15.15}|{:<15.15}|",
+                    handler->PSendSysMessage("|%-15.15s|%02d-%02d-%02d %02d:%02d|   permanent  |%-15.15s|%-15.15s|",
                                              fields[0].Get<std::string>(), tmBan.tm_year % 100, tmBan.tm_mon + 1, tmBan.tm_mday, tmBan.tm_hour, tmBan.tm_min,
                                              fields[3].Get<std::string>(), fields[4].Get<std::string>());
                 }
                 else
                 {
                     tm tmUnban = Acore::Time::TimeBreakdown(fields[2].Get<uint32>());
-                    handler->PSendSysMessage("|{:<15.15}|{:02}-{:02}-{:02} {:02}:{:02}|{:02}-{:02}-{:02} {:02}:{:02}|{:<15.15}|{:<15.15}|",
+                    handler->PSendSysMessage("|%-15.15s|%02d-%02d-%02d %02d:%02d|%02d-%02d-%02d %02d:%02d|%-15.15s|%-15.15s|",
                                              fields[0].Get<std::string>(), tmBan.tm_year % 100, tmBan.tm_mon + 1, tmBan.tm_mday, tmBan.tm_hour, tmBan.tm_min,
                                              tmUnban.tm_year % 100, tmUnban.tm_mon + 1, tmUnban.tm_mday, tmUnban.tm_hour, tmUnban.tm_min,
                                              fields[3].Get<std::string>(), fields[4].Get<std::string>());

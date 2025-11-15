@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -57,18 +57,6 @@ void InstanceScript::SaveToDB()
     stmt->SetData(0, data);
     stmt->SetData(1, instance->GetInstanceId());
     CharacterDatabase.Execute(stmt);
-}
-
-void InstanceScript::OnPlayerEnter(Player* player)
-{
-    if (sWorld->getBoolConfig(CONFIG_ALLOW_TWO_SIDE_INTERACTION_GROUP) && IsTwoFactionInstance())
-        player->SetFaction((_teamIdInInstance == TEAM_HORDE) ? 1610 /*FACTION_HORDE*/ : 1 /*FACTION_ALLIANCE*/);
-}
-
-void InstanceScript::OnPlayerLeave(Player* player)
-{
-    if (sWorld->getBoolConfig(CONFIG_ALLOW_TWO_SIDE_INTERACTION_GROUP) && IsTwoFactionInstance())
-        player->SetFactionForRace(player->getRace());
 }
 
 void InstanceScript::OnCreatureCreate(Creature* creature)
@@ -600,12 +588,6 @@ void InstanceScript::DoRespawnGameObject(ObjectGuid uiGuid, uint32 uiTimeToDespa
         LOG_DEBUG("scripts", "InstanceScript: DoRespawnGameObject failed");
 }
 
-void InstanceScript::DoRespawnGameObject(uint32 type)
-{
-    if (GameObject* go = instance->GetGameObject(GetObjectGuid(type)))
-        go->Respawn();
-}
-
 void InstanceScript::DoRespawnCreature(ObjectGuid guid, bool force)
 {
     if (Creature* creature = instance->GetCreature(guid))
@@ -687,36 +669,36 @@ void InstanceScript::DoStopTimedAchievement(AchievementCriteriaTimedTypes type, 
 void InstanceScript::DoRemoveAurasDueToSpellOnPlayers(uint32 spell)
 {
     instance->DoForAllPlayers([&](Player* player)
-    {
-        player->RemoveAurasDueToSpell(spell);
-        if (Pet* pet = player->GetPet())
-            pet->RemoveAurasDueToSpell(spell);
-                //npcbot: include bots
-                if (player->HaveBot())
-                {
-                    for (auto const& bitr : *player->GetBotMgr()->GetBotMap())
-                        if (bitr.second && bitr.second->IsInWorld())
-                            DoRemoveAurasDueToSpellOnNPCBot(bitr.second, spell);
-                }
-                //end npcbot
-    });
+        {
+            player->RemoveAurasDueToSpell(spell);
+            if (Pet* pet = player->GetPet())
+                pet->RemoveAurasDueToSpell(spell);
+            //npcbot: include bots
+            if (player->HaveBot())
+            {
+                for (auto const& bitr : *player->GetBotMgr()->GetBotMap())
+                    if (bitr.second && bitr.second->IsInWorld())
+                        DoRemoveAurasDueToSpellOnNPCBot(bitr.second, spell);
+            }
+            //end npcbot
+        });
 }
 
 // Cast spell on all players in instance
 void InstanceScript::DoCastSpellOnPlayers(uint32 spell)
 {
     instance->DoForAllPlayers([&](Player* player)
-    {
-        player->CastSpell(player, spell, true);
-        //npcbot: include bots
-        if (player->HaveBot())
         {
-            for (auto const& bitr : *player->GetBotMgr()->GetBotMap())
-                if (bitr.second && bitr.second->IsInWorld())
-                    DoCastSpellOnNPCBot(bitr.second, spell);
-        }
-        //end npcbot
-    });
+            player->CastSpell(player, spell, true);
+            //npcbot: include bots
+            if (player->HaveBot())
+            {
+                for (auto const& bitr : *player->GetBotMgr()->GetBotMap())
+                    if (bitr.second && bitr.second->IsInWorld())
+                        DoCastSpellOnNPCBot(bitr.second, spell);
+            }
+            //end npcbot
+        });
 }
 
 //npcbot: hooks
@@ -900,24 +882,6 @@ bool InstanceHasScript(WorldObject const* obj, char const* scriptName)
     if (InstanceMap* instance = obj->GetMap()->ToInstanceMap())
     {
         return instance->GetScriptName() == scriptName;
-    }
-
-    return false;
-}
-
-bool InstanceScript::IsTwoFactionInstance() const
-{
-    switch (instance->GetId())
-    {
-        case 540: // Shattered Halls
-        case 576: // Nexus
-        case 631: // Icecrown Citadel
-        case 632: // Forge of Souls
-        case 649: // Trial of the Champion
-        case 650: // Trial of the Crusader
-        case 658: // Pit of Saron
-        case 668: // Halls of Reflection
-            return true;
     }
 
     return false;

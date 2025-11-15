@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -21,20 +21,20 @@
 
 enum Spells
 {
-    SPELL_MORTAL_WOUND      = 25646,
-    SPELL_ENTANGLE_RIGHT    = 720,
-    SPELL_ENTANGLE_CENTER   = 731,
-    SPELL_ENTANGLE_LEFT     = 1121,
+    SPELL_MORTAL_WOUND = 25646,
+    SPELL_ENTANGLE_RIGHT = 720,
+    SPELL_ENTANGLE_CENTER = 731,
+    SPELL_ENTANGLE_LEFT = 1121,
 
-    SPELL_SUMMON_WORM_1     = 518,
-    SPELL_SUMMON_WORM_2     = 25831,
-    SPELL_SUMMON_WORM_3     = 25832
+    SPELL_SUMMON_WORM_1 = 518,
+    SPELL_SUMMON_WORM_2 = 25831,
+    SPELL_SUMMON_WORM_3 = 25832
 };
 
 enum Misc
 {
-    MAX_HATCHLING_SPAWN     = 4,
-    NPC_VEKNISS_HATCHLING   = 15962
+    MAX_HATCHLING_SPAWN = 4,
+    NPC_VEKNISS_HATCHLING = 15962
 };
 
 const std::array<Position, 3> hatchlingsSpawnPoints
@@ -57,8 +57,9 @@ struct boss_fankriss : public BossAI
 
     void Reset() override
     {
-        summonWormSpells = { SPELL_SUMMON_WORM_1, SPELL_SUMMON_WORM_2, SPELL_SUMMON_WORM_3};
+        summonWormSpells = { SPELL_SUMMON_WORM_1, SPELL_SUMMON_WORM_2, SPELL_SUMMON_WORM_3 };
         BossAI::Reset();
+        summons.DespawnAll();
     }
 
     void SummonWorms()
@@ -92,25 +93,61 @@ struct boss_fankriss : public BossAI
                 context.Repeat();
             })
             .Schedule(30s, 50s, [this](TaskContext context)
-            {
-                SummonWorms();
-                context.Repeat(22s, 70s);
-            })
-            .Schedule(15s, 20s, [this](TaskContext context)
-            {
-                if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, 0.0f, true, false))
                 {
-                    uint32 spellId = Acore::Containers::SelectRandomContainerElement(entangleSpells);
-                    DoCast(target, spellId);
-                }
+                    SummonWorms();
+                    context.Repeat(22s, 70s);
+                })
+                .Schedule(15s, 20s, [this](TaskContext context)
+                    {
+                        Unit* target = SelectSomeTarget();
+                        if (target)
+                        {
+                            uint32 spellId = Acore::Containers::SelectRandomContainerElement(entangleSpells);
+                            DoCast(target, spellId);
+                        }
 
-                SummonHatchlingWaves();
-                context.Repeat(25s, 55s);
-            });
+                        SummonHatchlingWaves();
+                        context.Repeat(25s, 55s);
+                    });
+    }
+
+    void JustDied(Unit* killer) override
+    {
+        summons.DespawnAll();
+        
+        DoCastSelf(875167, true);
+        Map::PlayerList const& players = me->GetMap()->GetPlayers();
+        for (auto const& playerPair : players)
+        {
+            Player* player = playerPair.GetSource();
+            if (player)
+            {
+                DistributeChallengeRewards(player, me, 1, false);
+            }
+        }
     }
 
 private:
     std::vector<uint32> summonWormSpells;
+
+    Unit* SelectSomeTarget()
+    {
+        std::list<Unit*> targets;
+        Acore::AnyUnitInObjectRangeCheck check(me, 50.0f);
+        Acore::UnitListSearcher<Acore::AnyUnitInObjectRangeCheck> searcher(me, targets, check);
+        Cell::VisitAllObjects(me, searcher, 150.0f);
+
+        targets.remove_if([this](Unit* unit) -> bool {
+            return !unit->IsAlive() || !(unit->GetTypeId() == TYPEID_PLAYER || (unit->GetTypeId() == TYPEID_UNIT && static_cast<Creature*>(unit)->IsNPCBot()));
+            });
+
+        if (!targets.empty())
+        {
+            return Acore::Containers::SelectRandomContainerElement(targets);
+        }
+
+        return nullptr;
+    }
 };
 
 void AddSC_boss_fankriss()

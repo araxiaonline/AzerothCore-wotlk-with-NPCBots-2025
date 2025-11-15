@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -31,9 +31,12 @@
 
 enum MageSpells
 {
+    // Ours
     SPELL_MAGE_BURNOUT_TRIGGER                   = 44450,
     SPELL_MAGE_IMPROVED_BLIZZARD_CHILLED         = 12486,
     SPELL_MAGE_COMBUSTION                        = 11129,
+
+    // Theirs
     SPELL_MAGE_COLD_SNAP                         = 11958,
     SPELL_MAGE_FOCUS_MAGIC_PROC                  = 54648,
     SPELL_MAGE_FROST_WARDING_R1                  = 11189,
@@ -52,36 +55,101 @@ enum MageSpells
     SPELL_MAGE_SUMMON_WATER_ELEMENTAL_PERMANENT  = 70908,
     SPELL_MAGE_SUMMON_WATER_ELEMENTAL_TEMPORARY  = 70907,
     SPELL_MAGE_GLYPH_OF_BLAST_WAVE               = 62126,
-    SPELL_MAGE_FINGERS_OF_FROST                  = 44543
+    SPELL_MAGE_FINGERS_OF_FROST                  = 44543,
+    SPELL_TOUCH_OF_THE_MAGI_AURA                 = 844457
 };
 
-class spell_mage_arcane_blast : public SpellScript
+class AlterTime : public PlayerScript
 {
-    PrepareSpellScript(spell_mage_arcane_blast);
+public:
+    AlterTime() : PlayerScript("AlterTime") {}
 
-    bool Load() override { _triggerSpellId = 0; return true; }
+    uint32 SAVE_LOCATION_SPELL = 100252;
+    uint32 TELEPORT_BACK_DURATION = 10;
+    std::vector<uint32> SPELL_ON_TELEPORT = { 54139, 51150, 52662 };
 
-    void HandleTriggerSpell(SpellEffIndex effIndex)
+    struct SavedState
     {
-        _triggerSpellId = GetSpellInfo()->Effects[effIndex].TriggerSpell;
-        PreventHitDefaultEffect(effIndex);
+        uint32 mapId;
+        float x;
+        float y;
+        float z;
+        float orientation;
+        uint32 health;
+        uint32 mana;
+        std::map<uint32, int32> auras;
+    };
+
+    std::unordered_map<ObjectGuid, SavedState> savedStates;
+
+    void OnSpellCast(Player* player, Spell* spell, bool skipCheck) override
+    {
+        if (spell->GetSpellInfo()->Id == SAVE_LOCATION_SPELL)
+        {
+            SavedState& savedState = savedStates[player->GetGUID()];
+            if (!savedState.auras.empty())
+            {
+                return;
+            }
+
+            savedState.mapId = player->GetMapId();
+            savedState.x = player->GetPositionX();
+            savedState.y = player->GetPositionY();
+            savedState.z = player->GetPositionZ();
+            savedState.orientation = player->GetOrientation();
+            savedState.health = player->GetHealth();
+            savedState.mana = player->GetPower(POWER_MANA);
+
+            for (auto& auraApplication : player->GetAppliedAuras())
+            {
+                if (auraApplication.second->GetBase()->IsPassive())
+                    continue;
+
+                Aura* aura = auraApplication.second->GetBase();
+                savedState.auras[aura->GetId()] = aura->GetDuration();
+                // player->RemoveAura(aura->GetId()); // This line removed to keep auras active
+            }
+
+            player->m_Events.AddEventAtOffset([this, playerGuid = player->GetGUID()] { TeleportBack(playerGuid); }, std::chrono::seconds(TELEPORT_BACK_DURATION));
+        }
     }
 
-    void HandleAfterCast()
+    void TeleportBack(ObjectGuid playerGuid)
     {
-        GetCaster()->CastSpell(GetCaster(), _triggerSpellId, TRIGGERED_FULL_MASK);
-    }
+        Player* player = ObjectAccessor::FindPlayer(playerGuid);
+        if (!player)
+        {
+            savedStates.erase(playerGuid);
+            return;
+        }
 
-    void Register() override
-    {
-        OnEffectLaunch += SpellEffectFn(spell_mage_arcane_blast::HandleTriggerSpell, EFFECT_1, SPELL_EFFECT_TRIGGER_SPELL);
-        OnEffectLaunchTarget += SpellEffectFn(spell_mage_arcane_blast::HandleTriggerSpell, EFFECT_1, SPELL_EFFECT_TRIGGER_SPELL);
-        AfterCast += SpellCastFn(spell_mage_arcane_blast::HandleAfterCast);
-    }
+        SavedState& savedState = savedStates[playerGuid];
 
-private:
-    uint32 _triggerSpellId;
-};
+        player->TeleportTo(savedState.mapId, savedState.x, savedState.y, savedState.z, savedState.orientation);
+        player->SetHealth(savedState.health);
+        player->SetPower(POWER_MANA, savedState.mana);
+
+        if (!player->IsAlive())
+        {
+            player->ResurrectPlayer(10);
+        }
+
+        for (auto& pair : savedState.auras)
+        {
+            if (Aura* aura = player->AddAura(pair.first, player))
+            {
+                aura->SetDuration(pair.second);
+            }
+        }
+
+        for (uint32 spellId : SPELL_ON_TELEPORT)
+        {
+            player->CastSpell(player, spellId, true);
+        }
+
+        savedStates.erase(playerGuid);
+    }
+};   
 
 class spell_mage_burning_determination : public AuraScript
 {
@@ -733,9 +801,9 @@ class spell_mage_living_bomb : public AuraScript
 
     void AfterRemove(AuraEffect const* aurEff, AuraEffectHandleModes /*mode*/)
     {
-        AuraRemoveMode removeMode = GetTargetApplication()->GetRemoveMode();
-        if (removeMode != AURA_REMOVE_BY_ENEMY_SPELL && removeMode != AURA_REMOVE_BY_EXPIRE)
-            return;
+       // AuraRemoveMode removeMode = GetTargetApplication()->GetRemoveMode();
+       // if (removeMode != AURA_REMOVE_BY_ENEMY_SPELL && removeMode != AURA_REMOVE_BY_EXPIRE)
+       //     return;
 
         if (Unit* caster = GetCaster())
             caster->CastSpell(GetTarget(), uint32(aurEff->GetAmount()), true, nullptr, aurEff);
@@ -981,38 +1049,35 @@ class spell_mage_fingers_of_frost_proc_aura : public AuraScript
         {
             _chance = 100.f;
             _spell = eventInfo.GetProcSpell();
-            _procSpellDelayMoment = std::nullopt;
 
             if (!_spell || _spell->GetDelayMoment() <= 0)
+            {
                 PreventDefaultAction();
-
-            if (_spell)
-                _procSpellDelayMoment = _spell->GetDelayMoment();
+            }
         }
         else
         {
-            if (eventInfo.GetSpellPhaseMask() == PROC_SPELL_PHASE_FINISH || (_procSpellDelayMoment.value_or(0) > 0 || !eventInfo.GetDamageInfo()))
+            if (eventInfo.GetSpellPhaseMask() == PROC_SPELL_PHASE_FINISH || ((_spell && _spell->GetDelayMoment() > 0) || !eventInfo.GetDamageInfo()))
+            {
                 PreventDefaultAction();
+            }
 
-            ResetProcState();
+            _chance = 0.f;
+            _spell = nullptr;
         }
     }
 
     void HandleAfterEffectProc(AuraEffect const* /*aurEff*/, ProcEventInfo& eventInfo)
     {
-        switch (eventInfo.GetSpellPhaseMask())
+        if (eventInfo.GetSpellPhaseMask() == PROC_SPELL_PHASE_HIT)
         {
-            case PROC_SPELL_PHASE_HIT:    _chance = 100.f; break;
-            case PROC_SPELL_PHASE_FINISH: ResetProcState(); break;
-            default: break;
+            _chance = 100.f;
         }
-    }
-
-    void ResetProcState()
-    {
-        _chance = 0.f;
-        _spell = nullptr;
-        _procSpellDelayMoment = std::nullopt;
+        else if (eventInfo.GetSpellPhaseMask() == PROC_SPELL_PHASE_FINISH)
+        {
+            _chance = 0.f;
+            _spell = nullptr;
+        }
     }
 
     void Register()
@@ -1024,15 +1089,10 @@ class spell_mage_fingers_of_frost_proc_aura : public AuraScript
     }
 
 public:
-    // May point to a deleted object.
-    // Dereferencing is unsafe unless validity is guaranteed by the caller.
     Spell const* GetProcSpell() const { return _spell; }
 
 private:
     float _chance = 0.f;
-    std::optional<uint64> _procSpellDelayMoment = std::nullopt;
-
-    // May be dangling; points to memory that might no longer be valid.
     Spell const* _spell = nullptr;
 };
 
@@ -1069,7 +1129,6 @@ class spell_mage_fingers_of_frost_proc : public AuraScript
 
 void AddSC_mage_spell_scripts()
 {
-    RegisterSpellScript(spell_mage_arcane_blast);
     RegisterSpellScript(spell_mage_burning_determination);
     RegisterSpellScript(spell_mage_molten_armor);
     RegisterSpellScript(spell_mage_mirror_image);
@@ -1092,4 +1151,5 @@ void AddSC_mage_spell_scripts()
     RegisterSpellScript(spell_mage_summon_water_elemental);
     RegisterSpellScript(spell_mage_fingers_of_frost_proc_aura);
     RegisterSpellScript(spell_mage_fingers_of_frost_proc);
+    new AlterTime();
 }

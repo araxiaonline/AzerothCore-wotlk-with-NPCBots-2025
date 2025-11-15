@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -144,21 +144,21 @@ GroupQueueInfo* BattlegroundQueue::AddGroup(Player* leader, Group* group, Battle
     BattlegroundBracketId bracketId = bracketEntry->GetBracketId();
 
     // create new ginfo
-    auto* ginfo                         = new GroupQueueInfo;
-    ginfo->BgTypeId                     = bgTypeId;
-    ginfo->ArenaType                    = arenaType;
-    ginfo->ArenaTeamId                  = arenaTeamId;
-    ginfo->IsRated                      = isRated;
-    ginfo->IsInvitedToBGInstanceGUID    = 0;
-    ginfo->JoinTime                     = GameTime::GetGameTimeMS().count();
-    ginfo->RemoveInviteTime             = 0;
-    ginfo->teamId                       = leader->GetTeamId();
-    ginfo->RealTeamID                   = leader->GetTeamId(true);
-    ginfo->ArenaTeamRating              = arenaRating;
-    ginfo->ArenaMatchmakerRating        = matchmakerRating;
-    ginfo->PreviousOpponentsTeamId      = opponentsArenaTeamId;
-    ginfo->OpponentsTeamRating          = 0;
-    ginfo->OpponentsMatchmakerRating    = 0;
+    auto* ginfo = new GroupQueueInfo;
+    ginfo->BgTypeId = bgTypeId;
+    ginfo->ArenaType = arenaType;
+    ginfo->ArenaTeamId = arenaTeamId;
+    ginfo->IsRated = isRated;
+    ginfo->IsInvitedToBGInstanceGUID = 0;
+    ginfo->JoinTime = GameTime::GetGameTimeMS().count();
+    ginfo->RemoveInviteTime = 0;
+    ginfo->teamId = leader->GetTeamId();
+    ginfo->RealTeamID = leader->GetTeamId(true);
+    ginfo->ArenaTeamRating = arenaRating;
+    ginfo->ArenaMatchmakerRating = matchmakerRating;
+    ginfo->PreviousOpponentsTeamId = opponentsArenaTeamId;
+    ginfo->OpponentsTeamRating = 0;
+    ginfo->OpponentsMatchmakerRating = 0;
 
     ginfo->Players.clear();
 
@@ -184,11 +184,11 @@ GroupQueueInfo* BattlegroundQueue::AddGroup(Player* leader, Group* group, Battle
     if (group)
     {
         group->DoForAllMembers([this, ginfo](Player* member)
-        {
-            ASSERT(m_QueuedPlayers.count(member->GetGUID()) == 0);
-            m_QueuedPlayers[member->GetGUID()] = ginfo;
-            ginfo->Players.emplace(member->GetGUID());
-        });
+            {
+                ASSERT(m_QueuedPlayers.count(member->GetGUID()) == 0);
+                m_QueuedPlayers[member->GetGUID()] = ginfo;
+                ginfo->Players.emplace(member->GetGUID());
+            });
         //npcbot: queue bots (bg only)
         if (!arenaTeamId)
         {
@@ -488,7 +488,7 @@ void BattlegroundQueue::RemovePlayer(ObjectGuid guid, bool decreaseInvitedCount)
 
 void BattlegroundQueue::AddEvent(BasicEvent* Event, uint64 e_time)
 {
-    m_events.AddEventAtOffset(Event, Milliseconds(e_time));
+    m_events.AddEvent(Event, m_events.CalculateTime(e_time));
 }
 
 bool BattlegroundQueue::IsPlayerInvitedToRatedArena(ObjectGuid pl_guid)
@@ -1414,7 +1414,7 @@ void BattlegroundQueue::InviteGroupToBG(GroupQueueInfo* ginfo, Battleground* bg,
         // send status packet
         WorldPacket data;
         sBattlegroundMgr->BuildBattlegroundStatusPacket(&data, bg, queueSlot, STATUS_WAIT_JOIN, INVITE_ACCEPT_WAIT_TIME, 0, ginfo->ArenaType, TEAM_NEUTRAL, bg->isRated());
-        player->SendDirectMessage(&data);
+        player->GetSession()->SendPacket(&data);
 
         // pussywizard:
         if (bg->isArena() && bg->isRated())
@@ -1452,7 +1452,7 @@ bool BGQueueInviteEvent::Execute(uint64 /*e_time*/, uint32 /*p_time*/)
             // send remaining time in queue
             WorldPacket data;
             sBattlegroundMgr->BuildBattlegroundStatusPacket(&data, bg, queueSlot, STATUS_WAIT_JOIN, INVITE_ACCEPT_WAIT_TIME - INVITATION_REMIND_TIME, 0, m_ArenaType, TEAM_NEUTRAL, bg->isRated(), m_BgTypeId);
-            player->SendDirectMessage(&data);
+            player->GetSession()->SendPacket(&data);
         }
     }
 
@@ -1495,11 +1495,11 @@ bool BGQueueRemoveEvent::Execute(uint64 /*e_time*/, uint32 /*p_time*/)
                     CharacterDatabase.Execute(stmt);
                 }
 
-                sScriptMgr->OnPlayerBattlegroundDesertion(player, BG_DESERTION_TYPE_NO_ENTER_BUTTON);
+                sScriptMgr->OnBattlegroundDesertion(player, BG_DESERTION_TYPE_NO_ENTER_BUTTON);
             }
 
             if (bg && bg->isArena() && (bg->GetStatus() == STATUS_IN_PROGRESS || bg->GetStatus() == STATUS_WAIT_JOIN))
-                sScriptMgr->OnPlayerBattlegroundDesertion(player, ARENA_DESERTION_TYPE_NO_ENTER_BUTTON);
+                sScriptMgr->OnBattlegroundDesertion(player, ARENA_DESERTION_TYPE_NO_ENTER_BUTTON);
 
             LOG_DEBUG("bg.battleground", "Battleground: removing player {} from bg queue for instance {} because of not pressing enter battle in time.", player->GetGUID().ToString(), m_BgInstanceGUID);
 

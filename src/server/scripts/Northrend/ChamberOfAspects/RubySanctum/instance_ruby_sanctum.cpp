@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -19,12 +19,10 @@
 #include "InstanceMapScript.h"
 #include "InstanceScript.h"
 #include "Player.h"
-#include "SpellScript.h"
 #include "SpellScriptLoader.h"
 #include "WorldPacket.h"
-#include "WorldStateDefines.h"
-#include "WorldStatePackets.h"
 #include "ruby_sanctum.h"
+#include "SpellScript.h"
 
 BossBoundaryData const boundaries =
 {
@@ -49,7 +47,7 @@ DoorData const doorData[] =
 class instance_ruby_sanctum : public InstanceMapScript
 {
 public:
-    instance_ruby_sanctum() : InstanceMapScript("instance_ruby_sanctum", MAP_THE_RUBY_SANCTUM) { }
+    instance_ruby_sanctum() : InstanceMapScript("instance_ruby_sanctum", 724) { }
 
     struct instance_ruby_sanctum_InstanceMapScript : public InstanceScript
     {
@@ -65,6 +63,7 @@ public:
         {
             if (GetBossState(DATA_HALION_INTRO_DONE) != DONE && GetBossState(DATA_GENERAL_ZARITHRIAN) == DONE)
             {
+                instance->LoadGrid(3156.0f, 537.0f);
                 if (Creature* halionController = instance->GetCreature(HalionControllerGUID))
                     halionController->AI()->DoAction(ACTION_INTRO_HALION);
             }
@@ -209,9 +208,9 @@ public:
                             halionController->AI()->DoAction(ACTION_INTRO_HALION);
                     break;
                 case DATA_HALION:
-                    DoUpdateWorldState(WORLD_STATE_RUBY_SANCTUM_CORPOREALITY_TOGGLE, 0);
-                    DoUpdateWorldState(WORLD_STATE_RUBY_SANCTUM_CORPOREALITY_TWILIGHT, 0);
-                    DoUpdateWorldState(WORLD_STATE_RUBY_SANCTUM_CORPOREALITY_MATERIAL, 0);
+                    DoUpdateWorldState(WORLDSTATE_CORPOREALITY_TOGGLE, 0);
+                    DoUpdateWorldState(WORLDSTATE_CORPOREALITY_TWILIGHT, 0);
+                    DoUpdateWorldState(WORLDSTATE_CORPOREALITY_MATERIAL, 0);
                     HandleGameObject(FlameRingGUID, true);
                     break;
             }
@@ -219,12 +218,11 @@ public:
             return true;
         }
 
-        void FillInitialWorldStates(WorldPackets::WorldState::InitWorldStates& packet) override
+        void FillInitialWorldStates(WorldPacket& data) override
         {
-            packet.Worldstates.reserve(3);
-            packet.Worldstates.emplace_back(WORLD_STATE_RUBY_SANCTUM_CORPOREALITY_MATERIAL, 50);
-            packet.Worldstates.emplace_back(WORLD_STATE_RUBY_SANCTUM_CORPOREALITY_TWILIGHT, 50);
-            packet.Worldstates.emplace_back(WORLD_STATE_RUBY_SANCTUM_CORPOREALITY_TOGGLE, 0);
+            data << uint32(WORLDSTATE_CORPOREALITY_MATERIAL) << uint32(50);
+            data << uint32(WORLDSTATE_CORPOREALITY_TWILIGHT) << uint32(50);
+            data << uint32(WORLDSTATE_CORPOREALITY_TOGGLE) << uint32(0);
         }
 
     protected:

@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -33,7 +33,7 @@ enum Spells
 {
     SPELL_ARCANE_EXPLOSION      = 26192,
     SPELL_EARTH_SHOCK           = 26194,
-    SPELL_TRUE_FULFILLMENT      = 785,
+    SPELL_CHAIN_LIGHTNING       = 825021,
     SPELL_INITIALIZE_IMAGE      = 3730,
     SPELL_SUMMON_IMAGES         = 747,
     SPELL_BIRTH                 = 34115
@@ -42,7 +42,7 @@ enum Spells
 enum Events
 {
     EVENT_ARCANE_EXPLOSION      = 1,
-    EVENT_FULLFILMENT           = 2,
+    EVENT_CHAIN_LIGHTNING       = 2,
     EVENT_BLINK                 = 3,
     EVENT_EARTH_SHOCK           = 4,
     EVENT_TELEPORT              = 5,
@@ -137,6 +137,16 @@ struct boss_skeram : public BossAI
             Talk(SAY_DEATH);
             if (me->GetMap() && me->GetMap()->ToInstanceMap())
                 me->GetMap()->ToInstanceMap()->PermBindAllPlayers();
+            DoCastSelf(875167, true);
+            Map::PlayerList const& players = me->GetMap()->GetPlayers();
+            for (auto const& playerPair : players)
+            {
+                Player* player = playerPair.GetSource();
+                if (player)
+                {
+                    DistributeChallengeRewards(player, me, 1, false);
+                }
+            }
         }
         else
             me->RemoveCorpse();
@@ -148,7 +158,7 @@ struct boss_skeram : public BossAI
         events.Reset();
 
         events.ScheduleEvent(EVENT_ARCANE_EXPLOSION, 6s, 12s);
-        events.ScheduleEvent(EVENT_FULLFILMENT, 15s);
+        events.ScheduleEvent(EVENT_CHAIN_LIGHTNING, 16s);
         events.ScheduleEvent(EVENT_BLINK, 30s, 45s);
         events.ScheduleEvent(EVENT_EARTH_SHOCK, 1200ms);
 
@@ -173,13 +183,13 @@ struct boss_skeram : public BossAI
                     DoCastAOE(SPELL_ARCANE_EXPLOSION, false);
                     events.ScheduleEvent(EVENT_ARCANE_EXPLOSION, 8s, 18s);
                     break;
-                case EVENT_FULLFILMENT:
-                    DoCast(SelectTarget(SelectTargetMethod::MinDistance, 1, 0.0f, true), SPELL_TRUE_FULFILLMENT, false);
-                    events.ScheduleEvent(EVENT_FULLFILMENT, 20s, 30s);
+                case EVENT_CHAIN_LIGHTNING:
+                    CastSpellOnRandomTarget(SPELL_CHAIN_LIGHTNING, 100.0f);
+                    events.ScheduleEvent(EVENT_CHAIN_LIGHTNING, 20s, 30s);
                     break;
                 case EVENT_BLINK:
                     DoCast(me, BlinkSpells[urand(0, 2)]);
-                    DoResetThreatList();
+                    //DoResetThreatList();
                     events.ScheduleEvent(EVENT_BLINK, 10s, 30s);
                     break;
                 case EVENT_EARTH_SHOCK:
@@ -197,7 +207,7 @@ struct boss_skeram : public BossAI
                             DoTeleport(image);
                         }
                     }
-                    DoResetThreatList();
+                    //DoResetThreatList();
                     events.RescheduleEvent(EVENT_BLINK, 10s, 30s);
                     break;
                 case EVENT_INIT_IMAGE:
@@ -239,6 +249,23 @@ private:
     float _hpct;
     uint8 _flag;
     GuidVector _copiesGUIDs;
+    void CastSpellOnRandomTarget(uint32 spellId, float range)
+    {
+        std::list<Unit*> targets;
+        Acore::AnyUnitInObjectRangeCheck check(me, range);
+        Acore::UnitListSearcher<Acore::AnyUnitInObjectRangeCheck> searcher(me, targets, check);
+        Cell::VisitAllObjects(me, searcher, range);
+
+        targets.remove_if([this](Unit* unit) -> bool {
+            return !unit->IsAlive() || !(unit->GetTypeId() == TYPEID_PLAYER || (unit->GetTypeId() == TYPEID_UNIT && static_cast<Creature*>(unit)->IsNPCBot()));
+            });
+
+        if (!targets.empty())
+        {
+            Unit* target = Acore::Containers::SelectRandomContainerElement(targets);
+            DoCast(target, spellId, true);  
+        }
+    }
 };
 
 class spell_skeram_arcane_explosion : public SpellScript

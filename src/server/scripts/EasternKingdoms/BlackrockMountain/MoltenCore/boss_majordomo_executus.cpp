@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -143,6 +143,16 @@ public:
         void JustDied(Unit* /*killer*/) override
         {
             Talk(SAY_DEATH);
+            DoCastSelf(875167, true);
+            Map::PlayerList const& players = me->GetMap()->GetPlayers();
+            for (auto const& playerPair : players)
+            {
+                Player* player = playerPair.GetSource();
+                if (player)
+                {
+                    DistributeChallengeRewards(player, me, 1, false);
+                }
+            }
             me->DespawnOrUnsummon(10s, 0s);
         }
 
@@ -190,6 +200,7 @@ public:
 
         void Reset() override
         {
+            DoCastSelf(875167, true);
             me->ResetLootMode();
             events.Reset();
             aliveMinionsGUIDS.clear();
@@ -317,6 +328,10 @@ public:
 
         void UpdateAI(uint32 diff) override
         {
+            if (me->HasAura(800139))
+            {
+                DoCast(me, 17683, true);
+            }
 
             switch (events.GetPhaseMask())
             {
@@ -348,25 +363,25 @@ public:
                                 {
                                     DoCastSelf(SPELL_DAMAGE_REFLECTION);
                                 }
-                                events.Repeat(30s);
+                                events.RepeatEvent(30000);
                                 break;
                             }
                             case EVENT_TELEPORT_RANDOM:
                             {
-                                if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, 0.0f, true, false))
+                                if (Unit* target = SelectTarget(SelectTargetMethod::Random, 1, 0.0f, true))
                                 {
                                     DoCastSelf(SPELL_HATE_TO_ZERO, true);
                                     DoCast(target, SPELL_TELEPORT_RANDOM);
                                 }
 
-                                events.Repeat(30s);
+                                events.RepeatEvent(30000);
                                 break;
                             }
                             case EVENT_TELEPORT_TARGET:
                             {
                                 DoCastSelf(SPELL_HATE_TO_ZERO, true);
                                 DoCastAOE(SPELL_TELEPORT_TARGET);
-                                events.Repeat(30s);
+                                events.RepeatEvent(30000);
                                 break;
                             }
                         }
@@ -430,7 +445,7 @@ public:
                                 Talk(SAY_RAG_SUM_2);
                                 // Next event will get triggered in MovementInform
                                 me->SetWalk(true);
-                                me->GetMotionMaster()->MovePoint(POINT_RAGNAROS_SUMMON, MajordomoMoveRagPos, FORCED_MOVEMENT_NONE, 0.f, true, false);
+                                me->GetMotionMaster()->MovePoint(POINT_RAGNAROS_SUMMON, MajordomoMoveRagPos, true, false);
                                 break;
                             }
                             case EVENT_RAGNAROS_SUMMON_2:

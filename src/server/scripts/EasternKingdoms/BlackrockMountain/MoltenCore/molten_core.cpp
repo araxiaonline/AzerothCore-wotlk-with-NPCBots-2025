@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -172,16 +172,16 @@ class spell_mc_play_dead_aura : public AuraScript
 
         bool shouldDie = true;
         std::list<Creature*> hounds;
-        creatureTarget->GetCreaturesWithEntryInRange(hounds, 80.0f, NPC_CORE_HOUND);
+        creatureTarget->GetCreaturesWithEntryInRange(hounds, 50.0f, NPC_CORE_HOUND);
 
         // Perform lambda based check to find if there is any nearby
         if (!hounds.empty())
         {
-            // Alive hound been found within 80 yards -> cancel suicide
+            // Alive hound been found within 50 yards -> cancel suicide
             if (std::find_if(hounds.begin(), hounds.end(), [creatureTarget](Creature const* hound)
-            {
-                return creatureTarget != hound && creatureTarget->IsWithinLOSInMap(hound) && hound->IsAlive() && hound->IsInCombat() && !hound->HasAura(SPELL_PLAY_DEAD);
-            }) != hounds.end())
+                {
+                    return creatureTarget != hound && creatureTarget->IsWithinLOSInMap(hound) && hound->IsAlive() && hound->IsInCombat() && !hound->HasAura(SPELL_PLAY_DEAD);
+                }) != hounds.end())
             {
                 shouldDie = false;
             }
@@ -199,7 +199,7 @@ class spell_mc_play_dead_aura : public AuraScript
         else
         {
             Unit::Kill(creatureTarget, creatureTarget);
-            creatureTarget->DespawnOrUnsummon(14s);
+            creatureTarget->DespawnOrUnsummon(14000);
         }
     }
 
@@ -223,11 +223,11 @@ struct npc_lava_spawn : public ScriptedAI
 
     void JustEngagedWith(Unit* /*who*/) override
     {
-        _scheduler.Schedule(15s, [this](TaskContext context)
+        _scheduler.Schedule(20s, [this](TaskContext context)
         {
             std::list<Creature*> lavaSpawns;
             me->GetCreatureListWithEntryInGrid(lavaSpawns, me->GetEntry(), 100.f);
-            if (lavaSpawns.size() < 16)
+            if (lavaSpawns.size() < 10)
             {
                 Talk(TALK_0);
 
@@ -238,7 +238,7 @@ struct npc_lava_spawn : public ScriptedAI
             }
             else
             {
-                context.Repeat(15s);
+                context.Repeat(20s);
             }
         });
     }

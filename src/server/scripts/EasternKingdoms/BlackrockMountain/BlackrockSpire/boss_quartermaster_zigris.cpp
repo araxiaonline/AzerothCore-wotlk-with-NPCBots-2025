@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -69,6 +69,20 @@ struct boss_quartermaster_zigris : public BossAI
     void JustDied(Unit* /*killer*/) override
     {
         _JustDied();
+        Map::PlayerList const& players = me->GetMap()->GetPlayers();
+        if (!players.IsEmpty())
+        {
+            uint32 baseRewardLevel = 1;
+            bool isDungeon = me->GetMap()->IsDungeon();
+
+            for (auto const& playerPair : players)
+            {
+                if (Player* player = playerPair.GetSource())
+                {
+                    DistributeChallengeRewards(player, me, baseRewardLevel, isDungeon);
+                }
+            }
+        }
     }
 
     void SpellHitTarget(Unit* /*target*/, SpellInfo const* spellInfo) override
@@ -77,9 +91,7 @@ struct boss_quartermaster_zigris : public BossAI
         {
             if (me->IsWithinMeleeRange(me->GetVictim()))
             {
-                float x, y, z;
-                me->GetNearPoint(me->GetVictim(), x, y, z, me->GetVictim()->GetBoundaryRadius(), 10.0f, me->GetAngle(me->GetVictim()));
-                me->GetMotionMaster()->MovePoint(0, x, y, z, FORCED_MOVEMENT_RUN); // TODO: Implement generic distancing on npc on target root
+                me->GetMotionMaster()->MoveBackwards(me->GetVictim(), 10.0f);
             }
         }
     }
@@ -110,11 +122,11 @@ struct boss_quartermaster_zigris : public BossAI
                     if (me->IsWithinMeleeRange(me->GetVictim()))
                     {
                         DoCastVictim(SPELL_HOOKEDNET);
-                        events.Repeat(16s);
+                        events.RepeatEvent(16000);
                     }
                     else
                     {
-                        events.Repeat(3s);
+                        events.RepeatEvent(3000);
                     }
                     break;
                 case EVENT_SHOOT:
@@ -130,7 +142,7 @@ struct boss_quartermaster_zigris : public BossAI
                         me->GetMotionMaster()->Clear();
                         me->GetMotionMaster()->MoveChase(me->GetVictim());
                     }
-                    events.Repeat(2s);
+                    events.RepeatEvent(2000);
                     break;
             }
 

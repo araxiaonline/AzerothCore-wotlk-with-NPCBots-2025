@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -19,7 +19,6 @@
 #include "Player.h"
 #include "ScriptedCreature.h"
 #include "forge_of_souls.h"
-#include "Group.h"
 
 BossBoundaryData const boundaries =
 {
@@ -30,7 +29,7 @@ BossBoundaryData const boundaries =
 class instance_forge_of_souls : public InstanceMapScript
 {
 public:
-    instance_forge_of_souls() : InstanceMapScript("instance_forge_of_souls", MAP_THE_FORGE_OF_SOULS) { }
+    instance_forge_of_souls() : InstanceMapScript("instance_forge_of_souls", 632) { }
 
     InstanceScript* GetInstanceScript(InstanceMap* map) const override
     {
@@ -46,6 +45,7 @@ public:
         }
 
         uint32 m_auiEncounter[MAX_ENCOUNTER];
+        TeamId teamIdInInstance;
         std::string str_data;
         ObjectGuid NPC_BronjahmGUID;
         ObjectGuid NPC_DevourerGUID;
@@ -58,6 +58,7 @@ public:
         void Initialize() override
         {
             memset(&m_auiEncounter, 0, sizeof(m_auiEncounter));
+            teamIdInInstance = TEAM_NEUTRAL;
         }
 
         bool IsEncounterInProgress() const override
@@ -68,10 +69,8 @@ public:
             return false;
         }
 
-        void OnPlayerEnter(Player* player) override
+        void OnPlayerEnter(Player* /*plr*/) override
         {
-            InstanceScript::OnPlayerEnter(player);
-
             // this will happen only after crash and loading the instance from db
             if (m_auiEncounter[0] == DONE && m_auiEncounter[1] == DONE && (!NPC_LeaderSecondGUID || !instance->GetCreature(NPC_LeaderSecondGUID)))
             {
@@ -82,6 +81,14 @@ public:
 
         void OnCreatureCreate(Creature* creature) override
         {
+            if (teamIdInInstance == TEAM_NEUTRAL)
+            {
+                Map::PlayerList const& players = instance->GetPlayers();
+                if (!players.IsEmpty())
+                    if (Player* player = players.begin()->GetSource())
+                        teamIdInInstance = player->GetTeamId();
+            }
+
             switch (creature->GetEntry())
             {
                 case NPC_BRONJAHM:
@@ -91,7 +98,7 @@ public:
                     NPC_DevourerGUID = creature->GetGUID();
                     break;
                 case NPC_SYLVANAS_PART1:
-                    if (GetTeamIdInInstance() == TEAM_ALLIANCE)
+                    if (teamIdInInstance == TEAM_ALLIANCE)
                         creature->UpdateEntry(NPC_JAINA_PART1);
                     NPC_LeaderFirstGUID = creature->GetGUID();
 
@@ -99,12 +106,12 @@ public:
                         creature->SetVisible(false);
                     break;
                 case NPC_SYLVANAS_PART2:
-                    if (GetTeamIdInInstance() == TEAM_ALLIANCE)
+                    if (teamIdInInstance == TEAM_ALLIANCE)
                         creature->UpdateEntry(NPC_JAINA_PART2);
                     NPC_LeaderSecondGUID = creature->GetGUID();
                     break;
                 case NPC_LORALEN:
-                    if (GetTeamIdInInstance() == TEAM_ALLIANCE)
+                    if (teamIdInInstance == TEAM_ALLIANCE)
                         creature->UpdateEntry(NPC_ELANDRA);
                     if (!NPC_GuardFirstGUID)
                     {
@@ -114,7 +121,7 @@ public:
                     }
                     break;
                 case NPC_KALIRA:
-                    if (GetTeamIdInInstance() == TEAM_ALLIANCE)
+                    if (teamIdInInstance == TEAM_ALLIANCE)
                         creature->UpdateEntry(NPC_KORELN);
                     if (!NPC_GuardSecondGUID)
                     {
@@ -136,12 +143,9 @@ public:
                         leader->GetMotionMaster()->MovePoint(1, boss->GetPositionX() + 10.0f * cos(angle), boss->GetPositionY() + 10.0f * std::sin(angle), boss->GetPositionZ());
                     }
 
-            if (GetTeamIdInInstance() < TEAM_NEUTRAL) // Shouldn't happen, but just in case.
-            {
-                for (int8 i = 0; outroPositions[i].entry[GetTeamIdInInstance()] != 0; ++i)
-                    if (Creature* summon = instance->SummonCreature(outroPositions[i].entry[GetTeamIdInInstance()], outroPositions[i].startPosition))
-                        summon->GetMotionMaster()->MoveWaypoint(outroPositions[i].pathId, false);
-            }
+            for (int8 i = 0; outroPositions[i].entry[teamIdInInstance] != 0; ++i)
+                if (Creature* summon = instance->SummonCreature(outroPositions[i].entry[teamIdInInstance], outroPositions[i].startPosition))
+                    summon->GetMotionMaster()->MovePath(outroPositions[i].pathId, false);
         }
 
         void SetData(uint32 type, uint32 data) override

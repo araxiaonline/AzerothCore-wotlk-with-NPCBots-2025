@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -20,14 +20,12 @@
 #include "LFGMgr.h"
 #include "Player.h"
 #include "ScriptedCreature.h"
-#include "WorldStateDefines.h"
-#include "WorldStatePackets.h"
 #include "oculus.h"
 
 class instance_oculus : public InstanceMapScript
 {
 public:
-    instance_oculus() : InstanceMapScript("instance_oculus", MAP_THE_OCULUS) { }
+    instance_oculus() : InstanceMapScript("instance_oculus", 578) { }
 
     InstanceScript* GetInstanceScript(InstanceMap* pMap) const override
     {
@@ -113,13 +111,13 @@ public:
         {
             if (m_auiEncounter[DATA_DRAKOS] == DONE && m_auiEncounter[DATA_VAROS] != DONE)
             {
-                player->SendUpdateWorldState(WORLD_STATE_OCULUS_CENTRIFUGE_CONSTRUCT_SHOW, 1);
-                player->SendUpdateWorldState(WORLD_STATE_OCULUS_CENTRIFUGE_CONSTRUCT_AMOUNT, 10 - CentrifugeCount);
+                player->SendUpdateWorldState(WORLD_STATE_CENTRIFUGE_CONSTRUCT_SHOW, 1);
+                player->SendUpdateWorldState(WORLD_STATE_CENTRIFUGE_CONSTRUCT_AMOUNT, 10 - CentrifugeCount);
             }
             else
             {
-                player->SendUpdateWorldState(WORLD_STATE_OCULUS_CENTRIFUGE_CONSTRUCT_SHOW, 0);
-                player->SendUpdateWorldState(WORLD_STATE_OCULUS_CENTRIFUGE_CONSTRUCT_AMOUNT, 0);
+                player->SendUpdateWorldState(WORLD_STATE_CENTRIFUGE_CONSTRUCT_SHOW, 0);
+                player->SendUpdateWorldState(WORLD_STATE_CENTRIFUGE_CONSTRUCT_AMOUNT, 0);
             }
         }
 
@@ -137,8 +135,8 @@ public:
                     m_auiEncounter[DATA_DRAKOS] = data;
                     if (data == DONE)
                     {
-                        DoUpdateWorldState(WORLD_STATE_OCULUS_CENTRIFUGE_CONSTRUCT_SHOW, 1);
-                        DoUpdateWorldState(WORLD_STATE_OCULUS_CENTRIFUGE_CONSTRUCT_AMOUNT, 10 - CentrifugeCount);
+                        DoUpdateWorldState(WORLD_STATE_CENTRIFUGE_CONSTRUCT_SHOW, 1);
+                        DoUpdateWorldState(WORLD_STATE_CENTRIFUGE_CONSTRUCT_AMOUNT, 10 - CentrifugeCount);
 
                         if (instance->IsHeroic())
                             DoStartTimedAchievement(ACHIEVEMENT_TIMED_TYPE_EVENT, ACHIEV_MAKE_IT_COUNT_TIMED_EVENT);
@@ -148,7 +146,7 @@ public:
                     m_auiEncounter[DATA_VAROS] = data;
                     if (data == DONE)
                     {
-                        DoUpdateWorldState(WORLD_STATE_OCULUS_CENTRIFUGE_CONSTRUCT_SHOW, 0);
+                        DoUpdateWorldState(WORLD_STATE_CENTRIFUGE_CONSTRUCT_SHOW, 0);
 
                         if (Creature* urom = instance->GetCreature(uiUromGUID))
                             urom->RemoveUnitFlag(UNIT_FLAG_NON_ATTACKABLE);
@@ -179,7 +177,7 @@ public:
                     if (CentrifugeCount < 10)
                     {
                         ++CentrifugeCount;
-                        DoUpdateWorldState(WORLD_STATE_OCULUS_CENTRIFUGE_CONSTRUCT_AMOUNT, 10 - CentrifugeCount);
+                        DoUpdateWorldState(WORLD_STATE_CENTRIFUGE_CONSTRUCT_AMOUNT, 10 - CentrifugeCount);
                     }
                     if (CentrifugeCount >= 10)
                         if (Creature* varos = instance->GetCreature(uiVarosGUID))

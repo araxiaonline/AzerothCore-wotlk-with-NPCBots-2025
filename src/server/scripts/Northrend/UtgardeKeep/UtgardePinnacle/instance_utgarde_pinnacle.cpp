@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -20,16 +20,10 @@
 #include "ScriptedCreature.h"
 #include "utgarde_pinnacle.h"
 
-ObjectData const creatureData[] =
-{
-    { NPC_SKADI_THE_RUTHLESS, DATA_SKADI_THE_RUTHLESS },
-    { 0,                      0                       }
-};
-
 class instance_utgarde_pinnacle : public InstanceMapScript
 {
 public:
-    instance_utgarde_pinnacle() : InstanceMapScript("instance_utgarde_pinnacle", MAP_UTGARDE_PINNACLE) { }
+    instance_utgarde_pinnacle() : InstanceMapScript("instance_utgarde_pinnacle", 575) { }
 
     InstanceScript* GetInstanceScript(InstanceMap* pMap) const override
     {
@@ -42,6 +36,7 @@ public:
 
         ObjectGuid SvalaSorrowgrave;
         ObjectGuid GortokPalehoof;
+        ObjectGuid SkadiRuthless;
         ObjectGuid KingYmiron;
         ObjectGuid FrenziedWorgen;
         ObjectGuid RavenousFurbolg;
@@ -64,7 +59,6 @@ public:
         void Initialize() override
         {
             SetHeaders(DataHeader);
-            LoadObjectData(creatureData, nullptr);
             SkadiHits        = 0;
             SkadiInRange     = 0;
 
@@ -94,6 +88,9 @@ public:
                 case NPC_GORTOK_PALEHOOF:
                     GortokPalehoof = pCreature->GetGUID();
                     break;
+                case NPC_SKADI_THE_RUTHLESS:
+                    SkadiRuthless = pCreature->GetGUID();
+                    break;
                 case NPC_KING_YMIRON:
                     KingYmiron = pCreature->GetGUID();
                     break;
@@ -113,8 +110,6 @@ public:
                     Grauf = pCreature->GetGUID();
                     break;
             }
-
-            InstanceScript::OnCreatureCreate(pCreature);
         }
 
         void OnGameObjectCreate(GameObject* pGo) override
@@ -243,6 +238,8 @@ public:
                     return SvalaSorrowgrave;
                 case DATA_GORTOK_PALEHOOF:
                     return GortokPalehoof;
+                case DATA_SKADI_THE_RUTHLESS:
+                    return SkadiRuthless;
                 case DATA_KING_YMIRON:
                     return KingYmiron;
                 case DATA_NPC_FRENZIED_WORGEN:

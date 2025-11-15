@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -244,6 +244,20 @@ namespace Acore::ChatCommands
 
         ChatCommandBuilder(char const* name, std::vector<ChatCommandBuilder> const& subCommands)
             : _name{ ASSERT_NOTNULL(name) }, _data{ std::in_place_type<SubCommandEntry>, subCommands } { }
+
+
+        [[deprecated("char const* parameters to command handlers are deprecated; convert this to a typed argument handler instead")]]
+        ChatCommandBuilder(char const* name, bool(&handler)(ChatHandler*, char const*), uint32 securityLevel, Acore::ChatCommands::Console allowConsole)
+            : ChatCommandBuilder(name, handler, AcoreStrings(), securityLevel, allowConsole) { }
+
+        template <typename TypedHandler>
+        [[deprecated("you are using the old-style command format; convert this to the new format ({ name, handler (not a pointer!), permission, Console::(Yes/No) })")]]
+        ChatCommandBuilder(char const* name, uint32 securityLevel, bool console, TypedHandler* handler, char const*)
+            : ChatCommandBuilder(name, *handler, AcoreStrings(), securityLevel, static_cast<Acore::ChatCommands::Console>(console)) { }
+
+        [[deprecated("you are using the old-style command format; convert this to the new format ({ name, subCommands })")]]
+        ChatCommandBuilder(char const* name, uint32, bool, std::nullptr_t, char const*, std::vector <ChatCommandBuilder> const& sub)
+            : ChatCommandBuilder(name, sub) { }
 
     private:
         std::string_view _name;

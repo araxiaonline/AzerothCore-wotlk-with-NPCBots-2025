@@ -19,7 +19,7 @@ enum MagePetBaseSpells
 
 enum MagePetSpecial
 {
-    ELEMENTAL_DURATION      = 45000
+    ELEMENTAL_DURATION      = 6000000
 };
 
 class mage_pet_bot : public CreatureScript
@@ -78,7 +78,7 @@ public:
             if ((liveTimer += diff) >= ELEMENTAL_DURATION * (IAmFree() ? 80u : 1u))
             {
                 canUpdate = false;
-                me->ToTempSummon()->UnSummon(1ms);
+                me->ToTempSummon()->UnSummon(1);
                 return;
             }
 
@@ -130,9 +130,9 @@ public:
         {
         }
 
-        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType, SpellSchoolMask damageSchoolMask) override
+        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType) override
         {
-            bot_pet_ai::DamageDealt(victim, damage, damageType, damageSchoolMask);
+            bot_pet_ai::DamageDealt(victim, damage, damageType);
         }
 
         void DamageTaken(Unit* u, uint32& /*damage*/, DamageEffectType /*damageType*/, SpellSchoolMask /*schoolMask*/) override

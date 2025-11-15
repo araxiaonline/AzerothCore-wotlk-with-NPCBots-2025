@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -20,8 +20,10 @@
 #include "SpellScriptLoader.h"
 #include "TemporarySummon.h"
 #include "shadowfang_keep.h"
-#include "SpellAuraEffects.h"
 #include "SpellScript.h"
+#include "ScriptMgr.h"
+#include "SpellAuraEffects.h"
+
 
 enum Spells
 {
@@ -31,7 +33,7 @@ enum Spells
 class instance_shadowfang_keep : public InstanceMapScript
 {
 public:
-    instance_shadowfang_keep() : InstanceMapScript("instance_shadowfang_keep", MAP_SHADOWFANG_KEEP) { }
+    instance_shadowfang_keep() : InstanceMapScript("instance_shadowfang_keep", 33) { }
 
     InstanceScript* GetInstanceScript(InstanceMap* map) const override
     {
@@ -232,9 +234,44 @@ private:
     uint32 _forsakenSpell;
 };
 
+//Dinkle
+class spell_abercrombie_unlock : public SpellScriptLoader
+{
+public:
+    spell_abercrombie_unlock() : SpellScriptLoader("spell_abercrombie_unlock") { }
+
+    class spell_abercrombie_unlock_SpellScript : public SpellScript
+    {
+        PrepareSpellScript(spell_abercrombie_unlock_SpellScript);
+
+        void HandleDummy(SpellEffIndex /*effIndex*/)
+        {
+            if (Unit* caster = GetCaster())
+            {
+                GameObject* courtyardDoor = caster->FindNearestGameObject(18895, 40.0f); 
+                if (courtyardDoor)
+                {
+                    courtyardDoor->SetGoState(GO_STATE_ACTIVE);
+                }
+            }
+        }
+
+        void Register() override
+        {
+            OnEffectHit += SpellEffectFn(spell_abercrombie_unlock_SpellScript::HandleDummy, EFFECT_0, SPELL_EFFECT_DUMMY);
+        }
+    };
+
+    SpellScript* GetSpellScript() const override
+    {
+        return new spell_abercrombie_unlock_SpellScript();
+    }
+};
+
 void AddSC_instance_shadowfang_keep()
 {
     new instance_shadowfang_keep();
+    new spell_abercrombie_unlock();
     RegisterSpellScript(spell_shadowfang_keep_haunting_spirits_aura);
     RegisterSpellScript(spell_shadowfang_keep_forsaken_skills_aura);
 }

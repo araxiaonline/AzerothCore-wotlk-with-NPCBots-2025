@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -98,7 +98,7 @@ struct npc_anubisath_defender : public ScriptedAI
         {
             scheduler.Schedule(6s, 10s, [this](TaskContext context)
             {
-                if (Unit* target = SelectTarget(SelectTargetMethod::MaxThreat, 0, 0.0f, false, false))
+                if (Unit* target = SelectTarget(SelectTargetMethod::MaxThreat, 1))
                     DoCast(target, SPELL_PLAGUE, true);
                 context.Repeat(6s, 10s);
             });
@@ -240,35 +240,59 @@ struct npc_obsidian_eradicator : public ScriptedAI
     void JustEngagedWith(Unit* /*who*/) override
     {
         scheduler.Schedule(3500ms, [this](TaskContext context)
-        {
-            if (_targetGUIDs.empty())
             {
-                me->GetMap()->DoForAllPlayers([&](Player* player)
+                if (_targetGUIDs.empty())
                 {
-                    if (player->IsAlive() && !player->IsGameMaster() && !player->IsSpectator() && player->GetPower(POWER_MANA) > 0)
+                    // Find players and NPCBots within the map
+                    std::list<Unit*> targets;
+                    Acore::AnyUnitInObjectRangeCheck check(me, 100.0f); // Assuming you want to check the entire map range
+                    Acore::UnitListSearcher<Acore::AnyUnitInObjectRangeCheck> searcher(me, targets, check);
+                    Cell::VisitAllObjects(me, searcher, 100.0f); // Assuming you want to check the entire map range
+
+                    // Filter out targets that do not match the criteria
+                    targets.remove_if([this](Unit* unit) -> bool {
+                        if (unit->IsAlive() && unit->GetPower(POWER_MANA) > 0)
+                        {
+                            if (unit->GetTypeId() == TYPEID_PLAYER)
+                            {
+                                Player* player = unit->ToPlayer();
+                                return player->IsGameMaster() || player->IsSpectator();
+                            }
+                            else if (unit->GetTypeId() == TYPEID_UNIT && static_cast<Creature*>(unit)->IsNPCBot())
+                            {
+                                return false;
+                            }
+                        }
+                        return true;
+                        });
+
+                    // Collect GUIDs of valid targets
+                    for (Unit* target : targets)
                     {
-                        _targetGUIDs.push_back(player->GetGUID());
+                        _targetGUIDs.push_back(target->GetGUID());
                     }
-                });
 
-                Acore::Containers::RandomResize(_targetGUIDs, 10);
-            }
-
-            for (ObjectGuid guid : _targetGUIDs)
-            {
-                if (Unit* target = ObjectAccessor::GetUnit(*me, guid))
-                {
-                    DoCast(target, SPELL_DRAIN_MANA_ERADICATOR, true);
+                    // Randomly resize the list to a maximum of 10 targets
+                    Acore::Containers::RandomResize(_targetGUIDs, 10);
                 }
-            }
 
-            if (me->GetPowerPct(POWER_MANA) >= 100.f)
-            {
-                DoCastAOE(SPELL_SHOCK_BLAST);
-            }
+                // Cast the mana drain spell on each target
+                for (ObjectGuid guid : _targetGUIDs)
+                {
+                    if (Unit* target = ObjectAccessor::GetUnit(*me, guid))
+                    {
+                        DoCast(target, SPELL_DRAIN_MANA_ERADICATOR, true);
+                    }
+                }
 
-            context.Repeat(3500ms);
-        });
+                // If mana is full, cast the shock blast spell
+                if (me->GetPowerPct(POWER_MANA) >= 100.f)
+                {
+                    DoCastAOE(SPELL_SHOCK_BLAST);
+                }
+
+                context.Repeat(3500ms);
+            });
     }
 
     void UpdateAI(uint32 diff) override
@@ -393,10 +417,10 @@ struct npc_obsidian_nullifier : public ScriptedAI
 
             context.Repeat(6s);
         })
-        .Schedule(6s, 8400ms, [this](TaskContext context)
+        .Schedule(6000ms, 8400ms, [this](TaskContext context)
         {
             DoCastVictim(SPELL_CLEAVE, true);
-            context.Repeat(6s, 8400ms);
+            context.Repeat(6000ms, 8400ms);
         });
     }
 
@@ -447,7 +471,7 @@ struct npc_ahnqiraji_critter : public ScriptedAI
                 }
             }
 
-            context.Repeat(3500ms, 4s);
+            context.Repeat(3500ms, 4000ms);
         });
     }
 
@@ -474,7 +498,7 @@ struct npc_ahnqiraji_critter : public ScriptedAI
     {
         if (me->GetEntry() == NPC_QIRAJI_SCORPION)
         {
-            me->DespawnOrUnsummon(5s);
+            me->DespawnOrUnsummon(5 * IN_MILLISECONDS);
         }
     }
 

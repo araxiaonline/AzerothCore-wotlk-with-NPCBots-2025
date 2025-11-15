@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -71,7 +71,7 @@ public:
 
         void IsSummonedBy(WorldObject* /*summoner*/) override
         {
-            StartTalking(TALK_SUMMON, 8s);
+            StartTalking(TALK_SUMMON, 8 * IN_MILLISECONDS);
         }
 
         void JustEngagedWith(Unit* who) override
@@ -90,9 +90,23 @@ public:
             BossAI::JustDied(killer);
 
             instance->SetData(DATA_LORD_VALTHALAK, DONE);
+            Map::PlayerList const& players = me->GetMap()->GetPlayers();
+            if (!players.IsEmpty())
+            {
+                uint32 baseRewardLevel = 1;
+                bool isDungeon = me->GetMap()->IsDungeon();
+
+                for (auto const& playerPair : players)
+                {
+                    if (Player* player = playerPair.GetSource())
+                    {
+                        DistributeChallengeRewards(player, me, baseRewardLevel, isDungeon);
+                    }
+                }
+            }
         }
 
-        void StartTalking(uint32 talkGroupId, Milliseconds timer)
+        void StartTalking(uint32 talkGroupId, uint32 timer)
         {
             me->SetReactState(REACT_PASSIVE);
             me->SetUnitFlag(UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_NOT_SELECTABLE);
@@ -123,7 +137,7 @@ public:
 
                 events.CancelEvent(EVENT_SUMMON_SPECTRAL_ASSASSIN);
 
-                StartTalking(TALK_40_HP, 5s);
+                StartTalking(TALK_40_HP, 5 * IN_MILLISECONDS);
             }
 
             if (!frenzy15 && me->HealthBelowPctDamaged(15, damage))
@@ -132,7 +146,7 @@ public:
 
                 events.ScheduleEvent(EVENT_SHADOW_BOLT_VOLLEY, 12s, 19s, 0, EVENT_PHASE_FIGHT);
 
-                StartTalking(TALK_15_HP, 5s);
+                StartTalking(TALK_15_HP, 5 * IN_MILLISECONDS);
             }
         }
 

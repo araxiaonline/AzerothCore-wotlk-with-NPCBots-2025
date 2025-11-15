@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -204,7 +204,7 @@ public:
 
         if (me->GetEntry() == NPC_VEM)
         {
-            me->GetMotionMaster()->MoveWaypoint(VEM_WAYPOINT_PATH, true);
+            me->GetMotionMaster()->MovePath(VEM_WAYPOINT_PATH, true);
         }
     }
 
@@ -307,10 +307,21 @@ public:
         instance->SetData(DATA_BUG_TRIO_DEATH, 1);
         if (instance->GetData(DATA_BUG_TRIO_DEATH) < 3)
         {
+            summons.DespawnAll();
+            DoCastSelf(875167, true);
+            Map::PlayerList const& players = me->GetMap()->GetPlayers();
+            for (auto const& playerPair : players)
+            {
+                Player* player = playerPair.GetSource();
+                if (player)
+                {
+                    DistributeChallengeRewards(player, me, 1, false);
+                }
+            }
             me->RemoveDynamicFlag(UNIT_DYNFLAG_LOOTABLE);
             DoFinalSpell();
             Talk(EMOTE_DEVOURED);
-            me->DespawnOrUnsummon(3s);
+            me->DespawnOrUnsummon(3000);
             return;
         }
 

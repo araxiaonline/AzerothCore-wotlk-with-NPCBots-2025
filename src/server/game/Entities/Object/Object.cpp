@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -86,6 +86,17 @@ Object::Object() : m_PackGUID(sizeof(uint64) + 1)
 WorldObject::~WorldObject()
 {
     sScriptMgr->OnWorldObjectDestroy(this);
+
+    // this may happen because there are many !create/delete
+    if (IsWorldObject() && m_currMap)
+    {
+        if (IsCorpse())
+        {
+            LOG_FATAL("entities.object", "Object::~Object Corpse {}, type={} deleted but still in map!!", GetGUID().ToString(), ((Corpse*)this)->GetType());
+            ABORT();
+        }
+        ResetMap();
+    }
 }
 
 Object::~Object()
@@ -240,7 +251,7 @@ void Object::SendUpdateToPlayer(Player* player)
 
     BuildCreateUpdateBlockForPlayer(&upd, player);
     upd.BuildPacket(packet);
-    player->SendDirectMessage(&packet);
+    player->GetSession()->SendPacket(&packet);
 }
 
 void Object::BuildValuesUpdateBlockForPlayer(UpdateData* data, Player* target)
@@ -272,7 +283,7 @@ void Object::DestroyForPlayer(Player* target, bool onDeath) const
             {
                 WorldPacket data(SMSG_ARENA_UNIT_DESTROYED, 8);
                 data << GetGUID();
-                target->SendDirectMessage(&data);
+                target->GetSession()->SendPacket(&data);
             }
         }
     }
@@ -282,7 +293,7 @@ void Object::DestroyForPlayer(Player* target, bool onDeath) const
     //! If the following bool is true, the client will call "void CGUnit_C::OnDeath()" for this object.
     //! OnDeath() does for eg trigger death animation and interrupts certain spells/missiles/auras/sounds...
     data << uint8(onDeath ? 1 : 0);
-    target->SendDirectMessage(&data);
+    target->GetSession()->SendPacket(&data);
 }
 
 [[nodiscard]] int32 Object::GetInt32Value(uint16 index) const
@@ -325,8 +336,12 @@ void Object::DestroyForPlayer(Player* target, bool onDeath) const
 
 [[nodiscard]] ObjectGuid Object::GetGuidValue(uint16 index) const
 {
+    if (m_uint32Values == nullptr)  // Add this null check
+    {
+        return ObjectGuid::Empty;
+    }
     ASSERT(index + 1 < m_valuesCount || PrintIndexError(index, false));
-    return *((ObjectGuid*) &(m_uint32Values[index]));
+    return *((ObjectGuid*)&(m_uint32Values[index]));
 }
 
 void Object::BuildMovementUpdate(ByteBuffer* data, uint16 flags) const
@@ -998,6 +1013,10 @@ bool Object::PrintIndexError(uint32 index, bool set) const
 std::string Object::GetDebugInfo() const
 {
     std::stringstream sstr;
+    if (GetGUID().IsEmpty())  // Add this null check
+    {
+        return "Empty GUID";
+    }
     sstr << GetGUID().ToString() + " Entry " << GetEntry();
     return sstr.str();
 }
@@ -1036,11 +1055,10 @@ void MovementInfo::OutDebug()
         LOG_INFO("movement", "splineElevation: {}", splineElevation);
 }
 
-WorldObject::WorldObject() : WorldLocation(),
-    LastUsedScriptID(0), m_name(""), m_isActive(false), _visibilityDistanceOverrideType(VisibilityDistanceType::Normal), m_zoneScript(nullptr),
+WorldObject::WorldObject(bool isWorldObject) : WorldLocation(),
+    LastUsedScriptID(0), m_name(""), m_isActive(false), m_visibilityDistanceOverride(), m_isWorldObject(isWorldObject), m_zoneScript(nullptr),
     _zoneId(0), _areaId(0), _floorZ(INVALID_HEIGHT), _outdoors(false), _liquidData(), _updatePositionData(false), m_transport(nullptr),
-    m_currMap(nullptr), _heartbeatTimer(HEARTBEAT_INTERVAL), m_InstanceId(0), m_phaseMask(PHASEMASK_NORMAL), m_useCombinedPhases(true),
-    m_notifyflags(0), m_executed_notifies(0), _objectVisibilityContainer(this)
+    m_currMap(nullptr), _heartbeatTimer(HEARTBEAT_INTERVAL), m_InstanceId(0), m_phaseMask(PHASEMASK_NORMAL), m_useCombinedPhases(true), m_notifyflags(0), m_executed_notifies(0)
 {
     m_serverSideVisibility.SetValue(SERVERSIDE_VISIBILITY_GHOST, GHOST_VISIBILITY_ALIVE | GHOST_VISIBILITY_GHOST);
     m_serverSideVisibilityDetect.SetValue(SERVERSIDE_VISIBILITY_GHOST, GHOST_VISIBILITY_ALIVE);
@@ -1062,6 +1080,25 @@ void WorldObject::Update(uint32 diff)
     sScriptMgr->OnWorldObjectUpdate(this, diff);
 }
 
+void WorldObject::SetWorldObject(bool on)
+{
+    if (!IsInWorld())
+        return;
+
+    GetMap()->AddObjectToSwitchList(this, on);
+}
+
+bool WorldObject::IsWorldObject() const
+{
+    if (m_isWorldObject)
+        return true;
+
+    if (ToCreature() && ToCreature()->m_isTempWorldObject)
+        return true;
+
+    return false;
+}
+
 void WorldObject::setActive(bool on)
 {
     if (m_isActive == on)
@@ -1077,68 +1114,42 @@ void WorldObject::setActive(bool on)
 
     m_isActive = on;
 
-    if (!on || !IsInWorld())
+    if (on && !IsInWorld())
         return;
 
     Map* map = FindMap();
     if (!map)
         return;
 
-    map->AddObjectToPendingUpdateList(this);
-}
-
-float WorldObject::GetVisibilityOverrideDistance() const
-{
-    ASSERT(_visibilityDistanceOverrideType < VisibilityDistanceType::Max);
-    return VisibilityDistances[AsUnderlyingType(_visibilityDistanceOverrideType)];
+    if (on)
+    {
+        if (IsCreature())
+            map->AddToActive(this->ToCreature());
+        else if (IsDynamicObject())
+            map->AddToActive((DynamicObject*)this);
+        else if (IsGameObject())
+            map->AddToActive((GameObject*)this);
+    }
+    else
+    {
+        if (IsCreature())
+            map->RemoveFromActive(this->ToCreature());
+        else if (IsDynamicObject())
+            map->RemoveFromActive((DynamicObject*)this);
+        else if (IsGameObject())
+            map->RemoveFromActive((GameObject*)this);
+    }
 }
 
 void WorldObject::SetVisibilityDistanceOverride(VisibilityDistanceType type)
 {
     ASSERT(type < VisibilityDistanceType::Max);
-
-    if (type == GetVisibilityOverrideType())
+    if (IsPlayer())
+    {
         return;
+    }
 
-    if (!IsCreature() && !IsGameObject() && !IsDynamicObject())
-        return;
-
-    // Important to remove from old visibility override containers first
-    RemoveFromMapVisibilityOverrideContainers();
-
-    // Always update _visibilityDistanceOverrideType, even when not in world
-    _visibilityDistanceOverrideType = type;
-
-    // Finally, add to new visibility override containers
-    AddToMapVisibilityOverrideContainers();
-}
-
-void WorldObject::RemoveFromMapVisibilityOverrideContainers()
-{
-    if (!IsVisibilityOverridden())
-        return;
-
-    if (!IsInWorld())
-        return;
-
-    if (IsFarVisible())
-        GetMap()->RemoveWorldObjectFromFarVisibleMap(this);
-    else if (IsZoneWideVisible())
-        GetMap()->RemoveWorldObjectFromZoneWideVisibleMap(_zoneId, this);
-}
-
-void WorldObject::AddToMapVisibilityOverrideContainers()
-{
-    if (!IsVisibilityOverridden())
-        return;
-
-    if (!IsInWorld())
-        return;
-
-    if (IsFarVisible())
-        GetMap()->AddWorldObjectToFarVisibleMap(this);
-    else if (IsZoneWideVisible())
-        GetMap()->AddWorldObjectToZoneWideVisibleMap(_zoneId, this);
+    m_visibilityDistanceOverride = VisibilityDistances[AsUnderlyingType(type)];
 }
 
 void WorldObject::CleanupsBeforeDelete(bool /*finalCleanup*/)
@@ -1179,8 +1190,6 @@ void WorldObject::UpdatePositionData()
 
 void WorldObject::ProcessPositionDataChanged(PositionFullTerrainStatus const& data)
 {
-    uint32 const oldZoneId = _zoneId;
-
     _zoneId = _areaId = data.areaId;
 
     if (AreaTableEntry const* area = sAreaTableStore.LookupEntry(_areaId))
@@ -1190,27 +1199,12 @@ void WorldObject::ProcessPositionDataChanged(PositionFullTerrainStatus const& da
     _outdoors   = data.outdoors;
     _floorZ     = data.floorZ;
     _liquidData = data.liquidInfo;
-
-    // Has zone ID changed?
-    if (oldZoneId != _zoneId)
-    {
-        // If so, check if we are far visibility overridden object and refresh maps if needed.
-        if (IsZoneWideVisible())
-        {
-            GetMap()->RemoveWorldObjectFromZoneWideVisibleMap(oldZoneId, this);
-            GetMap()->AddWorldObjectToZoneWideVisibleMap(_zoneId, this);
-        }
-    }
 }
 
 void WorldObject::AddToWorld()
 {
     Object::AddToWorld();
     GetMap()->GetZoneAndAreaId(GetPhaseMask(), _zoneId, _areaId, GetPositionX(), GetPositionY(), GetPositionZ());
-    GetMap()->AddObjectToPendingUpdateList(this);
-
-    if (IsZoneWideVisible())
-        GetMap()->AddWorldObjectToZoneWideVisibleMap(_zoneId, this);
 }
 
 void WorldObject::RemoveFromWorld()
@@ -1218,11 +1212,7 @@ void WorldObject::RemoveFromWorld()
     if (!IsInWorld())
         return;
 
-    RemoveFromMapVisibilityOverrideContainers();
-
-    DestroyForVisiblePlayers();
-
-    GetObjectVisibilityContainer().CleanVisibilityReferences();
+    DestroyForNearbyPlayers();
 
     Object::RemoveFromWorld();
 }
@@ -1241,14 +1231,10 @@ float WorldObject::GetDistanceZ(WorldObject const* obj) const
     return (dist > 0 ? dist : 0);
 }
 
-bool WorldObject::_IsWithinDist(WorldObject const* obj, float dist2compare, bool is3D, bool incOwnRadius, bool incTargetRadius) const
+bool WorldObject::_IsWithinDist(WorldObject const* obj, float dist2compare, bool is3D, bool useBoundingRadius) const
 {
-    float maxdist = dist2compare;
-    if (incOwnRadius)
-        maxdist += GetObjectSize();
-
-    if (incTargetRadius)
-        maxdist += obj->GetObjectSize();
+    float sizefactor = useBoundingRadius ? GetObjectSize() + obj->GetObjectSize() : 0.0f;
+    float maxdist = dist2compare + sizefactor;
 
     if (m_transport && obj->GetTransport() &&  obj->GetTransport()->GetGUID() == m_transport->GetGUID())
     {
@@ -1355,14 +1341,14 @@ bool WorldObject::IsWithinDist2d(const Position* pos, float dist) const
 }
 
 // use only if you will sure about placing both object at same map
-bool WorldObject::IsWithinDist(WorldObject const* obj, float dist2compare, bool is3D, bool incOwnRadius, bool incTargetRadius) const
+bool WorldObject::IsWithinDist(WorldObject const* obj, float dist2compare, bool is3D, bool useBoundingRadius) const
 {
-    return obj && _IsWithinDist(obj, dist2compare, is3D, incOwnRadius, incTargetRadius);
+    return obj && _IsWithinDist(obj, dist2compare, is3D, useBoundingRadius);
 }
 
-bool WorldObject::IsWithinDistInMap(WorldObject const* obj, float dist2compare, bool is3D, bool incOwnRadius, bool incTargetRadius) const
+bool WorldObject::IsWithinDistInMap(WorldObject const* obj, float dist2compare, bool is3D, bool useBoundingRadius) const
 {
-    return obj && IsInMap(obj) && InSamePhase(obj) && _IsWithinDist(obj, dist2compare, is3D, incOwnRadius, incTargetRadius);
+    return obj && IsInMap(obj) && InSamePhase(obj) && _IsWithinDist(obj, dist2compare, is3D, useBoundingRadius);
 }
 
 bool WorldObject::IsWithinLOS(float ox, float oy, float oz, VMAP::ModelIgnoreFlags ignoreFlags, LineOfSightChecks checks) const
@@ -1686,16 +1672,26 @@ float WorldObject::GetGridActivationRange() const
 
 float WorldObject::GetVisibilityRange() const
 {
-    if (IsCreature() && IsVisibilityOverridden())
-        return GetVisibilityOverrideDistance();
+    if (IsVisibilityOverridden() && IsCreature())
+    {
+        return *m_visibilityDistanceOverride;
+    }
     else if (IsGameObject())
     {
-        if (IsInWintergrasp())
-            return VISIBILITY_DIST_WINTERGRASP;
-        else if (IsVisibilityOverridden())
-            return GetVisibilityOverrideDistance();
-        else
-            return GetMap()->GetVisibilityRange();
+        {
+            if (IsInWintergrasp())
+            {
+                return VISIBILITY_DIST_WINTERGRASP + VISIBILITY_INC_FOR_GOBJECTS;
+            }
+            else if (IsVisibilityOverridden())
+            {
+                return *m_visibilityDistanceOverride;
+            }
+            else
+            {
+                return GetMap()->GetVisibilityRange() + VISIBILITY_INC_FOR_GOBJECTS;
+            }
+        }
     }
     else
         return IsInWintergrasp() ? VISIBILITY_DIST_WINTERGRASP : GetMap()->GetVisibilityRange();
@@ -1709,18 +1705,28 @@ float WorldObject::GetSightRange(WorldObject const* target) const
         {
             if (target)
             {
-                if (target->IsCreature() && target->IsVisibilityOverridden())
-                    return target->GetVisibilityOverrideDistance();
+                if (target->IsVisibilityOverridden() && target->IsCreature())
+                {
+                    return *target->m_visibilityDistanceOverride;
+                }
                 else if (target->IsGameObject())
                 {
                     if (IsInWintergrasp() && target->IsInWintergrasp())
-                        return VISIBILITY_DIST_WINTERGRASP;
+                    {
+                        return VISIBILITY_DIST_WINTERGRASP + VISIBILITY_INC_FOR_GOBJECTS;
+                    }
                     else if (target->IsVisibilityOverridden())
-                        return target->GetVisibilityOverrideDistance();
+                    {
+                        return *target->m_visibilityDistanceOverride;
+                    }
                     else if (ToPlayer()->GetCinematicMgr()->IsOnCinematic())
+                    {
                         return DEFAULT_VISIBILITY_INSTANCE;
+                    }
                     else
-                        return GetMap()->GetVisibilityRange();
+                    {
+                        return GetMap()->GetVisibilityRange() + VISIBILITY_INC_FOR_GOBJECTS;
+                    }
                 }
 
                 return IsInWintergrasp() && target->IsInWintergrasp() ? VISIBILITY_DIST_WINTERGRASP : GetMap()->GetVisibilityRange();
@@ -1728,13 +1734,19 @@ float WorldObject::GetSightRange(WorldObject const* target) const
             return IsInWintergrasp() ? VISIBILITY_DIST_WINTERGRASP : GetMap()->GetVisibilityRange();
         }
         else if (ToCreature())
+        {
             return ToCreature()->m_SightDistance;
+        }
         else
+        {
             return SIGHT_RANGE_UNIT;
+        }
     }
 
     if (ToDynObject() && isActiveObject())
+    {
         return GetMap()->GetVisibilityRange();
+    }
 
     return 0.0f;
 }
@@ -1744,7 +1756,7 @@ bool WorldObject::CanSeeOrDetect(WorldObject const* obj, bool ignoreStealth, boo
     if (this == obj)
         return true;
 
-    if (CanNeverSee(obj))
+    if (obj->IsNeverVisible() || CanNeverSee(obj))
         return false;
 
     if (obj->IsAlwaysVisibleFor(this) || CanAlwaysSee(obj))
@@ -1789,8 +1801,6 @@ bool WorldObject::CanSeeOrDetect(WorldObject const* obj, bool ignoreStealth, boo
         WorldObject const* viewpoint = this;
         if (Player const* thisPlayer = ToPlayer())
         {
-            viewpoint = thisPlayer->GetSeer();
-
             if (Creature const* creature = obj->ToCreature())
             {
                 if (TempSummon const* tempSummon = creature->ToTempSummon())
@@ -1830,12 +1840,17 @@ bool WorldObject::CanSeeOrDetect(WorldObject const* obj, bool ignoreStealth, boo
                                 return false;
             }
 
+            if (thisPlayer->GetViewpoint())
+                viewpoint = thisPlayer->GetViewpoint();
+
             if (thisPlayer->GetFarSightDistance() && !thisPlayer->isInFront(obj))
+            {
                 return false;
+            }
         }
 
         // Xinef: check reversely obj vs viewpoint, object could be a gameObject which overrides _IsWithinDist function to include gameobject size
-        if (!corpseCheck && !viewpoint->IsWithinDist(obj, GetSightRange(obj), false))
+        if (!corpseCheck && !viewpoint->IsWithinDist(obj, GetSightRange(obj), true))
             return false;
     }
 
@@ -1885,12 +1900,6 @@ bool WorldObject::CanSeeOrDetect(WorldObject const* obj, bool ignoreStealth, boo
 
 bool WorldObject::CanNeverSee(WorldObject const* obj) const
 {
-    if (!IsInWorld())
-        return true;
-
-    if (obj->IsNeverVisible())
-        return true;
-
     if (IsCreature() && obj->IsCreature())
         return GetMap() != obj->GetMap() || (!InSamePhase(obj) && ToUnit()->GetVehicleBase() != obj && this != obj->ToUnit()->GetVehicleBase());
     return GetMap() != obj->GetMap() || !InSamePhase(obj);
@@ -1971,8 +1980,8 @@ bool WorldObject::CanDetectInvisibilityOf(WorldObject const* obj) const
         bool isPermInvisibleCreature = false;
         if (Creature const* baseObj = ToCreature())
         {
-            Unit::AuraEffectList const& auraEffects = baseObj->GetAuraEffectsByType(SPELL_AURA_MOD_INVISIBILITY);
-            for (AuraEffect* const effect : auraEffects)
+            auto auraEffects = baseObj->GetAuraEffectsByType(SPELL_AURA_MOD_INVISIBILITY);
+            for (auto const effect : auraEffects)
             {
                 if (SpellInfo const* spell = effect->GetSpellInfo())
                 {
@@ -2098,7 +2107,7 @@ void WorldObject::SendPlayMusic(uint32 Music, bool OnlySelf)
     WorldPacket data(SMSG_PLAY_MUSIC, 4);
     data << Music;
     if (OnlySelf && IsPlayer())
-        ToPlayer()->SendDirectMessage(&data);
+        this->ToPlayer()->GetSession()->SendPacket(&data);
     else
         SendMessageToSet(&data, true); // ToSelf ignored in this case
 }
@@ -2119,19 +2128,19 @@ void Unit::BuildHeartBeatMsg(WorldPacket* data) const
 void WorldObject::SendMessageToSet(WorldPacket const* data, bool self) const
 {
     if (IsInWorld())
-        SendMessageToSetInRange(data, 0.0f, self);
+        SendMessageToSetInRange(data, GetVisibilityRange(), self);
 }
 
 void WorldObject::SendMessageToSetInRange(WorldPacket const* data, float dist, bool /*self*/) const
 {
     Acore::MessageDistDeliverer notifier(this, data, dist);
-    notifier.Visit(GetObjectVisibilityContainer().GetVisiblePlayersMap());
+    Cell::VisitWorldObjects(this, notifier, dist);
 }
 
 void WorldObject::SendMessageToSet(WorldPacket const* data, Player const* skipped_rcvr) const
 {
-    Acore::MessageDistDeliverer notifier(this, data, 0.0f, false, skipped_rcvr);
-    notifier.Visit(GetObjectVisibilityContainer().GetVisiblePlayersMap());
+    Acore::MessageDistDeliverer notifier(this, data, GetVisibilityRange(), false, skipped_rcvr);
+    Cell::VisitWorldObjects(this, notifier, GetVisibilityRange());
 }
 
 void WorldObject::SendObjectDeSpawnAnim(ObjectGuid guid)
@@ -2162,12 +2171,20 @@ void WorldObject::SetMap(Map* map)
     m_InstanceId = map->GetInstanceId();
 
     sScriptMgr->OnWorldObjectSetMap(this, map);
+
+    if (IsWorldObject())
+        m_currMap->AddWorldObject(this);
 }
 
 void WorldObject::ResetMap()
 {
     ASSERT(m_currMap);
     ASSERT(!IsInWorld());
+
+    if (IsWorldObject())
+    {
+        m_currMap->RemoveWorldObject(this);
+    }
 
     sScriptMgr->OnWorldObjectResetMap(this);
 
@@ -2250,10 +2267,10 @@ TempSummon* Map::SummonCreature(uint32 entry, Position const& pos, SummonPropert
     switch (mask)
     {
         case UNIT_MASK_SUMMON:
-            summon = new TempSummon(properties, summoner ? summoner->GetGUID() : ObjectGuid::Empty);
+            summon = new TempSummon(properties, summoner ? summoner->GetGUID() : ObjectGuid::Empty, false);
             break;
         case UNIT_MASK_GUARDIAN:
-            summon = new Guardian(properties, summoner ? summoner->GetGUID() : ObjectGuid::Empty);
+            summon = new Guardian(properties, summoner ? summoner->GetGUID() : ObjectGuid::Empty, false);
             break;
         case UNIT_MASK_PUPPET:
             summon = new Puppet(properties, summoner ? summoner->GetGUID() : ObjectGuid::Empty);
@@ -2267,7 +2284,7 @@ TempSummon* Map::SummonCreature(uint32 entry, Position const& pos, SummonPropert
             summon = new Totem(properties, summoner ? summoner->GetGUID() : ObjectGuid::Empty);
             break;
         case UNIT_MASK_MINION:
-            summon = new Minion(properties, summoner ? summoner->GetGUID() : ObjectGuid::Empty);
+            summon = new Minion(properties, summoner ? summoner->GetGUID() : ObjectGuid::Empty, false);
             break;
         default:
             return nullptr;
@@ -2281,7 +2298,7 @@ TempSummon* Map::SummonCreature(uint32 entry, Position const& pos, SummonPropert
     }
 
     //npcbot: totem emul step 2
-    if (summoner && summoner->IsNPCBot() && !summon->IsTempBot())
+    if (summoner && summoner->IsNPCBot())
     {
         summon->SetCreatorGUID(summoner->GetGUID()); // see TempSummon::InitStats()
         if (mask == UNIT_MASK_TOTEM)
@@ -2320,7 +2337,7 @@ TempSummon* Map::SummonCreature(uint32 entry, Position const& pos, SummonPropert
 
     // call MoveInLineOfSight for nearby creatures
     Acore::AIRelocationNotifier notifier(*summon);
-    Cell::VisitObjects(summon, notifier, GetVisibilityRange());
+    Cell::VisitAllObjects(summon, notifier, GetVisibilityRange());
 
     //npcbot: totem emul step 3
     if (summoner && summoner->IsNPCBot())
@@ -2511,7 +2528,7 @@ Creature* WorldObject::FindNearestCreature(uint32 entry, float range, bool alive
     Creature* creature = nullptr;
     Acore::NearestCreatureEntryWithLiveStateInObjectRangeCheck checker(*this, entry, alive, range);
     Acore::CreatureLastSearcher<Acore::NearestCreatureEntryWithLiveStateInObjectRangeCheck> searcher(this, creature, checker);
-    Cell::VisitObjects(this, searcher, range);
+    Cell::VisitAllObjects(this, searcher, range);
     return creature;
 }
 
@@ -2520,7 +2537,7 @@ GameObject* WorldObject::FindNearestGameObject(uint32 entry, float range, bool o
     GameObject* go = nullptr;
     Acore::NearestGameObjectEntryInObjectRangeCheck checker(*this, entry, range, onlySpawned);
     Acore::GameObjectLastSearcher<Acore::NearestGameObjectEntryInObjectRangeCheck> searcher(this, go, checker);
-    Cell::VisitObjects(this, searcher, range);
+    Cell::VisitGridObjects(this, searcher, range);
     return go;
 }
 
@@ -2529,7 +2546,7 @@ GameObject* WorldObject::FindNearestGameObjectOfType(GameobjectTypes type, float
     GameObject* go = nullptr;
     Acore::NearestGameObjectTypeInObjectRangeCheck checker(*this, type, range);
     Acore::GameObjectLastSearcher<Acore::NearestGameObjectTypeInObjectRangeCheck> searcher(this, go, checker);
-    Cell::VisitObjects(this, searcher, range);
+    Cell::VisitGridObjects(this, searcher, range);
     return go;
 }
 
@@ -2539,7 +2556,7 @@ Player* WorldObject::SelectNearestPlayer(float distance) const
 
     Acore::NearestPlayerInObjectRangeCheck checker(this, distance);
     Acore::PlayerLastSearcher<Acore::NearestPlayerInObjectRangeCheck> searcher(this, target, checker);
-    Cell::VisitObjects(this, searcher, distance);
+    Cell::VisitWorldObjects(this, searcher, distance);
 
     return target;
 }
@@ -2557,35 +2574,21 @@ void WorldObject::GetGameObjectListWithEntryInGrid(std::list<GameObject*>& gameo
 {
     Acore::AllGameObjectsWithEntryInRange check(this, entry, maxSearchRange);
     Acore::GameObjectListSearcher<Acore::AllGameObjectsWithEntryInRange> searcher(this, gameobjectList, check);
-    Cell::VisitObjects(this, searcher, maxSearchRange);
-}
-
-void WorldObject::GetGameObjectListWithEntryInGrid(std::list<GameObject*>& gameobjectList, std::vector<uint32> const& entries, float maxSearchRange) const
-{
-    Acore::AllGameObjectsMatchingOneEntryInRange check(this, entries, maxSearchRange);
-    Acore::GameObjectListSearcher searcher(this, gameobjectList, check);
-    Cell::VisitObjects(this, searcher, maxSearchRange);
+    Cell::VisitGridObjects(this, searcher, maxSearchRange);
 }
 
 void WorldObject::GetCreatureListWithEntryInGrid(std::list<Creature*>& creatureList, uint32 entry, float maxSearchRange) const
 {
     Acore::AllCreaturesOfEntryInRange check(this, entry, maxSearchRange);
     Acore::CreatureListSearcher<Acore::AllCreaturesOfEntryInRange> searcher(this, creatureList, check);
-    Cell::VisitObjects(this, searcher, maxSearchRange);
-}
-
-void WorldObject::GetCreatureListWithEntryInGrid(std::list<Creature*>& creatureList, std::vector<uint32> const& entries, float maxSearchRange) const
-{
-    Acore::AllCreaturesMatchingOneEntryInRange check(this, entries, maxSearchRange);
-    Acore::CreatureListSearcher searcher(this, creatureList, check);
-    Cell::VisitObjects(this, searcher, maxSearchRange);
+    Cell::VisitGridObjects(this, searcher, maxSearchRange);
 }
 
 void WorldObject::GetDeadCreatureListInGrid(std::list<Creature*>& creaturedeadList, float maxSearchRange, bool alive /*= false*/) const
 {
     Acore::AllDeadCreaturesInRange check(this, maxSearchRange, alive);
     Acore::CreatureListSearcher<Acore::AllDeadCreaturesInRange> searcher(this, creaturedeadList, check);
-    Cell::VisitObjects(this, searcher, maxSearchRange);
+    Cell::VisitGridObjects(this, searcher, maxSearchRange);
 }
 
 /*
@@ -2802,17 +2805,17 @@ bool WorldObject::GetClosePoint(float& x, float& y, float& z, float size, float 
     return true;
 }
 
-Position WorldObject::GetNearPosition(float dist, float angle)
+Position WorldObject::GetNearPosition(float dist, float angle, bool disableWarning)
 {
     Position pos = GetPosition();
-    MovePosition(pos, dist, angle);
+    MovePosition(pos, dist, angle, disableWarning);
     return pos;
 }
 
-Position WorldObject::GetRandomNearPosition(float radius)
+Position WorldObject::GetRandomNearPosition(float radius, bool disableWarning)
 {
     Position pos = GetPosition();
-    MovePosition(pos, radius * (float) rand_norm(), (float) rand_norm() * static_cast<float>(2 * M_PI));
+    MovePosition(pos, radius * (float) rand_norm(), (float) rand_norm() * static_cast<float>(2 * M_PI), disableWarning);
     return pos;
 }
 
@@ -2850,7 +2853,7 @@ void WorldObject::GetChargeContactPoint(WorldObject const* obj, float& x, float&
     return (m_valuesCount > UNIT_FIELD_COMBATREACH) ? m_floatValues[UNIT_FIELD_COMBATREACH] : DEFAULT_WORLD_OBJECT_SIZE * GetObjectScale();
 }
 
-void WorldObject::MovePosition(Position& pos, float dist, float angle)
+void WorldObject::MovePosition(Position& pos, float dist, float angle, bool disableWarning)
 {
     angle += GetOrientation();
     float destx, desty, destz, ground, floor;
@@ -2860,7 +2863,9 @@ void WorldObject::MovePosition(Position& pos, float dist, float angle)
     // Prevent invalid coordinates here, position is unchanged
     if (!Acore::IsValidMapCoord(destx, desty))
     {
-        LOG_FATAL("entities.object", "WorldObject::MovePosition invalid coordinates X: {} and Y: {} were passed!", destx, desty);
+        if (!disableWarning)
+            LOG_FATAL("entities.object", "WorldObject::MovePosition invalid coordinates X: {} and Y: {} were passed!", destx, desty);
+
         return;
     }
 
@@ -2974,49 +2979,72 @@ void WorldObject::PlayDirectSound(uint32 sound_id, Player* target /*= nullptr*/)
 
 void WorldObject::PlayRadiusSound(uint32 sound_id, float radius)
 {
-    std::vector<Player*> targets;
+    std::list<Player*> targets;
     Acore::AnyPlayerInObjectRangeCheck check(this, radius, false);
     Acore::PlayerListSearcher<Acore::AnyPlayerInObjectRangeCheck> searcher(this, targets, check);
-    Cell::VisitObjects(this, searcher, radius);
+    Cell::VisitWorldObjects(this, searcher, radius);
 
     for (Player* player : targets)
-        player->SendDirectMessage(WorldPackets::Misc::Playsound(sound_id).Write());
+    {
+        if (player)
+        {
+            player->SendDirectMessage(WorldPackets::Misc::Playsound(sound_id).Write());
+        }
+    }
 }
 
 void WorldObject::PlayDirectMusic(uint32 music_id, Player* target /*= nullptr*/)
 {
     if (target)
+    {
         target->SendDirectMessage(WorldPackets::Misc::PlayMusic(music_id).Write());
+    }
     else
+    {
         SendMessageToSet(WorldPackets::Misc::PlayMusic(music_id).Write(), true);
+    }
 }
 
 void WorldObject::PlayRadiusMusic(uint32 music_id, float radius)
 {
-    std::vector<Player*> targets;
+    std::list<Player*> targets;
     Acore::AnyPlayerInObjectRangeCheck check(this, radius, false);
     Acore::PlayerListSearcher<Acore::AnyPlayerInObjectRangeCheck> searcher(this, targets, check);
-    Cell::VisitObjects(this, searcher, radius);
+    Cell::VisitWorldObjects(this, searcher, radius);
 
     for (Player* player : targets)
-        player->SendDirectMessage(WorldPackets::Misc::PlayMusic(music_id).Write());
+    {
+        if (player)
+        {
+            player->SendDirectMessage(WorldPackets::Misc::PlayMusic(music_id).Write());
+        }
+    }
 }
 
-// Removes us from visibility for all players who are currently able to see us
-void WorldObject::DestroyForVisiblePlayers()
+void WorldObject::DestroyForNearbyPlayers()
 {
     if (!IsInWorld())
         return;
 
-    VisiblePlayersMap& visiblePlayerMap = GetObjectVisibilityContainer().GetVisiblePlayersMap();
-    for (VisiblePlayersMap::iterator itr = visiblePlayerMap.begin(); itr != visiblePlayerMap.end();)
+    std::list<Player*> targets;
+    Acore::AnyPlayerInObjectRangeCheck check(this, GetVisibilityRange() + VISIBILITY_COMPENSATION, false);
+    Acore::PlayerListSearcherWithSharedVision<Acore::AnyPlayerInObjectRangeCheck> searcher(this, targets, check);
+    Cell::VisitWorldObjects(this, searcher, GetVisibilityRange());
+    for (std::list<Player*>::const_iterator iter = targets.begin(); iter != targets.end(); ++iter)
     {
-        Player* player = itr->second;
+        Player* player = (*iter);
+
+        if (player == this)
+            continue;
+
+        if (!player->HaveAtClient(this))
+            continue;
+
+        if (IsUnit() && ((Unit*)this)->GetCharmerGUID() == player->GetGUID()) /// @todo: this is for puppet
+            continue;
 
         DestroyForPlayer(player);
-
-        // Clean up visibility references now
-        itr = GetObjectVisibilityContainer().UnlinkVisibilityFromWorldObject(player, itr);
+        player->m_clientGUIDs.erase(GetGUID());
     }
 }
 
@@ -3024,7 +3052,7 @@ void WorldObject::UpdateObjectVisibility(bool /*forced*/, bool /*fromUpdate*/)
 {
     //updates object's visibility for nearby players
     Acore::VisibleChangesNotifier notifier(*this);
-    Cell::VisitObjects(this, notifier, GetVisibilityRange());
+    Cell::VisitWorldObjects(this, notifier, GetVisibilityRange());
 }
 
 void WorldObject::AddToNotify(uint16 f)
@@ -3053,26 +3081,102 @@ void WorldObject::AddToNotify(uint16 f)
         }
 }
 
-void WorldObject::BuildUpdate(UpdateDataMapType& data_map)
+struct WorldObjectChangeAccumulator
 {
-    // Build update for self
-    if (IsPlayer())
-        BuildFieldsUpdate(ToPlayer(), data_map);
-
-    // Build update for visible players
-    DoForAllVisiblePlayers([this, &data_map](Player* player)
+    UpdateDataMapType& i_updateDatas;
+    UpdatePlayerSet& i_playerSet;
+    WorldObject& i_object;
+    WorldObjectChangeAccumulator(WorldObject& obj, UpdateDataMapType& d, UpdatePlayerSet& p) : i_updateDatas(d), i_playerSet(p), i_object(obj)
     {
-        BuildFieldsUpdate(player, data_map);
-    });
+        i_playerSet.clear();
+    }
+    void Visit(PlayerMapType& m)
+    {
+        Player* source = nullptr;
+        for (PlayerMapType::iterator iter = m.begin(); iter != m.end(); ++iter)
+        {
+            source = iter->GetSource();
+
+            BuildPacket(source);
+
+            if (source->HasSharedVision())
+            {
+                SharedVisionList::const_iterator it = source->GetSharedVisionList().begin();
+                for (; it != source->GetSharedVisionList().end(); ++it)
+                    BuildPacket(*it);
+            }
+        }
+    }
+
+    void Visit(CreatureMapType& m)
+    {
+        Creature* source = nullptr;
+        for (CreatureMapType::iterator iter = m.begin(); iter != m.end(); ++iter)
+        {
+            source = iter->GetSource();
+            if (source->HasSharedVision())
+            {
+                SharedVisionList::const_iterator it = source->GetSharedVisionList().begin();
+                for (; it != source->GetSharedVisionList().end(); ++it)
+                    BuildPacket(*it);
+            }
+        }
+    }
+
+    void Visit(DynamicObjectMapType& m)
+    {
+        DynamicObject* source = nullptr;
+        for (DynamicObjectMapType::iterator iter = m.begin(); iter != m.end(); ++iter)
+        {
+            source = iter->GetSource();
+            ObjectGuid guid = source->GetCasterGUID();
+
+            if (guid)
+            {
+                //Caster may be nullptr if DynObj is in removelist
+                if (Player* caster = ObjectAccessor::FindPlayer(guid))
+                    if (caster->GetGuidValue(PLAYER_FARSIGHT) == source->GetGUID())
+                        BuildPacket(caster);
+            }
+        }
+    }
+
+    void BuildPacket(Player* player)
+    {
+        // Only send update once to a player
+        if (i_playerSet.find(player->GetGUID()) == i_playerSet.end() && player->HaveAtClient(&i_object))
+        {
+            i_object.BuildFieldsUpdate(player, i_updateDatas);
+            i_playerSet.insert(player->GetGUID());
+        }
+    }
+
+    template<class SKIP> void Visit(GridRefMgr<SKIP>&) {}
+};
+
+void WorldObject::BuildUpdate(UpdateDataMapType& data_map, UpdatePlayerSet& player_set)
+{
+    WorldObjectChangeAccumulator notifier(*this, data_map, player_set);
+    //we must build packets for all visible players
+    Cell::VisitWorldObjects(this, notifier, GetVisibilityRange());
 
     ClearUpdateMask(false);
 }
 
 void WorldObject::GetCreaturesWithEntryInRange(std::list<Creature*>& creatureList, float radius, uint32 entry)
 {
+    CellCoord pair(Acore::ComputeCellCoord(this->GetPositionX(), this->GetPositionY()));
+    Cell cell(pair);
+    cell.SetNoCreate();
+
     Acore::AllCreaturesOfEntryInRange check(this, entry, radius);
     Acore::CreatureListSearcher<Acore::AllCreaturesOfEntryInRange> searcher(this, creatureList, check);
-    Cell::VisitObjects(this, searcher, radius);
+
+    TypeContainerVisitor<Acore::CreatureListSearcher<Acore::AllCreaturesOfEntryInRange>, WorldTypeMapContainer> world_visitor(searcher);
+    cell.Visit(pair, world_visitor, *(this->GetMap()), *this, radius);
+
+    TypeContainerVisitor<Acore::CreatureListSearcher<Acore::AllCreaturesOfEntryInRange>, GridTypeMapContainer> grid_visitor(searcher);
+    cell.Visit(pair, grid_visitor, *(this->GetMap()), *this, radius);
 }
 
 void WorldObject::AddToObjectUpdate()
@@ -3193,28 +3297,4 @@ GuidUnorderedSet const& WorldObject::GetAllowedLooters() const
 void WorldObject::RemoveAllowedLooter(ObjectGuid guid)
 {
     _allowedLooters.erase(guid);
-}
-
-bool WorldObject::IsUpdateNeeded()
-{
-    if (isActiveObject())
-        return true;
-
-    return false;
-}
-
-bool WorldObject::CanBeAddedToMapUpdateList()
-{
-    switch (GetTypeId())
-    {
-    case TYPEID_UNIT:
-        return IsCreature();
-    case TYPEID_DYNAMICOBJECT:
-    case TYPEID_GAMEOBJECT:
-        return true;
-    default:
-        return false;
-    }
-
-    return false;
 }

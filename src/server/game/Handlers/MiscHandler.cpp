@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -82,6 +82,11 @@ void WorldSession::HandleRepopRequestOpcode(WorldPacket& recv_data)
     GetPlayer()->RemovePet(nullptr, PET_SAVE_NOT_IN_SLOT, true);
     GetPlayer()->BuildPlayerRepop();
     GetPlayer()->RepopAtGraveyard();
+    // Dinkle: Spectral Gryphon functionality
+   // if (GetPlayer()->IsInWorld())
+   // {
+   //     GetPlayer()->CastSpell(GetPlayer(), 855164, true);
+   // }
 }
 
 void WorldSession::HandleGossipSelectOptionOpcode(WorldPacket& recv_data)
@@ -181,7 +186,7 @@ void WorldSession::HandleGossipSelectOptionOpcode(WorldPacket& recv_data)
         }
         else
         {
-            sScriptMgr->OnPlayerGossipSelectCode(_player, menuId, _player->PlayerTalkClass->GetGossipOptionSender(gossipListId), _player->PlayerTalkClass->GetGossipOptionAction(gossipListId), code.c_str());
+            sScriptMgr->OnGossipSelectCode(_player, menuId, _player->PlayerTalkClass->GetGossipOptionSender(gossipListId), _player->PlayerTalkClass->GetGossipOptionAction(gossipListId), code.c_str());
         }
     }
     else
@@ -204,7 +209,7 @@ void WorldSession::HandleGossipSelectOptionOpcode(WorldPacket& recv_data)
         }
         else
         {
-            sScriptMgr->OnPlayerGossipSelect(_player, menuId, _player->PlayerTalkClass->GetGossipOptionSender(gossipListId), _player->PlayerTalkClass->GetGossipOptionAction(gossipListId));
+            sScriptMgr->OnGossipSelect(_player, menuId, _player->PlayerTalkClass->GetGossipOptionSender(gossipListId), _player->PlayerTalkClass->GetGossipOptionAction(gossipListId));
         }
     }
 }
@@ -219,12 +224,10 @@ void WorldSession::HandleWhoOpcode(WorldPacket& recvData)
     std::array<uint32, 10> zoneids = {};                    // 10 is client limit
     std::string packetPlayerName, packetGuildName;
 
-    recvData >> levelMin;                                   // maximal player level, default 0
-    recvData >> levelMax;                                   // minimal player level, default 100 (MAX_LEVEL)
+    recvData >> levelMin;                                   // minimal player level, default 0
+    recvData >> levelMax;                                   // maximal player level, default 100 (MAX_LEVEL)
     recvData >> packetPlayerName;                           // player name, case sensitive...
-
     recvData >> packetGuildName;                            // guild name, case sensitive...
-
     recvData >> racemask;                                   // race mask
     recvData >> classmask;                                  // class mask
     recvData >> zonesCount;                                 // zones count, client limit = 10 (2.0.10)
@@ -285,6 +288,7 @@ void WorldSession::HandleWhoOpcode(WorldPacket& recvData)
     data << uint32(matchCount);         // placeholder, count of players matching criteria
     data << uint32(displaycount);       // placeholder, count of players displayed
 
+    // Retrieve real players matching the criteria
     for (auto const& target : sWhoListCacheMgr->GetWhoList())
     {
         if (AccountMgr::IsPlayerAccount(security))
@@ -408,6 +412,127 @@ void WorldSession::HandleWhoOpcode(WorldPacket& recvData)
         ++displaycount;
     }
 
+    // Check the config option for including fake players
+    if (sWorld->getBoolConfig(CONFIG_INCLUDE_FAKE_PLAYERS))
+    {
+        // Retrieve fake players from custom table
+        QueryResult result = CharacterDatabase.Query("SELECT name, guild, level, class, race, gender, zone FROM custom_fake_players");
+
+        if (result)
+        {
+            do
+            {
+                Field* fields = result->Fetch();
+                std::string fakePlayerName = fields[0].Get<std::string>();
+                std::string fakeGuildName = fields[1].Get<std::string>();
+                uint8 fakeLevel = fields[2].Get<uint32>();
+                uint8 fakeClass = fields[3].Get<uint32>();
+                uint8 fakeRace = fields[4].Get<uint32>();
+                uint8 fakeGender = fields[5].Get<uint32>();
+                uint32 fakeZoneId = fields[6].Get<uint32>();
+
+                // Check if fake player's level is in level range
+                if (fakeLevel < levelMin || fakeLevel > levelMax)
+                {
+                    continue;
+                }
+
+                // Check if class matches classmask
+                if (!(classmask & (1 << fakeClass)))
+                {
+                    continue;
+                }
+
+                // Check if race matches racemask
+                if (!(racemask & (1 << fakeRace)))
+                {
+                    continue;
+                }
+
+                bool showZones = true;
+                for (uint32 i = 0; i < zonesCount; ++i)
+                {
+                    if (zoneids[i] == fakeZoneId)
+                    {
+                        showZones = true;
+                        break;
+                    }
+
+                    showZones = false;
+                }
+
+                if (!showZones)
+                {
+                    continue;
+                }
+
+                std::wstring wfakePlayerName;
+                std::wstring wfakeGuildName;
+                if (!(Utf8toWStr(fakePlayerName, wfakePlayerName) && Utf8toWStr(fakeGuildName, wfakeGuildName)))
+                    continue;
+
+                wstrToLower(wfakePlayerName);
+                wstrToLower(wfakeGuildName);
+
+                if (!(wpacketPlayerName.empty() || wfakePlayerName.find(wpacketPlayerName) != std::wstring::npos))
+                {
+                    continue;
+                }
+
+                if (!(wpacketGuildName.empty() || wfakeGuildName.find(wpacketGuildName) != std::wstring::npos))
+                {
+                    continue;
+                }
+
+                std::string aname;
+                if (AreaTableEntry const* areaEntry = sAreaTableStore.LookupEntry(fakeZoneId))
+                {
+                    aname = areaEntry->area_name[GetSessionDbcLocale()];
+                }
+
+                bool s_show = true;
+                for (uint32 i = 0; i < strCount; ++i)
+                {
+                    if (!str[i].empty())
+                    {
+                        if (wfakeGuildName.find(str[i]) != std::wstring::npos ||
+                            wfakePlayerName.find(str[i]) != std::wstring::npos ||
+                            Utf8FitTo(aname, str[i]))
+                        {
+                            s_show = true;
+                            break;
+                        }
+
+                        s_show = false;
+                    }
+                }
+
+                if (!s_show)
+                {
+                    continue;
+                }
+
+                // 49 is maximum player count sent to client - can be overridden
+                // through config, but is unstable
+                if ((matchCount++) >= sWorld->getIntConfig(CONFIG_MAX_WHO_LIST_RETURN))
+                {
+                    continue;
+                }
+
+                data << fakePlayerName;                        // fake player name
+                data << fakeGuildName;                         // fake guild name
+                data << uint32(fakeLevel);                     // fake player level
+                data << uint32(fakeClass);                     // fake player class
+                data << uint32(fakeRace);                      // fake player race
+                data << uint8(fakeGender);                     // fake player gender
+                data << uint32(fakeZoneId);                    // fake player zone id
+
+                ++displaycount;
+
+            } while (result->NextRow());
+        }
+    }
+
     data.put(0, displaycount);                            // insert right count, count displayed
     data.put(4, matchCount);                              // insert right count, count of matches
 
@@ -468,7 +593,7 @@ void WorldSession::HandleLogoutRequestOpcode(WorldPackets::Character::LogoutRequ
             GetPlayer()->SetStandState(UNIT_STAND_STATE_SIT);
         }
 
-        GetPlayer()->SetRooted(true, true, true);
+        GetPlayer()->SetRooted(true);
         GetPlayer()->SetUnitFlag(UNIT_FLAG_STUNNED);
     }
 
@@ -492,7 +617,7 @@ void WorldSession::HandleLogoutCancelOpcode(WorldPackets::Character::LogoutCance
     // not remove flags if can't free move - its not set in Logout request code.
     if (GetPlayer()->CanFreeMove())
     {
-        GetPlayer()->SetRooted(false, true, true);
+        GetPlayer()->SetRooted(false);
 
         GetPlayer()->SetStandState(UNIT_STAND_STATE_STAND);
         GetPlayer()->RemoveUnitFlag(UNIT_FLAG_STUNNED);
@@ -656,7 +781,11 @@ void WorldSession::HandleReclaimCorpseOpcode(WorldPacket& recv_data)
     if (time_t(corpse->GetGhostTime() + _player->GetCorpseReclaimDelay(corpse->GetType() == CORPSE_RESURRECTABLE_PVP)) > time_t(GameTime::GetGameTime().count()))
         return;
 
-    if (!corpse->IsWithinDistInMap(_player, CORPSE_RECLAIM_RADIUS, true))
+    // Use CORPSE_RECLAIM_RADIUS for battlegrounds, otherwise use 120 EDIT: Apparently there's a client limit
+    float resurrectionRadius = _player->InBattleground() ? CORPSE_RECLAIM_RADIUS : 120.0f;
+    
+    // Check if the corpse is within the defined resurrection radius
+    if (!corpse->IsWithinDistInMap(_player, resurrectionRadius, true))
         return;
 
     // resurrect
@@ -742,7 +871,7 @@ void WorldSession::HandleAreaTriggerOpcode(WorldPacket& recv_data)
             if (player->HasByteFlag(UNIT_FIELD_BYTES_2, 1, UNIT_BYTE2_FLAG_FFA_PVP))
             {
                 player->RemoveByteFlag(UNIT_FIELD_BYTES_2, 1, UNIT_BYTE2_FLAG_FFA_PVP);
-                sScriptMgr->OnPlayerFfaPvpStateUpdate(player, false);
+                sScriptMgr->OnFfaPvpStateUpdate(player, false);
 
             }
         }
@@ -949,6 +1078,12 @@ void WorldSession::HandleNextCinematicCamera(WorldPacket& /*recv_data*/)
     GetPlayer()->GetCinematicMgr()->BeginCinematic();
 }
 
+void WorldSession::HandleFeatherFallAck(WorldPacket& recv_data)
+{
+    // no used
+    recv_data.rfinish();                       // prevent warnings spam
+}
+
 void WorldSession::HandleSetActionBarToggles(WorldPacket& recv_data)
 {
     uint8 ActionBar;
@@ -1138,18 +1273,45 @@ void WorldSession::HandleWhoisOpcode(WorldPacket& recv_data)
     LOG_DEBUG("network", "Received whois command from player {} for character {}", GetPlayer()->GetName(), charname);
 }
 
-void WorldSession::HandleComplainOpcode(WorldPackets::Misc::Complain& packet)
+void WorldSession::HandleComplainOpcode(WorldPacket& recv_data)
 {
     LOG_DEBUG("network", "WORLD: CMSG_COMPLAIN");
+
+    uint8 spam_type;                                        // 0 - mail, 1 - chat
+    ObjectGuid spammer_guid;
+    uint32 unk1 = 0;
+    uint32 unk2 = 0;
+    uint32 unk3 = 0;
+    uint32 unk4 = 0;
+    std::string description = "";
+    recv_data >> spam_type;                                 // unk 0x01 const, may be spam type (mail/chat)
+    recv_data >> spammer_guid;                              // player guid
+    switch (spam_type)
+    {
+        case 0:
+            recv_data >> unk1;                              // const 0
+            recv_data >> unk2;                              // probably mail id
+            recv_data >> unk3;                              // const 0
+            break;
+        case 1:
+            recv_data >> unk1;                              // probably language
+            recv_data >> unk2;                              // message type?
+            recv_data >> unk3;                              // probably channel id
+            recv_data >> unk4;                              // unk random value
+            recv_data >> description;                       // spam description string (messagetype, channel name, player name, message)
+            break;
+    }
 
     // NOTE: all chat messages from this spammer automatically ignored by spam reporter until logout in case chat spam.
     // if it's mail spam - ALL mails from this spammer automatically removed by client
 
     // Complaint Received message
-    SendPacket(WorldPackets::Misc::ComplainResult().Write());
+    WorldPacket data(SMSG_COMPLAIN_RESULT, 1);
+    data << uint8(0);
+    SendPacket(&data);
 
     LOG_DEBUG("network", "REPORT SPAM: type {}, {}, unk1 {}, unk2 {}, unk3 {}, unk4 {}, message {}",
-        packet.SpamType, packet.SpammerGuid.ToString(), packet.Unk1, packet.Unk2, packet.Unk3, packet.Unk4, packet.Description);
+        spam_type, spammer_guid.ToString(), unk1, unk2, unk3, unk4, description);
 }
 
 void WorldSession::HandleRealmSplitOpcode(WorldPacket& recv_data)
@@ -1383,8 +1545,8 @@ void WorldSession::HandleSetRaidDifficultyOpcode(WorldPacket& recv_data)
                 }
             }
 
-            Map* homeMap571 = sMapMgr->CreateMap(MAP_NORTHREND, nullptr);
-            Map* homeMap0 = sMapMgr->CreateMap(MAP_EASTERN_KINGDOMS, nullptr);
+            Map* homeMap571 = sMapMgr->CreateMap(571, nullptr);
+            Map* homeMap0 = sMapMgr->CreateMap(0, nullptr);
             ASSERT(homeMap0 && homeMap571);
 
             std::map<Player*, Position> playerTeleport;
@@ -1411,7 +1573,7 @@ void WorldSession::HandleSetRaidDifficultyOpcode(WorldPacket& recv_data)
                 oldMap->AfterPlayerUnlinkFromMap();
                 p->SetMap(homeMap0);
                 p->Relocate(0.0f, 0.0f, 0.0f, 0.0f);
-                if (!p->TeleportTo(MAP_NORTHREND, 5790.20f, 2071.36f, 636.07f, 3.60f))
+                if (!p->TeleportTo(571, 5790.20f, 2071.36f, 636.07f, 3.60f))
                     p->GetSession()->KickPlayer("HandleSetRaidDifficultyOpcode 1");
             }
 
@@ -1486,15 +1648,12 @@ void WorldSession::HandleCancelMountAuraOpcode(WorldPacket& /*recv_data*/)
     _player->RemoveAurasByType(SPELL_AURA_MOUNTED);
 }
 
-void WorldSession::HandleMoveFlagChangeOpcode(WorldPacket& recv_data)
+void WorldSession::HandleMoveSetCanFlyAckOpcode(WorldPacket& recv_data)
 {
-    LOG_DEBUG("network", "WORLD: {}", GetOpcodeNameForLogging((Opcodes)recv_data.GetOpcode()));
-
-    Opcodes opcode = (Opcodes)recv_data.GetOpcode();
+    // fly mode on/off
+    LOG_DEBUG("network", "WORLD: CMSG_MOVE_SET_CAN_FLY_ACK");
 
     ObjectGuid guid;
-    uint32 counter;
-    uint32 isApplied;
     recv_data >> guid.ReadAsPacked();
 
     if (!_player)
@@ -1503,51 +1662,17 @@ void WorldSession::HandleMoveFlagChangeOpcode(WorldPacket& recv_data)
         return;
     }
 
-    recv_data >> counter;
+    recv_data.read_skip<uint32>();                          // unk
 
     MovementInfo movementInfo;
     movementInfo.guid = guid;
     ReadMovementInfo(recv_data, &movementInfo);
 
-    if (opcode != CMSG_MOVE_GRAVITY_DISABLE_ACK && opcode != CMSG_MOVE_GRAVITY_ENABLE_ACK)
-        recv_data >> isApplied;
+    recv_data.read_skip<float>();                           // unk2
 
     sScriptMgr->AnticheatSetCanFlybyServer(_player, movementInfo.HasMovementFlag(MOVEMENTFLAG_CAN_FLY));
 
-    Unit* mover = _player->m_mover;
-    Player* plrMover = mover->ToPlayer();
-
-    mover->m_movementInfo.flags = movementInfo.GetMovementFlags();
-
-    // old map - async processing, ignore
-    if (counter <= _player->GetMapChangeOrderCounter())
-        return;
-
-    if (!ProcessMovementInfo(movementInfo, mover, plrMover, recv_data))
-    {
-        recv_data.rfinish();                     // prevent warnings spam
-        return;
-    }
-
-    if (_player->GetPendingFlightChange() == counter && opcode == CMSG_MOVE_SET_CAN_FLY_ACK)
-        _player->SetPendingFlightChange(false);
-
-    Opcodes response;
-
-    switch (recv_data.GetOpcode())
-    {
-        case CMSG_MOVE_HOVER_ACK: response = MSG_MOVE_HOVER; break;
-        case CMSG_MOVE_FEATHER_FALL_ACK: response = MSG_MOVE_FEATHER_FALL; break;
-        case CMSG_MOVE_WATER_WALK_ACK: response = MSG_MOVE_WATER_WALK; break;
-        case CMSG_MOVE_SET_CAN_FLY_ACK: response = MSG_MOVE_UPDATE_CAN_FLY; break;
-        case CMSG_MOVE_GRAVITY_DISABLE_ACK: response = MSG_MOVE_GRAVITY_CHNG; break;
-        case CMSG_MOVE_GRAVITY_ENABLE_ACK: response = MSG_MOVE_GRAVITY_CHNG; break;
-        default: return;
-    }
-
-    WorldPacket data(response, 8);
-    WriteMovementInfo(&data, &movementInfo);
-    _player->m_mover->SendMessageToSet(&data, _player);
+    _player->m_mover->m_movementInfo.flags = movementInfo.GetMovementFlags();
 }
 
 void WorldSession::HandleRequestPetInfo(WorldPackets::Pet::RequestPetInfo& /*packet*/)

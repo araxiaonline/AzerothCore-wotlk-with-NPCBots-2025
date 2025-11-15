@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -21,8 +21,10 @@
 
 enum Spells
 {
-    SPELL_CONSTRICTING_CHAINS                   = 52696,
-    SPELL_DISEASE_EXPULSION                     = 52666,
+    SPELL_CONSTRICTING_CHAINS_N                 = 52696,
+    SPELL_CONSTRICTING_CHAINS_H                 = 58823,
+    SPELL_DISEASE_EXPULSION_N                   = 52666,
+    SPELL_DISEASE_EXPULSION_H                   = 58824,
     SPELL_FRENZY                                = 58841,
 };
 
@@ -64,9 +66,9 @@ public:
         void JustEngagedWith(Unit* /*who*/) override
         {
             Talk(SAY_AGGRO);
-            events.RescheduleEvent(EVENT_SPELL_CONSTRICTING_CHAINS, 15s);
-            events.RescheduleEvent(EVENT_SPELL_DISEASE_EXPULSION, 4s);
-            events.RescheduleEvent(EVENT_SPELL_FRENZY, 20s);
+            events.RescheduleEvent(EVENT_SPELL_CONSTRICTING_CHAINS, 15000);
+            events.RescheduleEvent(EVENT_SPELL_DISEASE_EXPULSION, 4000);
+            events.RescheduleEvent(EVENT_SPELL_FRENZY, 20000);
         }
 
         void JustDied(Unit* /*killer*/) override
@@ -95,17 +97,17 @@ public:
             switch (events.ExecuteEvent())
             {
                 case EVENT_SPELL_DISEASE_EXPULSION:
-                    me->CastSpell(me, SPELL_DISEASE_EXPULSION, false);
-                    events.Repeat(6s);
+                    me->CastSpell(me, DUNGEON_MODE(SPELL_DISEASE_EXPULSION_N, SPELL_DISEASE_EXPULSION_H), false);
+                    events.RepeatEvent(6000);
                     break;
                 case EVENT_SPELL_FRENZY:
                     me->CastSpell(me, SPELL_FRENZY, false);
-                    events.Repeat(20s);
+                    events.RepeatEvent(20000);
                     break;
                 case EVENT_SPELL_CONSTRICTING_CHAINS:
                     if (Unit* pTarget = SelectTarget(SelectTargetMethod::MinThreat, 0, 50.0f, true))
-                        me->CastSpell(pTarget, SPELL_CONSTRICTING_CHAINS, false);
-                    events.Repeat(14s);
+                        me->CastSpell(pTarget, DUNGEON_MODE(SPELL_CONSTRICTING_CHAINS_N, SPELL_CONSTRICTING_CHAINS_H), false);
+                    events.RepeatEvent(14000);
                     break;
             }
 

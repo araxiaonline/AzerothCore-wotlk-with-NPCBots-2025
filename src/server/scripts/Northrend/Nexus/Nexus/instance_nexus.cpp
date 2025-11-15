@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -20,7 +20,6 @@
 #include "ScriptedCreature.h"
 #include "nexus.h"
 #include "Player.h"
-#include "Group.h"
 
 DoorData const doorData[] =
 {
@@ -33,7 +32,7 @@ DoorData const doorData[] =
 class instance_nexus : public InstanceMapScript
 {
 public:
-    instance_nexus() : InstanceMapScript("instance_nexus", MAP_THE_NEXUS) { }
+    instance_nexus() : InstanceMapScript("instance_nexus", 576) { }
 
     InstanceScript* GetInstanceScript(InstanceMap* map) const override
     {
@@ -53,31 +52,37 @@ public:
 
         void OnCreatureCreate(Creature* creature) override
         {
+            Map::PlayerList const& players = instance->GetPlayers();
+            TeamId TeamIdInInstance = TEAM_NEUTRAL;
+            if (!players.IsEmpty())
+                if (Player* pPlayer = players.begin()->GetSource())
+                    TeamIdInInstance = pPlayer->GetTeamId();
+
             switch (creature->GetEntry())
             {
                 case NPC_ALLIANCE_RANGER:
                     creature->SetFaction(FACTION_MONSTER_2);
-                    if (GetTeamIdInInstance() == TEAM_ALLIANCE)
+                    if (TeamIdInInstance == TEAM_ALLIANCE)
                         creature->UpdateEntry(NPC_HORDE_RANGER);
                     break;
                 case NPC_ALLIANCE_BERSERKER:
                     creature->SetFaction(FACTION_MONSTER_2);
-                    if (GetTeamIdInInstance() == TEAM_ALLIANCE)
+                    if (TeamIdInInstance == TEAM_ALLIANCE)
                         creature->UpdateEntry(NPC_HORDE_BERSERKER);
                     break;
                 case NPC_ALLIANCE_COMMANDER:
                     creature->SetFaction(FACTION_MONSTER_2);
-                    if (GetTeamIdInInstance() == TEAM_ALLIANCE)
+                    if (TeamIdInInstance == TEAM_ALLIANCE)
                         creature->UpdateEntry(NPC_HORDE_COMMANDER);
                     break;
                 case NPC_ALLIANCE_CLERIC:
                     creature->SetFaction(FACTION_MONSTER_2);
-                    if (GetTeamIdInInstance() == TEAM_ALLIANCE)
+                    if (TeamIdInInstance == TEAM_ALLIANCE)
                         creature->UpdateEntry(NPC_HORDE_CLERIC);
                     break;
                 case NPC_COMMANDER_STOUTBEARD:
                     creature->SetFaction(FACTION_MONSTER_2);
-                    if (GetTeamIdInInstance() == TEAM_ALLIANCE)
+                    if (TeamIdInInstance == TEAM_ALLIANCE)
                         creature->UpdateEntry(NPC_COMMANDER_KOLURG);
                     break;
             }

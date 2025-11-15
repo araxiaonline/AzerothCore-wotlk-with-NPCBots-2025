@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -70,6 +70,11 @@ struct boss_hazzarah : public BossAI
         summon->DespawnOrUnsummon();
     }
 
+    void Reset() override
+    {
+        DoCastSelf(875167, true); 
+    }
+
     void JustEngagedWith(Unit* /*who*/) override
     {
         _JustEngagedWith();
@@ -77,6 +82,20 @@ struct boss_hazzarah : public BossAI
         events.ScheduleEvent(EVENT_EARTH_SHOCK, 8s, 18s);
         events.ScheduleEvent(EVENT_CHAIN_BURN, 12s, 28s);
         events.ScheduleEvent(EVENT_ILLUSIONS, 16s, 24s);
+    }
+
+    void JustDied(Unit* /*killer*/) override
+    {
+        DoCastSelf(875167, true);
+        Map::PlayerList const& players = me->GetMap()->GetPlayers();
+        for (auto const& playerPair : players)
+        {
+            Player* player = playerPair.GetSource();
+            if (player)
+            {
+                DistributeChallengeRewards(player, me, 1, false);
+            }
+        }
     }
 
     bool CanAIAttack(Unit const* target) const override
@@ -122,7 +141,7 @@ struct boss_hazzarah : public BossAI
                 case EVENT_CHAIN_BURN:
                     if (me->GetPowerPct(POWER_MANA) > 5.f) // totally guessed
                     {
-                        if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, [&](Unit* u) { return u && !u->IsPet() && u->getPowerType() == POWER_MANA && u != me->GetVictim(); }))
+                        if (Unit* target = SelectTarget(SelectTargetMethod::Random, 1, [&](Unit* u) { return u && !u->IsPet() && u->getPowerType() == POWER_MANA; }))
                         {
                             DoCast(target, SPELL_CHAIN_BURN);
                         }

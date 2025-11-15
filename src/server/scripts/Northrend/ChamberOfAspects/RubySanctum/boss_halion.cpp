@@ -1,21 +1,20 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "AreaDefines.h"
 #include "CreatureScript.h"
 #include "GameObjectAI.h"
 #include "MapMgr.h"
@@ -27,7 +26,6 @@
 #include "SpellScript.h"
 #include "SpellScriptLoader.h"
 #include "Vehicle.h"
-#include "WorldStateDefines.h"
 #include "ruby_sanctum.h"
 
 enum Texts
@@ -188,7 +186,7 @@ public:
     bool Execute(uint64 /*execTime*/, uint32 /*diff*/) override
     {
         InstanceScript* instance = _owner->GetInstanceScript();
-        if (!instance || _owner->GetMapId() != MAP_THE_RUBY_SANCTUM)
+        if (!instance || _owner->GetMapId() != 724)
             return true;
 
         if (instance->GetBossState(DATA_HALION) != IN_PROGRESS)
@@ -199,7 +197,7 @@ public:
 
         WorldPacket data(SMSG_UPDATE_INSTANCE_ENCOUNTER_UNIT, 4);
         data << uint32(ENCOUNTER_FRAME_REFRESH_FRAMES);
-        _owner->SendDirectMessage(&data);
+        _owner->GetSession()->SendPacket(&data);
         return true;
     }
 
@@ -270,7 +268,7 @@ public:
             Map::PlayerList const& playerList = me->GetMap()->GetPlayers();
             for(Map::PlayerList::const_iterator itr = playerList.begin(); itr != playerList.end(); ++itr)
                 if (Player* player = itr->GetSource())
-                    if (!player->IsGameMaster() && player->IsAlive() && me->GetHomePosition().GetExactDist2d(player) < 52.0f && me->IsWithinLOSInMap(player) && !player->HasInvisibilityAura() && !player->HasStealthAura() && !player->HasUnattackableAura() && !player->HasAura(5384))
+                    if (!player->IsGameMaster() && player->IsAlive() && me->GetHomePosition().GetExactDist2d(player) < 52.0f && me->IsWithinLOSInMap(player) && !player->HasInvisibilityAura() && !player->HasStealthAura() && !player->HasUnattackableAura())
                         return true;
             return false;
         }
@@ -310,7 +308,7 @@ public:
 
         void KilledUnit(Unit* victim) override
         {
-            if (victim->IsPlayer() && !events.HasTimeUntilEvent(EVENT_KILL_TALK))
+            if (victim->IsPlayer() && events.GetNextEventTime(EVENT_KILL_TALK) == 0)
             {
                 Talk(SAY_KILL);
                 events.ScheduleEvent(EVENT_KILL_TALK, 6s);
@@ -335,7 +333,7 @@ public:
 
         void DamageTaken(Unit* attacker, uint32& damage, DamageEffectType, SpellSchoolMask) override
         {
-            if (events.HasTimeUntilEvent(EVENT_CHECK_HEALTH))
+            if (events.GetNextEventTime(EVENT_CHECK_HEALTH) != 0)
                 return;
 
             if (!attacker || !me->InSamePhase(attacker))
@@ -397,7 +395,7 @@ public:
                     events.ScheduleEvent(EVENT_METEOR_STRIKE, 40s);
                     break;
                 case EVENT_FIERY_COMBUSTION:
-                    if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, 100.0f, true, false, -SPELL_TWILIGHT_REALM))
+                    if (Unit* target = SelectTarget(SelectTargetMethod::Random, 1, 100.0f, true, true, -SPELL_TWILIGHT_REALM))
                         me->CastSpell(target, SPELL_FIERY_COMBUSTION, false);
                     events.ScheduleEvent(EVENT_FIERY_COMBUSTION, 25s);
                     break;
@@ -477,7 +475,7 @@ public:
 
         void KilledUnit(Unit* victim) override
         {
-            if (victim->IsPlayer() && !_events.HasTimeUntilEvent(EVENT_KILL_TALK))
+            if (victim->IsPlayer() && _events.GetNextEventTime(EVENT_KILL_TALK) == 0)
             {
                 Talk(SAY_KILL);
                 _events.ScheduleEvent(EVENT_KILL_TALK, 6s);
@@ -540,7 +538,7 @@ public:
                     _events.ScheduleEvent(EVENT_BREATH, 10s, 12s);
                     break;
                 case EVENT_SOUL_CONSUMPTION:
-                    if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, 100.0f, true, false, SPELL_TWILIGHT_REALM))
+                    if (Unit* target = SelectTarget(SelectTargetMethod::Random, 1, 100.0f, true, true, SPELL_TWILIGHT_REALM))
                         me->CastSpell(target, SPELL_SOUL_CONSUMPTION, false);
                     _events.ScheduleEvent(EVENT_SOUL_CONSUMPTION, 20s);
                     break;
@@ -598,7 +596,7 @@ public:
 
         void SetData(uint32 id, uint32 value) override
         {
-            if (!events.HasTimeUntilEvent(EVENT_CHECK_CORPOREALITY))
+            if (_events.GetNextEventTime(EVENT_CHECK_CORPOREALITY) == 0)
                 return;
 
             if (id == DATA_MATERIAL_DAMAGE_TAKEN)
@@ -717,8 +715,8 @@ public:
                     break;
             }
 
-            _instance->DoUpdateWorldState(WORLD_STATE_RUBY_SANCTUM_CORPOREALITY_MATERIAL, _corporeality * 10);
-            _instance->DoUpdateWorldState(WORLD_STATE_RUBY_SANCTUM_CORPOREALITY_TWILIGHT, 100 - _corporeality * 10);
+            _instance->DoUpdateWorldState(WORLDSTATE_CORPOREALITY_MATERIAL, _corporeality * 10);
+            _instance->DoUpdateWorldState(WORLDSTATE_CORPOREALITY_TWILIGHT, 100 - _corporeality * 10);
 
             if (Creature* twilightHalion = ObjectAccessor::GetCreature(*me, _instance->GetGuidData(NPC_TWILIGHT_HALION)))
             {
@@ -951,7 +949,7 @@ public:
         if (GetTargetApplication()->GetRemoveMode() != AURA_REMOVE_BY_EXPIRE)
             return;
 
-        if (!GetTarget()->GetInstanceScript() || !GetTarget()->GetInstanceScript()->IsEncounterInProgress() || GetTarget()->GetMapId() != MAP_THE_RUBY_SANCTUM)
+        if (!GetTarget()->GetInstanceScript() || !GetTarget()->GetInstanceScript()->IsEncounterInProgress() || GetTarget()->GetMapId() != 724)
             return;
 
         GetTarget()->CastCustomSpell(_summonSpellId, SPELLVALUE_BASE_POINT1, GetAura()->GetStackAmount(), GetTarget(), TRIGGERED_FULL_MASK, nullptr, nullptr, GetCasterGUID());
@@ -1120,7 +1118,7 @@ class spell_halion_twilight_realm_aura : public AuraScript
         target->RemoveAurasDueToSpell(SPELL_FIERY_COMBUSTION, ObjectGuid::Empty, 0, AURA_REMOVE_BY_ENEMY_SPELL);
         if (!GetTarget()->IsPlayer())
             return;
-        GetTarget()->m_Events.AddEventAtOffset(new SendEncounterUnit(GetTarget()->ToPlayer()), 500ms);
+        GetTarget()->m_Events.AddEvent(new SendEncounterUnit(GetTarget()->ToPlayer()), GetTarget()->m_Events.CalculateTime(500));
     }
 
     void Register() override
@@ -1153,7 +1151,7 @@ class spell_halion_leave_twilight_realm_aura : public AuraScript
 
         if (!GetTarget()->IsPlayer())
             return;
-        GetTarget()->m_Events.AddEventAtOffset(new SendEncounterUnit(GetTarget()->ToPlayer()), 500ms);
+        GetTarget()->m_Events.AddEvent(new SendEncounterUnit(GetTarget()->ToPlayer()), GetTarget()->m_Events.CalculateTime(500));
     }
 
     void Register() override
@@ -1274,9 +1272,9 @@ class spell_halion_twilight_division : public SpellScript
         if (GameObject* gobject = halion->FindNearestGameObject(GO_HALION_PORTAL_1, 100.0f))
             gobject->Delete();
 
-        instance->DoUpdateWorldState(WORLD_STATE_RUBY_SANCTUM_CORPOREALITY_TOGGLE, 1);
-        instance->DoUpdateWorldState(WORLD_STATE_RUBY_SANCTUM_CORPOREALITY_MATERIAL, 50);
-        instance->DoUpdateWorldState(WORLD_STATE_RUBY_SANCTUM_CORPOREALITY_TWILIGHT, 50);
+        instance->DoUpdateWorldState(WORLDSTATE_CORPOREALITY_TOGGLE, 1);
+        instance->DoUpdateWorldState(WORLDSTATE_CORPOREALITY_MATERIAL, 50);
+        instance->DoUpdateWorldState(WORLDSTATE_CORPOREALITY_TWILIGHT, 50);
     }
 
     void Register() override
@@ -1322,7 +1320,7 @@ public:
 
         void JustDied(Unit* /*killer*/) override
         {
-            me->DespawnOrUnsummon(1ms);
+            me->DespawnOrUnsummon(1);
         }
     };
 

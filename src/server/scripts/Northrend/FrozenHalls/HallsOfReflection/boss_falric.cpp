@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -18,7 +18,6 @@
 #include "CreatureScript.h"
 #include "halls_of_reflection.h"
 #include "ScriptedCreature.h"
-#include "SpellMgr.h"
 
 enum Yells
 {
@@ -45,7 +44,7 @@ enum Events
     EVENT_UNROOT,
 };
 
-const uint32 hopelessnessId[3] = { 72395, 72396, 72397 };
+const uint32 hopelessnessId[3][2] = { {72395, 72390}, {72396, 72391}, {72397, 72393} };
 
 class boss_falric : public CreatureScript
 {
@@ -132,7 +131,7 @@ public:
                     Talk(SAY_DEFILING_HORROR);
                     me->CastSpell((Unit*)nullptr, SPELL_DEFILING_HORROR, false);
                     me->SetControlled(true, UNIT_STATE_ROOT);
-                    events.DelayEventsToMax(5s, 0);
+                    events.DelayEventsToMax(5000, 0);
                     events.ScheduleEvent(EVENT_UNROOT, 4s);
                     events.ScheduleEvent(EVENT_DEFILING_HORROR, 20s);
                     break;
@@ -144,9 +143,8 @@ public:
             if ((uiHopelessnessCount == 0 && HealthBelowPct(67)) || (uiHopelessnessCount == 1 && HealthBelowPct(34)) || (uiHopelessnessCount == 2 && HealthBelowPct(11)))
             {
                 if (uiHopelessnessCount)
-                    me->RemoveOwnedAura(sSpellMgr->GetSpellIdForDifficulty(hopelessnessId[uiHopelessnessCount - 1], me));
-
-                me->CastSpell((Unit*)nullptr, hopelessnessId[uiHopelessnessCount], true);
+                    me->RemoveOwnedAura(hopelessnessId[uiHopelessnessCount - 1][DUNGEON_MODE(0, 1)]);
+                me->CastSpell((Unit*)nullptr, hopelessnessId[uiHopelessnessCount][DUNGEON_MODE(0, 1)], true);
                 ++uiHopelessnessCount;
             }
 

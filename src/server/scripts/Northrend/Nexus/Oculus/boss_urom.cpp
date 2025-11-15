@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -29,9 +29,14 @@ enum Spells
     SPELL_TELEPORT                              = 51112,
 
     SPELL_FROSTBOMB                             = 51103,
-    SPELL_TIME_BOMB                             = 51121,
-    SPELL_EMPOWERED_ARCANE_EXPLOSION            = 51110,
+    SPELL_TIME_BOMB_N                           = 51121,
+    SPELL_TIME_BOMB_H                           = 59376,
+    SPELL_EMPOWERED_ARCANE_EXPLOSION_N          = 51110,
+    SPELL_EMPOWERED_ARCANE_EXPLOSION_H          = 59377,
 };
+
+#define SPELL_EMPOWERED_ARCANE_EXPLOSION        DUNGEON_MODE(SPELL_EMPOWERED_ARCANE_EXPLOSION_N, SPELL_EMPOWERED_ARCANE_EXPLOSION_H)
+//#define SPELL_TIME_BOMB                         DUNGEON_MODE(SPELL_TIME_BOMB_N, SPELL_TIME_BOMB_H)
 
 enum UromNPCs
 {
@@ -75,16 +80,12 @@ float summons[3][4] =
     {NPC_PHANTASMAL_CLOUDSCRAPER, NPC_PHANTASMAL_CLOUDSCRAPER, NPC_PHANTASMAL_MAMMOTH, NPC_PHANTASMAL_WOLF}
 };
 
-float cords[5][4] =
+float cords[4][4] =
 {
     {1177.47f, 937.722f, 527.405f, 2.21657f},
     {968.66f, 1042.53f, 527.32f, 0.077f},
     {1164.02f, 1170.85f, 527.321f, 3.66f},
-    {1118.31f, 1080.377f, 508.361f, 4.25f},
-    // There are 4 phases but with the code like this:
-    // me->SetHomePosition(cords[phase + 1][0], cords[phase + 1][1], cords[phase + 1][2], cords[phase + 1][3]);
-    // lets provide fallback position.
-    {1177.47f, 937.722f, 527.405f, 2.21657f}
+    {1118.31f, 1080.377f, 508.361f, 4.25f}
 };
 
 class boss_urom : public CreatureScript
@@ -106,7 +107,7 @@ public:
 
         InstanceScript* pInstance;
         EventMap events;
-        bool lock, inCenter;
+        bool lock;
         float x, y, z;
         int32 releaseLockTimer;
 
@@ -133,7 +134,6 @@ public:
             me->CastSpell(me, SPELL_EVOCATION, true);
             events.Reset();
             lock = false;
-            inCenter = false;
             x = 0.0f;
             y = 0.0f;
             z = 0.0f;
@@ -222,14 +222,9 @@ public:
             {
                 pInstance->SetData(DATA_UROM, DONE);
             }
-
-            // Body teleportation required only when boss is flying in the center
-            if (inCenter)
-            {
-                me->SetCanFly(false);
-                me->SetDisableGravity(false);
-                me->NearTeleportTo(x, y, z, 0.0f);
-            }
+            me->SetCanFly(false);
+            me->SetDisableGravity(false);
+            me->NearTeleportTo(x, y, z, 0.0f);
         }
 
         void KilledUnit(Unit* /*victim*/) override
@@ -247,7 +242,7 @@ public:
                             me->SummonCreature(summons[0][i], cords[0][0] + ((i % 2) ? 4.0f : -4.0f), cords[0][1] + (i < 2 ? 4.0f : -4.0f), cords[0][2], 0.0f, TEMPSUMMON_TIMED_DESPAWN, 300000);
                         uint8 phase = GetPhaseByCurrentPosition();
                         me->SetHomePosition(cords[phase + 1][0], cords[phase + 1][1], cords[phase + 1][2], cords[phase + 1][3]);
-                        me->DestroyForVisiblePlayers();
+                        me->DestroyForNearbyPlayers();
                         LeaveCombat();
                         me->CastSpell(me, SPELL_EVOCATION, true);
                         releaseLockTimer = 1;
@@ -259,7 +254,7 @@ public:
                             me->SummonCreature(summons[1][i], cords[1][0] + ((i % 2) ? 4.0f : -4.0f), cords[1][1] + (i < 2 ? 4.0f : -4.0f), cords[1][2], 0.0f, TEMPSUMMON_TIMED_DESPAWN, 300000);
                         uint8 phase = GetPhaseByCurrentPosition();
                         me->SetHomePosition(cords[phase + 1][0], cords[phase + 1][1], cords[phase + 1][2], cords[phase + 1][3]);
-                        me->DestroyForVisiblePlayers();
+                        me->DestroyForNearbyPlayers();
                         LeaveCombat();
                         me->CastSpell(me, SPELL_EVOCATION, true);
                         releaseLockTimer = 1;
@@ -271,7 +266,7 @@ public:
                             me->SummonCreature(summons[2][i], cords[2][0] + ((i % 2) ? 4.0f : -4.0f), cords[2][1] + (i < 2 ? 4.0f : -4.0f), cords[2][2], 0.0f, TEMPSUMMON_TIMED_DESPAWN, 300000);
                         uint8 phase = GetPhaseByCurrentPosition();
                         me->SetHomePosition(cords[phase + 1][0], cords[phase + 1][1], cords[phase + 1][2], cords[phase + 1][3]);
-                        me->DestroyForVisiblePlayers();
+                        me->DestroyForNearbyPlayers();
                         LeaveCombat();
                         me->CastSpell(me, SPELL_EVOCATION, true);
                         releaseLockTimer = 1;
@@ -286,16 +281,15 @@ public:
                     me->SetCanFly(true);
                     me->SetDisableGravity(true);
                     me->NearTeleportTo(1103.69f, 1048.76f, 512.279f, 1.16f);
-                    inCenter = true;
 
                     Talk(SAY_ARCANE_EXPLOSION);
                     Talk(EMOTE_ARCANE_EXPLOSION);
 
                     //At this point we are still in casting state so we need to clear it for DoCastAOE not to fail
                     me->ClearUnitState(UNIT_STATE_CASTING);
-                    DoCastAOE(SPELL_EMPOWERED_ARCANE_EXPLOSION);
+                    DoCastAOE(DUNGEON_MODE(SPELL_EMPOWERED_ARCANE_EXPLOSION_N, SPELL_EMPOWERED_ARCANE_EXPLOSION_H));
                     me->AddUnitState(UNIT_STATE_CASTING);
-                    events.RescheduleEvent(EVENT_TELE_BACK, DUNGEON_MODE(9s, 7s));
+                    events.RescheduleEvent(EVENT_TELE_BACK, DUNGEON_MODE(9000, 7000));
                 default:
                     break;
             }
@@ -342,7 +336,7 @@ public:
                     break;
                 case EVENT_TIME_BOMB:
                     if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, 100.0f, true))
-                        DoCast(target, SPELL_TIME_BOMB);
+                        DoCast(target, DUNGEON_MODE(SPELL_TIME_BOMB_N, SPELL_TIME_BOMB_H));
                     events.Repeat(20s, 25s);
                     break;
                 case EVENT_TELEPORT_TO_CENTER:
@@ -362,7 +356,6 @@ public:
                     me->SetControlled(false, UNIT_STATE_ROOT);
                     me->RemoveUnitFlag(UNIT_FLAG_NON_ATTACKABLE);
                     me->GetMotionMaster()->MoveChase(me->GetVictim());
-                    inCenter = false;
                     break;
             }
         }
@@ -372,7 +365,6 @@ public:
             me->SetCanFly(false);
             me->SetDisableGravity(false);
             me->SetControlled(false, UNIT_STATE_ROOT);
-            inCenter = false;
             ScriptedAI::EnterEvadeMode(why);
         }
     };

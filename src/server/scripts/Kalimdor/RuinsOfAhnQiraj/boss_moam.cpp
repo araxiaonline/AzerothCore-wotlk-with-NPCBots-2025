@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -34,7 +34,7 @@ enum Spells
     SPELL_TRAMPLE               = 15550,
     SPELL_DRAIN_MANA_SERVERSIDE = 25676,
     SPELL_DRAIN_MANA            = 25671,
-    SPELL_ARCANE_ERUPTION       = 25672,
+    SPELL_ARCANE_ERUPTION       = 825672,
     SPELL_SUMMON_MANA_FIENDS    = 25684,
     SPELL_SUMMON_MANA_FIEND_1   = 25681, // TARGET_DEST_CASTER_FRONT
     SPELL_SUMMON_MANA_FIEND_2   = 25682, // TARGET_DEST_CASTER_LEFT
@@ -75,13 +75,23 @@ struct boss_moam : public BossAI
         Talk(EMOTE_AGGRO);
         events.ScheduleEvent(EVENT_STONE_PHASE, 90s);
         events.ScheduleEvent(EVENT_SPELL_TRAMPLE, 9s);
-        events.ScheduleEvent(EVENT_SPELL_DRAIN_MANA, 3s);
+        events.ScheduleEvent(EVENT_SPELL_DRAIN_MANA, 6s);
     }
 
     void JustDied(Unit* /*killer*/) override
     {
         _JustDied();
         DoCastAOE(SPELL_LARGE_OBSIDIAN_CHUNK, true);
+        DoCastSelf(875167, true);
+        Map::PlayerList const& players = me->GetMap()->GetPlayers();
+        for (auto const& playerPair : players)
+        {
+            Player* player = playerPair.GetSource();
+            if (player)
+            {
+                DistributeChallengeRewards(player, me, 10, false);
+            }
+        }
     }
 
     void SummonedCreatureDies(Creature* /*creature*/, Unit* /*killer*/) override
@@ -129,7 +139,7 @@ struct boss_moam : public BossAI
                     break;
                 case EVENT_SPELL_DRAIN_MANA:
                     DoCastAOE(SPELL_DRAIN_MANA_SERVERSIDE);
-                    events.ScheduleEvent(EVENT_SPELL_DRAIN_MANA, 2s, 6s);
+                    events.ScheduleEvent(EVENT_SPELL_DRAIN_MANA, 4s, 8s);
                     break;
                 case EVENT_SPELL_TRAMPLE:
                     DoCastAOE(SPELL_TRAMPLE);
@@ -152,9 +162,15 @@ class spell_moam_mana_drain_filter : public SpellScript
     void FilterTargets(std::list<WorldObject*>& targets)
     {
         targets.remove_if([&](WorldObject* target) -> bool
-        {
-            return !target->IsPlayer() || target->ToPlayer()->getPowerType() != POWER_MANA;
-        });
+            {
+                if (Player* player = target->ToPlayer())
+                    return player->getPowerType() != POWER_MANA;
+
+                if (Creature* creature = target->ToCreature())
+                    return !creature->IsNPCBot() || creature->getPowerType() != POWER_MANA;
+
+                return true;
+            });
 
         if (!targets.empty())
         {
@@ -166,7 +182,10 @@ class spell_moam_mana_drain_filter : public SpellScript
     {
         if (Unit* caster = GetCaster())
         {
-            caster->CastSpell(GetHitUnit(), SPELL_DRAIN_MANA, true);
+            if (Unit* hitUnit = GetHitUnit())
+            {
+                caster->CastSpell(hitUnit, SPELL_DRAIN_MANA, true);
+            }
         }
     }
 

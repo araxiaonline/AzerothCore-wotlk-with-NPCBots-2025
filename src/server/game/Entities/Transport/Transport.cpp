@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -123,7 +123,7 @@ void MotionTransport::CleanupsBeforeDelete(bool finalCleanup /*= true*/)
     GameObject::CleanupsBeforeDelete(finalCleanup);
 }
 
-void MotionTransport::BuildUpdate(UpdateDataMapType& data_map)
+void MotionTransport::BuildUpdate(UpdateDataMapType& data_map, UpdatePlayerSet&)
 {
     Map::PlayerList const& players = GetMap()->GetPlayers();
     if (players.IsEmpty())
@@ -593,22 +593,7 @@ void MotionTransport::DelayedTeleportTransport()
                     float destX, destY, destZ, destO;
                     obj->m_movementInfo.transport.pos.GetPosition(destX, destY, destZ, destO);
                     TransportBase::CalculatePassengerPosition(destX, destY, destZ, &destO, x, y, z, o);
-
-                    Player* player = obj->ToPlayer();
-                    // Vehicle passengers are dropped in the middle of nowhere, so lets try to eject them, add to the transport and teleport
-                    // this needs to be revisited to properly restore vehicles with passengers after transport teleportation
-                    if (player->IsVehicle())
-                        if (Vehicle* vehicleKit = player->GetVehicleKit())
-                            for (SeatMap::iterator itr = vehicleKit->Seats.begin(); itr != vehicleKit->Seats.end(); ++itr)
-                                if (Player* passenger = ObjectAccessor::GetPlayer(*player, itr->second.Passenger.Guid))
-                                {
-                                    passenger->ExitVehicle();
-                                    AddPassenger(passenger, true);
-                                    if (!passenger->TeleportTo(newMapId, destX, destY, destZ, destO, TELE_TO_NOT_LEAVE_TRANSPORT))
-                                        _passengers.erase(passenger);
-                                }
-
-                    if (!player->TeleportTo(newMapId, destX, destY, destZ, destO, TELE_TO_NOT_LEAVE_TRANSPORT))
+                    if (!obj->ToPlayer()->TeleportTo(newMapId, destX, destY, destZ, destO, TELE_TO_NOT_LEAVE_TRANSPORT))
                         _passengers.erase(obj);
                 }
                 break;
@@ -618,12 +603,12 @@ void MotionTransport::DelayedTeleportTransport()
     }
 
     Map* newMap = sMapMgr->CreateBaseMap(newMapId);
-    GetMap()->RemoveFromMap<Transport>(this, false);
+    GetMap()->RemoveFromMap<MotionTransport>(this, false);
     newMap->LoadGrid(x, y); // xinef: load before adding passengers to new map
     SetMap(newMap);
 
     Relocate(x, y, z, o);
-    GetMap()->AddToMap<Transport>(this);
+    GetMap()->AddToMap<MotionTransport>(this);
 
     LoadStaticPassengers();
 }
@@ -699,40 +684,6 @@ StaticTransport::StaticTransport() : Transport(), _needDoInitialRelocation(false
 StaticTransport::~StaticTransport()
 {
     ASSERT(_passengers.empty());
-}
-
-bool StaticTransport::LoadGameObjectFromDB(ObjectGuid::LowType spawnId, Map* map, bool addToMap)
-{
-    GameObjectData const* data = sObjectMgr->GetGameObjectData(spawnId);
-
-    if (!data)
-    {
-        LOG_ERROR("sql.sql", "Gameobject (GUID: {}) not found in table `gameobject`, can't load. ", spawnId);
-        return false;
-    }
-
-    uint32 entry = data->id;
-    //uint32 map_id = data->mapid;                          // already used before call
-    uint32 phaseMask = data->phaseMask;
-    float x = data->posX;
-    float y = data->posY;
-    float z = data->posZ;
-    float ang = data->orientation;
-
-    uint32 animprogress = data->animprogress;
-    GOState go_state = data->go_state;
-    uint32 artKit = data->artKit;
-
-    m_goData = data;
-    m_spawnId = spawnId;
-
-    if (!Create(map->GenerateLowGuid<HighGuid::Transport>(), entry, map, phaseMask, x, y, z, ang, data->rotation, animprogress, go_state, artKit))
-        return false;
-
-    if (addToMap && !GetMap()->AddToMap<Transport>(this))
-        return false;
-
-    return true;
 }
 
 bool StaticTransport::Create(ObjectGuid::LowType guidlow, uint32 name_id, Map* map, uint32 phaseMask, float x, float y, float z, float ang, G3D::Quat const& rotation, uint32 animprogress, GOState go_state, uint32 artKit)
@@ -839,6 +790,7 @@ bool StaticTransport::Create(ObjectGuid::LowType guidlow, uint32 name_id, Map* m
     LastUsedScriptID = GetGOInfo()->ScriptId;
     AIM_Initialize();
 
+    this->setActive(true);
     return true;
 }
 
@@ -856,7 +808,7 @@ void StaticTransport::CleanupsBeforeDelete(bool finalCleanup /*= true*/)
     GameObject::CleanupsBeforeDelete(finalCleanup);
 }
 
-void StaticTransport::BuildUpdate(UpdateDataMapType& data_map)
+void StaticTransport::BuildUpdate(UpdateDataMapType& data_map, UpdatePlayerSet&)
 {
     Map::PlayerList const& players = GetMap()->GetPlayers();
     if (players.IsEmpty())
@@ -973,9 +925,7 @@ void StaticTransport::UpdatePosition(float x, float y, float z, float o)
     if (!GetMap()->IsGridLoaded(x, y)) // pussywizard: should not happen, but just in case
         GetMap()->LoadGrid(x, y);
 
-    Relocate(x, y, z, o);
-    UpdateModelPosition();
-
+    GetMap()->GameObjectRelocation(this, x, y, z, o); // this also relocates the model
     UpdatePassengerPositions();
 }
 

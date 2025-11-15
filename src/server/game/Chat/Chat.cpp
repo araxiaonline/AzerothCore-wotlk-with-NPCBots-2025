@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -30,7 +30,6 @@
 #include "World.h"
 #include "WorldPacket.h"
 #include "WorldSession.h"
-#include "WorldSessionMgr.h"
 #include <boost/algorithm/string/replace.hpp>
 
 Player* ChatHandler::GetPlayer() const
@@ -38,7 +37,7 @@ Player* ChatHandler::GetPlayer() const
     return m_session ? m_session->GetPlayer() : nullptr;
 }
 
-std::string ChatHandler::GetAcoreString(uint32 entry) const
+char const* ChatHandler::GetAcoreString(uint32 entry) const
 {
     return m_session->GetAcoreString(entry);
 }
@@ -82,7 +81,7 @@ bool ChatHandler::HasLowerSecurityAccount(WorldSession* target, uint32 target_ac
         return false;
 
     // ignore only for non-players for non strong checks (when allow apply command at least to same sec level)
-    if (!AccountMgr::IsPlayerAccount(m_session->GetSecurity()) && !strong && sWorld->getBoolConfig(CONFIG_GM_LOWER_SECURITY))
+    if (!AccountMgr::IsPlayerAccount(m_session->GetSecurity()) && !strong && !sWorld->getBoolConfig(CONFIG_GM_LOWER_SECURITY))
         return false;
 
     if (target)
@@ -189,7 +188,7 @@ void ChatHandler::SendGlobalSysMessage(const char* str)
     for (std::string_view line : Acore::Tokenize(str, '\n', true))
     {
         BuildChatPacket(data, CHAT_MSG_SYSTEM, LANG_UNIVERSAL, nullptr, nullptr, line);
-        sWorldSessionMgr->SendGlobalMessage(&data);
+        sWorld->SendGlobalMessage(&data);
     }
 }
 
@@ -199,7 +198,7 @@ void ChatHandler::SendGlobalGMSysMessage(const char* str)
     for (std::string_view line : Acore::Tokenize(str, '\n', true))
     {
         BuildChatPacket(data, CHAT_MSG_SYSTEM, LANG_UNIVERSAL, nullptr, nullptr, line);
-        sWorldSessionMgr->SendGlobalGMMessage(&data);
+        sWorld->SendGlobalGMMessage(&data);
     }
 }
 
@@ -443,8 +442,8 @@ bool ChatHandler::HasSession() const
 
 void ChatHandler::DoForAllValidSessions(std::function<void(Player*)> exec)
 {
-    WorldSessionMgr::SessionMap const& sessionMap = sWorldSessionMgr->GetAllSessions();
-    for (WorldSessionMgr::SessionMap::const_iterator itr = sessionMap.begin(); itr != sessionMap.end(); ++itr)
+    SessionMap::const_iterator itr;
+    for (itr = sWorld->GetAllSessions().begin(); itr != sWorld->GetAllSessions().end(); ++itr)
         if (Player* player = itr->second->GetPlayer())
             if (player->IsInWorld())
                 exec(player);
@@ -571,7 +570,7 @@ GameObject* ChatHandler::GetNearbyGameObject() const
     GameObject* obj = nullptr;
     Acore::NearestGameObjectCheck check(*pl);
     Acore::GameObjectLastSearcher<Acore::NearestGameObjectCheck> searcher(pl, obj, check);
-    Cell::VisitObjects(pl, searcher, SIZE_OF_GRIDS);
+    Cell::VisitGridObjects(pl, searcher, SIZE_OF_GRIDS);
     return obj;
 }
 
@@ -882,7 +881,7 @@ std::string ChatHandler::GetNameLink(Player* chr) const
     return playerLink(chr->GetName());
 }
 
-std::string CliHandler::GetAcoreString(uint32 entry) const
+char const* CliHandler::GetAcoreString(uint32 entry) const
 {
     return sObjectMgr->GetAcoreStringForDBCLocale(entry);
 }

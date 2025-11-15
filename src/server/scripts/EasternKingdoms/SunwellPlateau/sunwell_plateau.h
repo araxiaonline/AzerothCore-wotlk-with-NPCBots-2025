@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -44,12 +44,16 @@ enum DataTypes
     DATA_SATHROVARR                         = 10,
     DATA_KJ_CONTROLLER                      = 11,
     DATA_ANVEENA                            = 12,
-    DATA_KALECGOS_KJ                        = 13,
-    DATA_ORB_OF_THE_BLUE_DRAGONFLIGHT_1     = 14,
-    DATA_ORB_OF_THE_BLUE_DRAGONFLIGHT_2     = 15,
-    DATA_ORB_OF_THE_BLUE_DRAGONFLIGHT_3     = 16,
-    DATA_ORB_OF_THE_BLUE_DRAGONFLIGHT_4     = 17,
-    DATA_ICEBARRIER                         = 18,
+    DATA_KALECGOS_KJ                        = 13
+};
+
+enum DataTypesObjects
+{
+    DATA_ORB_OF_THE_BLUE_DRAGONFLIGHT_1     = 0,
+    DATA_ORB_OF_THE_BLUE_DRAGONFLIGHT_2     = 1,
+    DATA_ORB_OF_THE_BLUE_DRAGONFLIGHT_3     = 2,
+    DATA_ORB_OF_THE_BLUE_DRAGONFLIGHT_4     = 3,
+    DATA_ICEBARRIER                         = 4,
 };
 
 enum CreatureIds
@@ -104,7 +108,7 @@ enum GameObjectIds
 
 enum SpellIds
 {
-    SPELL_SUMMON_FELBLAZE                    = 45069 // Felblaze? Summons Felmyst
+    SPELL_SUNWELL_RADIANCE                  = 45769,
 };
 
 template <class AI, class T>

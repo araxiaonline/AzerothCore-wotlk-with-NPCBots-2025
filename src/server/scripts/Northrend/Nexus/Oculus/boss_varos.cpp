@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -23,10 +23,13 @@ enum Spells
 {
     SPELL_CORE_AURA_PASSIVE             = 50798,
 
-    SPELL_AMPLIFY_MAGIC               = 51054,
+    SPELL_AMPLIFY_MAGIC_N               = 51054,
+    SPELL_AMPLIFY_MAGIC_H               = 59371,
 
-    SPELL_ENERGIZE_CORES                = 50785,
-    SPELL_ENERGIZE_CORES_THIN           = 61407,
+    SPELL_ENERGIZE_CORES_N              = 50785,
+    SPELL_ENERGIZE_CORES_H              = 59372,
+    SPELL_ENERGIZE_CORES_THIN_N         = 61407,
+    SPELL_ENERGIZE_CORES_THIN_H         = 62136,
     SPELL_ENERGIZE_CORES_TRIGGER_1      = 54069,
     SPELL_ENERGIZE_CORES_TRIGGER_2      = 56251,
 
@@ -60,6 +63,10 @@ enum Events
     EVENT_ENERGIZE_CORES_DAMAGE         = 7,
 };
 
+#define SPELL_AMPLIFY_MAGIC             DUNGEON_MODE(SPELL_AMPLIFY_MAGIC_N, SPELL_AMPLIFY_MAGIC_H)
+#define SPELL_ENERGIZE_CORES            DUNGEON_MODE(SPELL_ENERGIZE_CORES_N, SPELL_ENERGIZE_CORES_H)
+#define SPELL_ENERGIZE_CORES_THIN       DUNGEON_MODE(SPELL_ENERGIZE_CORES_THIN_N, SPELL_ENERGIZE_CORES_THIN_H)
+
 enum Says
 {
     SAY_AGGRO           = 0,
@@ -87,7 +94,6 @@ public:
         InstanceScript* pInstance;
         EventMap events;
         float ZapAngle;
-        uint8 step = 0;
 
         void Reset() override
         {
@@ -179,37 +185,32 @@ public:
                     {
                         Talk(SAY_AZURE);
                         Talk(SAY_AZURE_EMOTE);
-                        switch (step)
+                        switch (events.ExecuteEvent())
                         {
-                            case 0:
-                                DoCast(SPELL_CALL_AZURE_RING_CAPTAIN_1);
+                            case EVENT_CALL_AZURE_RING_CAPTAIN_1:
+                                me->CastSpell(me, SPELL_CALL_AZURE_RING_CAPTAIN_1, true);
                                 events.ScheduleEvent(EVENT_CALL_AZURE_RING_CAPTAIN_2, 16s);
                                 break;
-                            case 1:
-                                DoCast(SPELL_CALL_AZURE_RING_CAPTAIN_2);
+                            case EVENT_CALL_AZURE_RING_CAPTAIN_2:
+                                me->CastSpell(me, SPELL_CALL_AZURE_RING_CAPTAIN_2, true);
                                 events.ScheduleEvent(EVENT_CALL_AZURE_RING_CAPTAIN_3, 16s);
                                 break;
-                            case 2:
-                                DoCast(SPELL_CALL_AZURE_RING_CAPTAIN_3);
+                            case EVENT_CALL_AZURE_RING_CAPTAIN_3:
+                                me->CastSpell(me, SPELL_CALL_AZURE_RING_CAPTAIN_3, true);
                                 events.ScheduleEvent(EVENT_CALL_AZURE_RING_CAPTAIN_4, 16s);
                                 break;
-                            case 3:
-                                DoCast(SPELL_CALL_AZURE_RING_CAPTAIN_4);
+                            case EVENT_CALL_AZURE_RING_CAPTAIN_4:
+                                me->CastSpell(me, SPELL_CALL_AZURE_RING_CAPTAIN_4, true);
                                 events.ScheduleEvent(EVENT_CALL_AZURE_RING_CAPTAIN_1, 16s);
                                 break;
                         }
-
-                        step++;
-                        if (step > 3)
-                            step = 0;
-
                         if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, 100.0f, true))
                         {
                             if (Creature* trigger = me->SummonCreature(NPC_ARCANE_BEAM, target->GetPositionX(), target->GetPositionY(), target->GetPositionZ(), 0.0f, TEMPSUMMON_TIMED_DESPAWN, 13000))
                             {
                                 if (Creature* c = me->FindNearestCreature(NPC_AZURE_RING_CAPTAIN, 500.0f, true))
                                     c->CastSpell(trigger, SPELL_ARCANE_BEAM_VISUAL, true);
-                                trigger->GetMotionMaster()->MoveFollow(target, 0.0f, 0.0f, MOTION_SLOT_ACTIVE, false, false); /// @todo: sniff speed for NPC_ARCANE_BEAM (ID: 28239)
+                                trigger->GetMotionMaster()->MoveChase(target, 0.1f);
                                 trigger->CastSpell(me, SPELL_ARCANE_BEAM_PERIODIC_DAMAGE, true);
                             }
                         }

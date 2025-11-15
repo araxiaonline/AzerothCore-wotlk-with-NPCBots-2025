@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -50,10 +50,16 @@ struct npc_hivezara_stinger : public ScriptedAI
 
         scheduler.Schedule(5s, [this](TaskContext context)
         {
-            Unit* target = SelectTarget(SelectTargetMethod::Random, 0, 20.0f, true, false, SPELL_HIVEZARA_CATALYST);
+            Unit* target = SelectTarget(SelectTargetMethod::Random, 1, [&](Unit* u)
+            {
+                return u && !u->IsPet() && u->IsWithinDist2d(me, 20.f) && u->HasAura(SPELL_HIVEZARA_CATALYST);
+            });
             if (!target)
             {
-                target = SelectTarget(SelectTargetMethod::Random, 0, 20.0f, true, false);
+                target = SelectTarget(SelectTargetMethod::Random, 1, [&](Unit* u)
+                {
+                    return u && !u->IsPet() && u->IsWithinDist2d(me, 20.f);
+                });
             }
 
             if (target)
@@ -128,6 +134,140 @@ struct npc_obsidian_destroyer : public ScriptedAI
     }
 };
 
+enum FleshHunterSpells
+{
+    SPELL_TRASH = 3391,
+    SPELL_CONSUME = 25371,
+    SPELL_CONSUME_HEAL = 25378,
+    SPELL_POISON_BOLT = 25424,
+    SPELL_CONSUME_DMG = 25373,
+    SPELL_SPLIT = 25383,
+};
+
+class mob_flesh_hunter : public CreatureScript
+{
+public:
+    mob_flesh_hunter() : CreatureScript("mob_flesh_hunter") { }
+
+    struct mob_flesh_hunterAI : public ScriptedAI
+    {
+        mob_flesh_hunterAI(Creature* creature) : ScriptedAI(creature) { }
+
+        ObjectGuid m_uiConsumeVictim;
+
+        uint32 m_uiPoisonBolt_Timer;
+        uint32 m_uiTrash_Timer;
+        uint32 m_uiConsume_Timer;
+        uint32 m_uiConsumeDamage_Timer;
+
+        bool m_bPlayerConsumed;
+        bool m_bPlayerConsumedCharged;
+
+        void Reset() override
+        {
+            m_uiPoisonBolt_Timer = 3000;
+            m_uiTrash_Timer = 5000;
+            m_uiConsume_Timer = 3000;
+            m_uiConsumeDamage_Timer = 1000;
+
+            m_uiConsumeVictim.Clear();
+            m_bPlayerConsumed = false;
+            m_bPlayerConsumedCharged = false;
+        }
+
+        void JustEngagedWith(Unit* who) override
+        {
+            me->SetInCombatWithZone();
+        }
+
+        void KilledUnit(Unit* victim) override
+        {
+            if (victim->GetGUID() == m_uiConsumeVictim)
+                DoCast(me, SPELL_CONSUME_HEAL);
+        }
+
+        void UpdateAI(uint32 diff) override
+        {
+            if (!UpdateVictim())
+                return;
+
+            if (m_uiPoisonBolt_Timer <= diff)
+            {
+                if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, 0.0f, true))
+                {
+                    DoCast(target, SPELL_POISON_BOLT);
+                    m_uiPoisonBolt_Timer = 3000;
+                }
+            }
+            else
+                m_uiPoisonBolt_Timer -= diff;
+
+            if (m_uiConsume_Timer <= diff)
+            {
+                if (Unit* target = SelectTarget(SelectTargetMethod::MaxThreat, 0, 0.0f, true))
+                {
+                    DoCast(target, SPELL_CONSUME);
+                    m_uiConsumeVictim = target->GetGUID();
+                    m_bPlayerConsumed = true;
+                    m_uiConsume_Timer = 30000;
+                }
+            }
+            else
+                m_uiConsume_Timer -= diff;
+
+            if (Unit* pConsumeTarget = ObjectAccessor::GetUnit(*me, m_uiConsumeVictim))
+            {
+                if (pConsumeTarget->HasAura(SPELL_CONSUME))
+                {
+                    if (m_uiConsumeDamage_Timer <= diff)
+                    {
+                        DoCast(pConsumeTarget, SPELL_CONSUME_DMG);
+                        me->GetMotionMaster()->Clear();
+                        me->StopMoving();
+                        me->GetThreatMgr().ResetThreat(pConsumeTarget);
+                        m_uiConsumeDamage_Timer = 1000;
+                        m_bPlayerConsumedCharged = true;
+                        pConsumeTarget->ModifyHealth(-int32(pConsumeTarget->GetMaxHealth() / 10));
+                    }
+                    else
+                        m_uiConsumeDamage_Timer -= diff;
+
+                    if (!pConsumeTarget->IsAlive())
+                    {
+                        if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, 0.0f, true))
+                            me->GetMotionMaster()->MoveChase(target);
+                        me->SetHealth(me->GetMaxHealth());
+                    }
+                }
+                else
+                {
+                    if (pConsumeTarget->IsAlive() && m_bPlayerConsumedCharged)
+                    {
+                        DoCast(pConsumeTarget, SPELL_SPLIT);
+                        m_bPlayerConsumedCharged = false;
+                        me->GetMotionMaster()->MoveChase(me->GetVictim());
+                    }
+                }
+            }
+
+            if (m_uiTrash_Timer <= diff)
+            {
+                DoCastVictim(SPELL_TRASH);
+                m_uiTrash_Timer = 5000 + urand(0, 2000);
+            }
+            else
+                m_uiTrash_Timer -= diff;
+
+            DoMeleeAttackIfReady();
+        }
+    };
+
+    CreatureAI* GetAI(Creature* creature) const override
+    {
+        return new mob_flesh_hunterAI(creature);
+    }
+};
+
 class spell_drain_mana : public SpellScript
 {
     PrepareSpellScript(spell_drain_mana);
@@ -153,5 +293,6 @@ void AddSC_ruins_of_ahnqiraj()
 {
     RegisterRuinsOfAhnQirajCreatureAI(npc_hivezara_stinger);
     RegisterRuinsOfAhnQirajCreatureAI(npc_obsidian_destroyer);
+    new mob_flesh_hunter();
     RegisterSpellScript(spell_drain_mana);
 }

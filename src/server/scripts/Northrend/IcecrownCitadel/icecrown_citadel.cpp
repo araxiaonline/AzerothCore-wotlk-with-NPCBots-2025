@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -16,7 +16,6 @@
  */
 
 #include "icecrown_citadel.h"
-#include "AreaDefines.h"
 #include "AreaTriggerScript.h"
 #include "Cell.h"
 #include "CellImpl.h"
@@ -533,13 +532,13 @@ public:
                     case EVENT_SAURFANG_RUN:
                         if (Creature* factionNPC = ObjectAccessor::GetCreature(*me, _factionNPC))
                         {
-                            factionNPC->GetMotionMaster()->MoveWaypoint(factionNPC->GetSpawnId() * 10, false);
-                            factionNPC->DespawnOrUnsummon(46500ms);
+                            factionNPC->GetMotionMaster()->MovePath(factionNPC->GetSpawnId() * 10, false);
+                            factionNPC->DespawnOrUnsummon(46500);
                             std::list<Creature*> followers;
                             factionNPC->GetCreaturesWithEntryInRange(followers, 30, _instance->GetData(DATA_TEAMID_IN_INSTANCE) == TEAM_HORDE ? NPC_KOR_KRON_GENERAL : NPC_ALLIANCE_COMMANDER);
                             for (Creature* follower : followers)
                             {
-                                follower->DespawnOrUnsummon(46500ms);
+                                follower->DespawnOrUnsummon(46500);
                             }
                         }
                         me->setActive(false);
@@ -628,7 +627,7 @@ public:
                 switch (eventId)
                 {
                     case EVENT_DEATH_PLAGUE:
-                        if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, 0.0f, true, false, -SPELL_RECENTLY_INFECTED))
+                        if (Unit* target = SelectTarget(SelectTargetMethod::Random, 1, 0.0f, true, true, -SPELL_RECENTLY_INFECTED))
                         {
                             Talk(EMOTE_DEATH_PLAGUE_WARNING, target);
                             DoCast(target, SPELL_DEATH_PLAGUE);
@@ -679,7 +678,7 @@ public:
             {
                 case 1000:
                 case 11000:
-                    _events.ScheduleEvent(EVENT_ACTIVATE_TRAP, Milliseconds(action));
+                    _events.ScheduleEvent(EVENT_ACTIVATE_TRAP, uint32(action));
                     break;
                 default:
                     break;
@@ -748,6 +747,8 @@ public:
                 me->setActive(true);
                 me->SetUnitFlag(UNIT_FLAG_NON_ATTACKABLE);
                 me->SetImmuneToAll(true);
+                // Load Grid with Sister Svalna
+                me->GetMap()->LoadGrid(4356.71f, 2484.33f);
                 if (Creature* svalna = ObjectAccessor::GetCreature(*me, _instance->GetGuidData(DATA_SISTER_SVALNA)))
                     svalna->AI()->DoAction(ACTION_START_GAUNTLET);
                 for (uint32 i = 0; i < 4; ++i)
@@ -772,7 +773,7 @@ public:
             }
         }
 
-        void SetGUID(ObjectGuid const& guid, int32 type/* = 0*/) override
+        void SetGUID(ObjectGuid guid, int32 type/* = 0*/) override
         {
             if (type == ACTION_VRYKUL_DEATH)
             {
@@ -856,7 +857,7 @@ public:
                 std::list<Creature*> temp;
                 FrostwingVrykulSearcher check(me, 150.0f);
                 Acore::CreatureListSearcher<FrostwingVrykulSearcher> searcher(me, temp, check);
-                Cell::VisitObjects(me, searcher, 150.0f);
+                Cell::VisitGridObjects(me, searcher, 150.0f);
 
                 _aliveTrash.clear();
                 for (std::list<Creature*>::iterator itr = temp.begin(); itr != temp.end(); ++itr)
@@ -901,14 +902,14 @@ public:
                 Player* player = nullptr;
                 Acore::AnyPlayerInObjectRangeCheck check(me, 140.0f);
                 Acore::PlayerSearcher<Acore::AnyPlayerInObjectRangeCheck> searcher(me, player, check);
-                Cell::VisitObjects(me, searcher, 140.0f);
+                Cell::VisitWorldObjects(me, searcher, 140.0f);
                 // wipe
                 if (!player || me->GetExactDist(4357.0f, 2606.0f, 350.0f) > 125.0f)
                 {
                     //Talk(SAY_CROK_DEATH);
                     FrostwingGauntletRespawner respawner;
                     Acore::CreatureWorker<FrostwingGauntletRespawner> worker(me, respawner);
-                    Cell::VisitObjects(me, worker, 333.0f);
+                    Cell::VisitGridObjects(me, worker, 333.0f);
                     return;
                 }
             }
@@ -934,7 +935,7 @@ public:
                 case EVENT_START_PATHING:
                     me->RemoveUnitFlag(UNIT_FLAG_NON_ATTACKABLE);
                     me->SetImmuneToAll(false);
-                    Start(true);
+                    Start(true, true);
                     break;
                 case EVENT_SCOURGE_STRIKE:
                     DoCastVictim(SPELL_SCOURGE_STRIKE);
@@ -1016,15 +1017,15 @@ public:
             if (Creature* crok = ObjectAccessor::GetCreature(*me, instance->GetGuidData(DATA_CROK_SCOURGEBANE))) // _isEventDone = true, setActive(false)
                 crok->AI()->DoAction(ACTION_RESET_EVENT);
 
-            Milliseconds delay = 6s;
+            uint64 delay = 6000;
             for (uint32 i = 0; i < 4; ++i)
                 if (Creature* crusader = ObjectAccessor::GetCreature(*me, instance->GetGuidData(DATA_CAPTAIN_ARNATH + i)))
                     if (crusader->IsAlive())
                     {
                         if (crusader->GetEntry() == crusader->GetCreatureData()->id1)
                         {
-                            crusader->m_Events.AddEventAtOffset(new CaptainSurviveTalk(*crusader), delay);
-                            delay += 6s;
+                            crusader->m_Events.AddEvent(new CaptainSurviveTalk(*crusader), crusader->m_Events.CalculateTime(delay));
+                            delay += 6000;
                         }
                         else
                             Unit::Kill(crusader, crusader);
@@ -1162,7 +1163,7 @@ public:
                     Talk(SAY_SVALNA_AGGRO);
                     break;
                 case EVENT_IMPALING_SPEAR:
-                    if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, 0.0f, true, false, -SPELL_IMPALING_SPEAR))
+                    if (Unit* target = SelectTarget(SelectTargetMethod::Random, 1, 0.0f, true, true, -SPELL_IMPALING_SPEAR))
                     {
                         DoCast(me, SPELL_AETHER_SHIELD);
                         me->AddAura(70203, me);
@@ -1348,7 +1349,7 @@ public:
                     Events.ScheduleEvent(EVENT_ARNATH_SMITE, 4s, 7s);
                     break;
                 case EVENT_ARNATH_DOMINATE_MIND:
-                    if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, 0.0f, true, false, -SPELL_DOMINATE_MIND))
+                    if (Unit* target = SelectTarget(SelectTargetMethod::Random, 1, 0.0f, true, true, -SPELL_DOMINATE_MIND))
                         DoCast(target, SPELL_DOMINATE_MIND);
                     Events.ScheduleEvent(EVENT_ARNATH_DOMINATE_MIND, 28s, 37s);
                     break;
@@ -1365,7 +1366,7 @@ public:
             Creature* target = nullptr;
             Acore::MostHPMissingInRange u_check(me, 60.0f, 0);
             Acore::CreatureLastSearcher<Acore::MostHPMissingInRange> searcher(me, target, u_check);
-            Cell::VisitObjects(me, searcher, 60.0f);
+            Cell::VisitGridObjects(me, searcher, 60.0f);
             return target;
         }
     };
@@ -1426,7 +1427,7 @@ public:
                         Events.ScheduleEvent(EVENT_BRANDON_JUDGEMENT_OF_COMMAND, 8s, 13s);
                         break;
                     case EVENT_BRANDON_HAMMER_OF_BETRAYAL:
-                        if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, 0.0f, true, false))
+                        if (Unit* target = SelectTarget(SelectTargetMethod::Random, 1, 0.0f, true))
                             DoCast(target, SPELL_HAMMER_OF_BETRAYAL);
                         Events.ScheduleEvent(EVENT_BRANDON_HAMMER_OF_BETRAYAL, 45s, 60s);
                         break;
@@ -1553,12 +1554,12 @@ public:
                         Events.ScheduleEvent(EVENT_RUPERT_FEL_IRON_BOMB, 15s, 20s);
                         break;
                     case EVENT_RUPERT_MACHINE_GUN:
-                        if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, 0.0f, false, false))
+                        if (Unit* target = SelectTarget(SelectTargetMethod::Random, 1))
                             DoCast(target, SPELL_MACHINE_GUN);
                         Events.ScheduleEvent(EVENT_RUPERT_MACHINE_GUN, 25s, 30s);
                         break;
                     case EVENT_RUPERT_ROCKET_LAUNCH:
-                        if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, 0.0f, false, false))
+                        if (Unit* target = SelectTarget(SelectTargetMethod::Random, 1))
                             DoCast(target, SPELL_ROCKET_LAUNCH);
                         Events.ScheduleEvent(EVENT_RUPERT_ROCKET_LAUNCH, 10s, 15s);
                         break;
@@ -1810,7 +1811,7 @@ public:
             {
                 _vehicleCheckTimer = 500;
                 if (!me->GetVehicle())
-                    me->DespawnOrUnsummon(100ms);
+                    me->DespawnOrUnsummon(100);
             }
             else
                 _vehicleCheckTimer -= diff;
@@ -2151,7 +2152,7 @@ class spell_svalna_remove_spear : public SpellScript
         {
             if (Unit* vehicle = target->GetVehicleBase())
                 vehicle->RemoveAurasDueToSpell(SPELL_IMPALING_SPEAR);
-            target->DespawnOrUnsummon(1ms);
+            target->DespawnOrUnsummon(1);
         }
     }
 
@@ -2261,7 +2262,7 @@ public:
                     {
                         FrostwingGauntletRespawner respawner;
                         Acore::CreatureWorker<FrostwingGauntletRespawner> worker(crok, respawner);
-                        Cell::VisitObjects(crok, worker, 333.0f);
+                        Cell::VisitGridObjects(crok, worker, 333.0f);
                         return true;
                     }
                     else
@@ -2398,7 +2399,7 @@ class spell_icc_yd_summon_undead : public SpellScript
     void HandleDummyLaunch(SpellEffIndex /*effIndex*/)
     {
         if (Unit* c = GetCaster())
-            if (c->GetMapId() == MAP_ICECROWN_CITADEL)
+            if (c->GetMapId() == 631)
                 for (uint8 i = 0; i < 5; ++i)
                     c->CastSpell(c, 71302, true);
     }
@@ -2796,38 +2797,38 @@ class SeveredEssenceSpellInfo
 public:
     uint8 Class;
     uint32 id;
-    Milliseconds cooldown_ms;
+    uint32 cooldown_ms;
     uint8 targetType;
     float range;
 };
 
 SeveredEssenceSpellInfo sesi_spells[] =
 {
-    { CLASS_SHAMAN, 71938, 5s, 1, 0.0f },
-    { CLASS_PALADIN, 57767, 8s, 2, 30.0f },
-    { CLASS_WARLOCK, 71937, 10s, 1, 0.0f },
-    { CLASS_DEATH_KNIGHT, 49576, 15s, 1, 30.0f },
-    { CLASS_ROGUE, 71933, 8s, 1, 0.0f },
-    { CLASS_MAGE, 71928, 4s, 1, 40.0f },
-    { CLASS_PALADIN, 71930, 5s, 2, 40.0f },
-    { CLASS_ROGUE, 71955, 40s, 1, 30.0f },
-    { CLASS_PRIEST, 71931, 5s, 2, 40.0f },
-    { CLASS_SHAMAN, 71934, 7s, 1, 0.0f },
-    { CLASS_DRUID, 71925, 5s, 1, 0.0f },
-    { CLASS_DEATH_KNIGHT, 71951, 8s, 1, 0.0f },
-    { CLASS_DEATH_KNIGHT, 71924, 8s, 1, 0.0f },
-    { CLASS_WARLOCK, 71965, 20s, 0, 0.0f },
-    { CLASS_PRIEST, 71932, 8s, 2, 40.0f },
-    { CLASS_DRUID, 71926, 10s, 1, 0.0f },
-    { CLASS_WARLOCK, 71936, 9s, 1, 0.0f },
-    { CLASS_ROGUE, 57640, 3s, 1, 0.0f },
-    { CLASS_WARRIOR, 71961, 5s, 1, 0.0f },
-    { CLASS_MAGE, 71929, 10s, 1, 0.0f },
-    { CLASS_WARRIOR, 53395, 5s, 1, 0.0f },
-    { CLASS_WARRIOR, 71552, 5s, 1, 0.0f },
-    { CLASS_HUNTER, 36984, 7s, 1, 0.0f },
-    { CLASS_HUNTER, 29576, 5s, 1, 0.0f },
-    { 0, 0, 0ms, 0, 0.0f }
+    {CLASS_SHAMAN, 71938, 5000, 1, 0.0f},
+    {CLASS_PALADIN, 57767, 8000, 2, 30.0f},
+    {CLASS_WARLOCK, 71937, 10000, 1, 0.0f},
+    {CLASS_DEATH_KNIGHT, 49576, 15000, 1, 30.0f},
+    {CLASS_ROGUE, 71933, 8000, 1, 0.0f},
+    {CLASS_MAGE, 71928, 4000, 1, 40.0f},
+    {CLASS_PALADIN, 71930, 5000, 2, 40.0f},
+    {CLASS_ROGUE, 71955, 40000, 1, 30.0f},
+    {CLASS_PRIEST, 71931, 5000, 2, 40.0f},
+    {CLASS_SHAMAN, 71934, 7000, 1, 0.0f},
+    {CLASS_DRUID, 71925, 5000, 1, 0.0f},
+    {CLASS_DEATH_KNIGHT, 71951, 8000, 1, 0.0f},
+    {CLASS_DEATH_KNIGHT, 71924, 8000, 1, 0.0f},
+    {CLASS_WARLOCK, 71965, 20000, 0, 0.0f},
+    {CLASS_PRIEST, 71932, 8000, 2, 40.0f},
+    {CLASS_DRUID, 71926, 10000, 1, 0.0f},
+    {CLASS_WARLOCK, 71936, 9000, 1, 0.0f},
+    {CLASS_ROGUE, 57640, 3000, 1, 0.0f},
+    {CLASS_WARRIOR, 71961, 5000, 1, 0.0f},
+    {CLASS_MAGE, 71929, 10000, 1, 0.0f},
+    {CLASS_WARRIOR, 53395, 5000, 1, 0.0f},
+    {CLASS_WARRIOR, 71552, 5000, 1, 0.0f},
+    {CLASS_HUNTER, 36984, 7000, 1, 0.0f},
+    {CLASS_HUNTER, 29576, 5000, 1, 0.0f},
+    {0, 0, 0, 0, 0.0f},
 };
 
 class npc_icc_severed_essence : public CreatureScript
@@ -2862,7 +2863,7 @@ public:
                 if (sesi_spells[i].id)
                 {
                     if (Class == sesi_spells[i].Class)
-                        events.ScheduleEvent(i + 1, Milliseconds(sesi_spells[i].cooldown_ms / 4));
+                        events.ScheduleEvent(i + 1, sesi_spells[i].cooldown_ms / 4);
                 }
                 else
                     break;
@@ -2895,7 +2896,7 @@ public:
                 if (target)
                     me->CastSpell(target, sesi_spells[e - 1].id, TRIGGERED_IGNORE_SHAPESHIFT);
 
-                events.Repeat(sesi_spells[e - 1].cooldown_ms);
+                events.RepeatEvent(sesi_spells[e - 1].cooldown_ms);
             }
 
             if (Class == CLASS_HUNTER)
@@ -3337,7 +3338,7 @@ public:
         void ScheduleBroodlings()
         {
             for (uint8 i = 0; i < 30; ++i)
-                events.ScheduleEvent(EVENT_SUMMON_BROODLING, Milliseconds(10000 + i * 350));
+                events.ScheduleEvent(EVENT_SUMMON_BROODLING, 10000 + i * 350);
         }
 
         void SummonBroodling()
@@ -3347,7 +3348,7 @@ public:
             if (Creature* broodling = me->SummonCreature(NPC_NERUBAR_BROODLING, me->GetPositionX() + cos(o) * dist, me->GetPositionY() + std::sin(o) * dist, 250.0f, Position::NormalizeOrientation(o - M_PI)))
             {
                 broodling->CastSpell(broodling, SPELL_WEB_BEAM2, false);
-                broodling->GetMotionMaster()->MovePoint(POINT_ENTER_COMBAT, broodling->GetPositionX(), broodling->GetPositionY(), 213.03f, FORCED_MOVEMENT_NONE, 0.f, 0.f, false);
+                broodling->GetMotionMaster()->MovePoint(POINT_ENTER_COMBAT, broodling->GetPositionX(), broodling->GetPositionY(), 213.03f, false);
             }
         }
 
@@ -3521,7 +3522,7 @@ public:
                 me->CastSpell(me, SPELL_GIANT_INSECT_SWARM, true);
 
                 for (uint8 i = 0; i < 60; ++i)
-                    events.ScheduleEvent(EVENT_GAUNTLET_PHASE1, Seconds(i));
+                    events.ScheduleEvent(EVENT_GAUNTLET_PHASE1, i * 1000);
                 events.ScheduleEvent(EVENT_GAUNTLET_PHASE2, 1min);
             }
         }

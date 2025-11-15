@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -19,6 +19,7 @@
 #define DEF_TEMPLE_OF_AHNQIRAJ_H
 
 #include "CreatureAIImpl.h"
+#include "../scripts/Custom/Timewalking/10Man.h"
 
 #define DataHeader "AQT"
 #define TempleOfAhnQirajScriptName "instance_temple_of_ahnqiraj"
@@ -60,7 +61,7 @@ enum Creatures
     NPC_BODY_OF_CTHUN       = 15809,
     NPC_GIANT_CLAW_TENTACLE = 15728,
     NPC_GIANT_EYE_TENTACLE  = 15334,
-    NPC_FLESH_TENTACLE      = 15802,
+    NPC_FLESH_TENTACLE      = 400159,
     NPC_GIANT_PORTAL        = 15910,
     NPC_SARTURA_ROYAL_GUARD = 15984,
     NPC_VISCIDUS            = 15299,

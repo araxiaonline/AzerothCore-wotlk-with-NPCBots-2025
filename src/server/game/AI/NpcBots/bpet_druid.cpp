@@ -58,7 +58,7 @@ public:
             if ((liveTimer += diff) >= TREANT_DURATION)
             {
                 canUpdate = false;
-                me->ToTempSummon()->UnSummon(1ms);
+                me->ToTempSummon()->UnSummon(1);
                 return;
             }
 
@@ -101,9 +101,9 @@ public:
         {
         }
 
-        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType, SpellSchoolMask damageSchoolMask) override
+        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType) override
         {
-            bot_pet_ai::DamageDealt(victim, damage, damageType, damageSchoolMask);
+            bot_pet_ai::DamageDealt(victim, damage, damageType);
         }
 
         void DamageTaken(Unit* u, uint32& /*damage*/, DamageEffectType /*damageType*/, SpellSchoolMask /*schoolMask*/) override

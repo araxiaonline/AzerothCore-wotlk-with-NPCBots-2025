@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -78,6 +78,20 @@ public:
             massEruptionTimer = 600000; // 10 mins
         }
 
+        void JustDied(Unit* /*killer*/) override
+        {
+            _JustDied();            
+            Map::PlayerList const& players = me->GetMap()->GetPlayers();
+            for (auto const& playerPair : players)
+            {
+                Player* player = playerPair.GetSource();
+                if (player)
+                {
+                    DistributeChallengeRewards(player, me, 1, false);
+                }
+            }
+        }
+
         void UpdateAI(uint32 diff) override
         {
             if (!UpdateVictim())
@@ -111,13 +125,13 @@ public:
                     case EVENT_ANTIMAGIC_PULSE:
                     {
                         DoCastSelf(SPELL_ANTIMAGIC_PULSE);
-                        events.Repeat(20s);
+                        events.RepeatEvent(20000);
                         break;
                     }
                     case EVENT_MAGMA_SHACKLES:
                     {
                         DoCastSelf(SPELL_MAGMA_SHACKLES);
-                        events.Repeat(15s);
+                        events.RepeatEvent(15000);
                         break;
                     }
                 }

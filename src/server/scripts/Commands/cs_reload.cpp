@@ -1,19 +1,26 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
+
+/* ScriptData
+Name: reload_commandscript
+%Complete: 100
+Comment: All reload related commands
+Category: commandscripts
+EndScriptData */
 
 #include "AchievementMgr.h"
 #include "AuctionHouseMgr.h"
@@ -31,7 +38,6 @@
 #include "MotdMgr.h"
 #include "ObjectMgr.h"
 #include "ScriptMgr.h"
-#include "ServerMailMgr.h"
 #include "SkillDiscovery.h"
 #include "SkillExtraItems.h"
 #include "SmartAI.h"
@@ -41,7 +47,6 @@
 #include "Tokenize.h"
 #include "WardenCheckMgr.h"
 #include "WaypointMgr.h"
-#include "WorldGlobals.h"
 
 using namespace Acore::ChatCommands;
 
@@ -68,7 +73,6 @@ public:
         };
         static ChatCommandTable reloadCommandTable =
         {
-            { "antidos_opcode_policies",       HandleReloadAntiDosOpcodePoliciesCommand,      SEC_ADMINISTRATOR, Console::Yes },
             { "auctions",                      HandleReloadAuctionsCommand,                   SEC_ADMINISTRATOR, Console::Yes },
             { "dungeon_access_template",       HandleReloadDungeonAccessCommand,              SEC_ADMINISTRATOR, Console::Yes },
             { "dungeon_access_requirements",   HandleReloadDungeonAccessCommand,              SEC_ADMINISTRATOR, Console::Yes },
@@ -1059,9 +1063,9 @@ public:
     static bool HandleReloadDisablesCommand(ChatHandler* handler)
     {
         LOG_INFO("server.loading", "Reloading disables table...");
-        sDisableMgr->LoadDisables();
+        DisableMgr::LoadDisables();
         LOG_INFO("server.loading", "Checking quest disables...");
-        sDisableMgr->CheckQuestDisables();
+        DisableMgr::CheckQuestDisables();
         handler->SendGlobalGMSysMessage("DB table `disables` reloaded.");
         return true;
     }
@@ -1190,16 +1194,8 @@ public:
     static bool HandleReloadMailServerTemplateCommand(ChatHandler* handler)
     {
         LOG_INFO("server.loading", "Reloading `server_mail_template` table");
-        sServerMailMgr->LoadMailServerTemplates();
+        sObjectMgr->LoadMailServerTemplates();
         handler->SendGlobalGMSysMessage("DB table `server_mail_template` reloaded.");
-        return true;
-    }
-
-    static bool HandleReloadAntiDosOpcodePoliciesCommand(ChatHandler* handler)
-    {
-        LOG_INFO("server.loading", "Reloading AntiDos opcode policies...");
-        sWorldGlobals->LoadAntiDosOpcodePolicies();
-        handler->SendGlobalGMSysMessage("AntiDos opcode policies reloaded.");
         return true;
     }
 

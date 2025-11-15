@@ -146,6 +146,8 @@ public:
             me->ApplySpellImmune(0, IMMUNITY_MECHANIC, MECHANIC_HORROR, true);
             me->ApplySpellImmune(0, IMMUNITY_MECHANIC, MECHANIC_TURN, true);
             me->ApplySpellImmune(0, IMMUNITY_MECHANIC, MECHANIC_SLEEP, true);
+
+            _locusts.resize(MAX_LOCUSTS_MAXLEVEL, ObjectGuid::Empty);
         }
 
         bool doCast(Unit* victim, uint32 spellId)
@@ -202,7 +204,7 @@ public:
             };
             Creature* creature = nullptr;
             Bcore::CreatureSearcher searcher(me, creature, corpse_pred);
-            Cell::VisitObjects(me, searcher, 30.f);
+            Cell::VisitAllObjects(me, searcher, 30.f);
 
             if (creature)
             {
@@ -618,7 +620,7 @@ public:
 
             locust->SetUInt32Value(UNIT_CREATED_BY_SPELL, LOCUST_SWARM_1);
 
-            locust->GetMotionMaster()->MovePoint(1, pos, FORCED_MOVEMENT_NONE, 0.0f, false);
+            locust->GetMotionMaster()->MovePoint(1, pos, false);
 
             locust->GetAI()->SetData(BOTPETAI_MISC_CAPACITY, CalculatePct(me->GetMaxHealth(), uint32(2)));
             locust->GetAI()->SetData(BOTPETAI_MISC_MAX_ATTACKERS, CalculatePct(me->GetMaxHealth(), (_getMaxLocusts() + 2) / 3));
@@ -658,8 +660,8 @@ public:
                 _minions.erase(summon);
             else
             {
-                Swarm::iterator it = std::ranges::find(_locusts, summon->GetGUID());
-                if (it != _locusts.end())
+                Swarm::iterator it = std::find(std::begin(_locusts), std::end(_locusts), summon->GetGUID());
+                if (it != std::end(_locusts))
                     *it = ObjectGuid::Empty;
             }
         }
@@ -824,8 +826,8 @@ public:
 
         typedef std::set<Creature*> Summons;
         Summons _minions;
-        typedef std::array<ObjectGuid, MAX_LOCUSTS_MAXLEVEL> Swarm;
-        Swarm _locusts{};
+        typedef std::vector<ObjectGuid> Swarm;
+        Swarm _locusts;
     };
 };
 

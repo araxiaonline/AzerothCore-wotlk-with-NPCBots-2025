@@ -43,7 +43,7 @@ enum MageBaseSpells
     LIVING_BOMB_1                       = 44457,
     FLAMESTRIKE_1                       = 2120,
     COMBUSTION_1                        = 11129,
-    FROSTFIRE_BOLT_1                    = 44614,
+    FROSTFIRE_BOLT_1                    = 844614,
     FIREBALL_1                          = 133,
     FROSTBOLT_1                         = 116,
     FROST_NOVA_1                        = 122,
@@ -72,8 +72,13 @@ enum MageBaseSpells
     CONJURE_MANA_GEM_1                  = 759,
     MANA_GEM_1                          = 5405,
     RITUAL_OF_REFRESHMENT_1             = 43987,
+    TIME_WARP_1                         = 832182,
 
-    SUMMON_WATER_ELEMENTAL_1            = 31687
+    EXHAUSTION_AURA                     = 57723,
+    SATED_AURA                          = 57724,
+
+    SUMMON_WATER_ELEMENTAL_1            = 31687,
+    SPELL_ID_THORIUM_GRENADE            = 19769
 };
 
 enum MagePassives
@@ -124,7 +129,9 @@ enum MagePassives
     GLYPG_REMOVE_CURSE                  = 56364,
     GLYPH_ICY_VEINS                     = 56374,
     GLYPH_LIVING_BOMB                   = 63091,
-    GLYPH_ICE_LANCE                     = 56377
+    GLYPH_ICE_LANCE                     = 56377,
+    ARCANE_FOCUS                        = 22007 //Dinkle
+
 };
 enum MageSpecial
 {
@@ -142,8 +149,11 @@ enum MageSpecial
     IMPROVED_BLIZZARD_CHILL             = 12486,//rank 3
     FROSTBITE_TRIGGERED                 = 12494,
     WINTERS_CHILL_TRIGGERED             = 12579,
-    IGNITE_TRIGGERED                    = 12654
+    IGNITE_TRIGGERED                    = 12654,
+    NETHERWIND_PRESENCE_BUFF            = 22008,
 };
+
+const uint32 THORIUM_GRENADE_SPELL_ID = 19769;
 
 static const uint32 Mage_spells_damage_arr[] =
 { ARCANEMISSILES_1, ARCANE_BLAST_1, BLAST_WAVE_1, BLIZZARD_1, CONE_OF_COLD_1, DEEP_FREEZE_1, DRAGON_BREATH_1, FIREBALL_1,
@@ -157,7 +167,7 @@ static const uint32 Mage_spells_support_arr[] =
 { AMPLIFYMAGIC_1, ARCANEINTELLECT_1, BLINK_1, COMBUSTION_1, DAMPENMAGIC_1, EVOCATION_1, FIRE_WARD_1, FROST_WARD_1,
 FROST_ARMOR_1, FOCUS_MAGIC_1, ICE_BARRIER_1, ICE_BLOCK_1, ICY_VEINS_1, INVISIBILITY_1, ICE_ARMOR_1, MOLTEN_ARMOR_1,
 SLOW_FALL_1, SPELLSTEAL_1, REMOVE_CURSE_1, CONJURE_MANA_GEM_1, RITUAL_OF_REFRESHMENT_1, SUMMON_WATER_ELEMENTAL_1,
-COLD_SNAP_1, PRESENCE_OF_MIND_1, ARCANE_POWER_1 };
+COLD_SNAP_1, PRESENCE_OF_MIND_1, ARCANE_POWER_1, TIME_WARP_1 };
 
 static const std::vector<uint32> Mage_spells_damage(FROM_ARRAY(Mage_spells_damage_arr));
 static const std::vector<uint32> Mage_spells_cc(FROM_ARRAY(Mage_spells_cc_arr));
@@ -221,21 +231,106 @@ public:
             GetInPosition(force, u);
         }
 
+        void CheckTimeWarp(uint32 diff)
+        {
+            // Timer to control how often the bot checks the possibility to cast Time Warp
+            if (TimeWarpCheckTimer > diff)
+            {
+                TimeWarpCheckTimer -= diff;
+                return;
+            }
+
+            // Reset the timer for the next check
+            TimeWarpCheckTimer = 3000; // Check every 3 seconds
+
+            // Conditions to skip casting Time Warp
+            if (!me->IsInCombat() || !master->IsInCombat() || // Both bot and master must be in combat
+                me->GetDistance(master) > 30 || // Ensure the master is within 30 yards
+                me->HasAura(EXHAUSTION_AURA) || master->HasAura(EXHAUSTION_AURA) || // Check for Exhaustion/Sated debuff
+                !(me->GetVictim() || master->GetVictim())) // Either the bot or the master must have a target
+            {
+                return;
+            }
+
+            uint32 TIME_WARP = TIME_WARP_1;
+
+            // Check if Time Warp is ready to be cast (not on cooldown)
+            if (!IsSpellReady(TIME_WARP, diff))
+                return;
+
+            // Conditions to justify using Time Warp
+            Unit* target = me->GetVictim() ? me->GetVictim() : master->GetVictim();
+            if (target &&
+                (target->GetHealth() > me->GetMaxHealth() * 10 ||
+                    target->GetTypeId() == TYPEID_PLAYER ||
+                    target->ToCreature() && (target->ToCreature()->IsDungeonBoss() || target->ToCreature()->isWorldBoss()) ||
+                    me->getAttackers().size() + master->getAttackers().size() >= 5))
+            {
+                me->InterruptNonMeleeSpells(true);
+                if (doCast(me, TIME_WARP))
+                {
+                    if (!IsWanderer()) 
+                    {
+                        const char* timeWarpMessages[] = {
+                            "|cFFFFFFFFLet's do the Time Warp again!|r",
+                            "|cFFFFFFFFIt's just a jump to the left... Time Warp!|r",
+                            "|cFFFFFFFFAnd then a step to the right! Time's bending!|r",
+                            "|cFFFFFFFFWith your hands on your hips, you bring your knees in tight... Time Warp!|r",
+                            "|cFFFFFFFFCasting Time Warp!|r",
+                            "|cFFFFFFFFBut it's the pelvic thrust that really drives you insane! Time Warp!|r",
+                        };
+
+                        int randomIndex = urand(0, sizeof(timeWarpMessages) / sizeof(char*) - 1);
+                        const char* selectedMessage = timeWarpMessages[randomIndex];
+
+                        char messageBuffer[256];
+                        snprintf(messageBuffer, sizeof(messageBuffer), selectedMessage);
+
+                        me->Say(messageBuffer, LANG_UNIVERSAL, me->ToUnit());
+                    }
+                    return;
+                }
+            }
+        }
+        
         void Counter(uint32 diff)
         {
-            //skip if evocation, blizzard
+            // Skip if evocation, blizzard
             if (IsChanneling() || Rand() > 30)
                 return;
 
+            // Dinkle
             if (IsSpellReady(COUNTERSPELL_1, diff, false))
             {
                 if (Unit* target = FindCastingTarget(CalcSpellMaxRange(COUNTERSPELL_1), 0, COUNTERSPELL_1))
                 {
                     me->InterruptNonMeleeSpells(false);
                     if (doCast(target, GetSpell(COUNTERSPELL_1)))
+                    {
+                        if (!IsWanderer()) 
+                        {
+                            const char* counterspellMessages[] = {
+                                "|cFFFFFFFFSilenced %s! No casting for you.|r",
+                                "|cFFFFFFFF%s's spell has been countered!|r",
+                                "|cFFFFFFFFCutting %s off mid-cast! Counterspell for the win.|r",
+                                "|cFFFFFFFF%s, your magic is denied!|r",
+                                "|cFFFFFFFF%s's spell interrupted! Keep the pressure on.|r",
+                            };
+
+                            int randomIndex = urand(0, sizeof(counterspellMessages) / sizeof(char*) - 1);
+                            const char* selectedMessage = counterspellMessages[randomIndex];
+
+                            char messageBuffer[256];
+                            snprintf(messageBuffer, sizeof(messageBuffer), selectedMessage, target->GetName().c_str());
+
+                            me->Say(messageBuffer, LANG_UNIVERSAL, me->ToUnit());
+                        }
                         return;
+                    }
                 }
             }
+            // End Dinkle
+
             if (IsSpellReady(DEEP_FREEZE_1, diff) && me->HasAuraType(SPELL_AURA_ABILITY_IGNORE_AURASTATE))
             {
                 if (Unit* target = FindCastingTarget(CalcSpellMaxRange(DEEP_FREEZE_1), 0, DEEP_FREEZE_1))
@@ -259,19 +354,90 @@ public:
                 if (Unit* target = FindCastingTarget(CalcSpellMaxRange(POLYMORPH_1), 0, POLYMORPH_1, 75))
                 {
                     if (doCast(target, GetSpell(POLYMORPH_1)))
+                    {
+                        if (!IsWanderer()) 
+                        {
+                            const char* polymorphMessages[] = {
+                                "|cFFFFFFFFTurned %s into a harmless critter! Focus on the others.|r",
+                                "|cFFFFFFFF%s is now a little fluffy! Let's not hit them for a bit.|r",
+                                "|cFFFFFFFFGot %s on a timeout! They're a critter now.|r",
+                                "|cFFFFFFFF%s has been polymorphed! They're out of the game for now.|r",
+                                "|cFFFFFFFFCasting Polymorph on %s!|r",
+                            };
+
+                            int randomIndex = urand(0, sizeof(polymorphMessages) / sizeof(char*) - 1);
+                            const char* selectedMessage = polymorphMessages[randomIndex];
+
+                            char messageBuffer[256];
+                            snprintf(messageBuffer, sizeof(messageBuffer), selectedMessage, target->GetName().c_str());
+
+                            me->Say(messageBuffer, LANG_UNIVERSAL, me->ToUnit());
+                        }
                         return;
+                    }
                 }
             }
         }
 
         void CheckSpellSteal(uint32 diff)
         {
-            if (!IsSpellReady(SPELLSTEAL_1, diff) || IsCasting() || Rand() > 15)
+            if (!IsSpellReady(SPELLSTEAL_1, diff))
+                return;
+
+            // Special handling for Krosh Firehand in the High King Maulgar fight
+            Unit* kroshFirehand = nullptr;
+            std::list<Unit*> targets;
+            GetNearbyTargetsList(targets, CalcSpellMaxRange(SPELLSTEAL_1), 0); // No special handling for CC'd targets
+            for (Unit* target : targets)
+            {
+                if (target->GetEntry() == 18832) // Krosh Firehand's entry ID
+                {
+                    kroshFirehand = target;
+                    break;
+                }
+            }
+
+            if (kroshFirehand && kroshFirehand->HasAura(33054)) // Spell Shield ID
+            {
+                if (doCast(kroshFirehand, GetSpell(SPELLSTEAL_1)))
+                {
+                    NotifySpellSteal(kroshFirehand);
+                    return; 
+                }
+            }
+
+            // For other targets, retain the original casting and random chance checks
+            if (IsCasting() || Rand() > 15)
                 return;
 
             Unit* target = FindHostileDispelTarget(CalcSpellMaxRange(SPELLSTEAL_1), true);
             if (target && doCast(target, GetSpell(SPELLSTEAL_1)))
-                return;
+            {
+                NotifySpellSteal(target);
+                return; 
+            }
+        }
+
+        void NotifySpellSteal(Unit* target)
+        {
+            if (!IsWanderer()) 
+            {
+                const char* spellStealMessages[] = {
+                    "|cFFFFFFFFSnatched a spell from %s! What's yours is mine now.|r",
+                    "|cFFFFFFFF%s's buff? I'll take that, thank you!|r",
+                    "|cFFFFFFFFJust borrowed a little something from %s.|r",
+                    "|cFFFFFFFFYoink! That spell from %s looks better on me.|r",
+                    "|cFFFFFFFFWhat a nice spell you had, %s. I'll be holding onto that.|r",
+                };
+
+                int randomIndex = urand(0, sizeof(spellStealMessages) / sizeof(char*) - 1);
+                const char* selectedMessage = spellStealMessages[randomIndex];
+
+                char messageBuffer[256];
+                snprintf(messageBuffer, sizeof(messageBuffer), selectedMessage, target->GetName().c_str());
+
+                me->Say(messageBuffer, LANG_UNIVERSAL, me->ToUnit());
+            }
         }
 
         void DoNonCombatActions(uint32 diff)
@@ -279,7 +445,8 @@ public:
             if (GC_Timer > diff || me->IsMounted() || Feasting() || Rand() > 25)
                 return;
 
-            //slow fall
+            // Slow Fall
+            // Dinkle
             if (GetSpell(SLOW_FALL_1) && !IAmFree())
             {
                 Player* fPlayer = nullptr;
@@ -300,22 +467,44 @@ public:
                 }
                 else if (master->IsAlive() && master->GetDistance(me) < 30 && master->IsFalling() &&
                     master->m_movementInfo.fallTime > 1000 && !master->HasAuraType(SPELL_AURA_FEATHER_FALL))
+                {
                     fPlayer = master;
+                }
 
                 if (fPlayer && doCast(fPlayer, GetSpell(SLOW_FALL_1)))
+                {
+                    if (!IsWanderer()) 
+                    {
+                        const char* slowFallMessages[] = {
+                            "|cFFFFFFFFGiving %s a soft landing with Slow Fall.|r",
+                            "|cFFFFFFFFNo need to fear falling, %s, Slow Fall's got you covered!|r",
+                            "|cFFFFFFFF%s, enjoy the gentle descent with Slow Fall.|r",
+                            "|cFFFFFFFFEnsuring %s doesn't go splat with a bit of Slow Fall magic!|r",
+                            "|cFFFFFFFF%s's fall is now as gentle as a feather, thanks to Slow Fall.|r",
+                        };
+
+                        int randomIndex = urand(0, sizeof(slowFallMessages) / sizeof(char*) - 1);
+                        const char* selectedMessage = slowFallMessages[randomIndex];
+
+                        char messageBuffer[256];
+                        snprintf(messageBuffer, sizeof(messageBuffer), selectedMessage, fPlayer->GetName().c_str());
+
+                        me->Say(messageBuffer, LANG_UNIVERSAL, me->ToUnit());
+                    }
                     return;
+                }
             }
 
-            //ARMOR
-            uint32 MOLTENARMOR = HasRole(BOT_ROLE_DPS) ? GetSpell(MOLTEN_ARMOR_1) : GetSpell(ICE_ARMOR_1);
-            uint32 ICEARMOR = GetSpell(ICE_ARMOR_1) ? GetSpell(ICE_ARMOR_1) : GetSpell(FROST_ARMOR_1);
-            uint32 ARMOR = !MOLTENARMOR ? ICEARMOR : (me->GetMap()->IsDungeon() || !ICEARMOR) ? MOLTENARMOR : ICEARMOR;
+            // Dinkle Molten ARMOR prio
+            uint32 MOLTEN_ARMOR = HasRole(BOT_ROLE_DPS) ? GetSpell(MOLTEN_ARMOR_1) : 0;
+            uint32 ICE_ARMOR = GetSpell(ICE_ARMOR_1) ? GetSpell(ICE_ARMOR_1) : GetSpell(FROST_ARMOR_1);
+            uint32 ARMOR = MOLTEN_ARMOR ? MOLTEN_ARMOR : ICE_ARMOR;  
+
             if (ARMOR && !me->HasAura(ARMOR))
             {
                 if (doCast(me, ARMOR))
-                    return;
+                    return;  // Stop further actions if armor is successfully cast
             }
-
             if (GetSpell(CONJURE_MANA_GEM_1))
             {
                 if (manaGemCharges == 0 &&
@@ -363,6 +552,7 @@ public:
 
             CheckRacials(diff);
 
+            CheckTimeWarp(diff);
             CheckShield(diff);
             CureGroup(GetSpell(REMOVE_CURSE_1), diff);
             CheckWard(diff);
@@ -400,6 +590,25 @@ public:
             CheckUsableItems(diff);
 
             DoNormalAttack(diff);
+
+            if (IsSpellReady(THORIUM_GRENADE_SPELL_ID, diff))
+            {
+                std::list<Creature*> targets;
+                me->GetCreaturesWithEntryInRange(targets, 35.0f, 15555);
+
+                for (Creature* target : targets)
+                {
+                    if (!target->IsAlive() || me->IsFriendlyTo(target))
+                        continue;
+
+                    if (me->IsWithinDistInMap(target, 35.0f)) 
+                    {
+                        me->CastSpell(target, THORIUM_GRENADE_SPELL_ID, true);
+                        SetSpellCooldown(THORIUM_GRENADE_SPELL_ID, 3000);
+                        break; 
+                    }
+                }
+            }
         }
 
         void DoNormalAttack(uint32 diff)
@@ -537,6 +746,39 @@ public:
                 if (doCast(mytar, GetSpell(PYROBLAST_1)))
                     return;
             }
+            // Pyroblast2 NETHERWIND
+            if (IsSpellReady(PYROBLAST_1, diff) && can_do_fire && dist < CalcSpellMaxRange(PYROBLAST_1) &&
+                GetSpec() != BOT_SPEC_MAGE_FROST &&  // Prevent Frost Mages from casting this
+                ((mytar->IsPolymorphed() && (b_attackers.size() < 2 || (*b_attackers.begin()) == mytar)) ||
+                    (me->HasAura(NETHERWIND_PRESENCE_BUFF) && (GetSpec() != BOT_SPEC_MAGE_ARCANE || !GetSpell(ARCANE_BLAST_1)))))
+            {
+                if (doCast(mytar, GetSpell(PYROBLAST_1)))
+                    return;
+            }
+            // FFB FROST NETHERWIND
+            if (IsSpellReady(FROSTFIRE_BOLT_1, diff) && can_do_fire && dist < CalcSpellMaxRange(PYROBLAST_1) &&
+                GetSpec() == BOT_SPEC_MAGE_FROST &&  // Allow only Frost Mages to cast this
+                ((mytar->IsPolymorphed() && (b_attackers.size() < 2 || (*b_attackers.begin()) == mytar)) ||
+                    (me->HasAura(NETHERWIND_PRESENCE_BUFF))))
+            {
+                if (DoCast(mytar, GetSpell(FROSTFIRE_BOLT_1), true)) // hackfix
+                {
+                    me->RemoveAurasDueToSpell(NETHERWIND_PRESENCE_BUFF);
+                    return;
+                }
+            }
+            // AB ARCANE NETHERWIND
+            if (IsSpellReady(ARCANE_BLAST_1, diff) && can_do_fire && dist < CalcSpellMaxRange(PYROBLAST_1) &&
+                GetSpec() == BOT_SPEC_MAGE_ARCANE &&  // Allow only Arcane Mages to cast this
+                ((mytar->IsPolymorphed() && (b_attackers.size() < 2 || (*b_attackers.begin()) == mytar)) ||
+                    (me->HasAura(NETHERWIND_PRESENCE_BUFF))))
+            {
+                if (doCast(mytar, GetSpell(ARCANE_BLAST_1)))
+                {
+                    me->RemoveAurasDueToSpell(NETHERWIND_PRESENCE_BUFF);
+                    return;
+                }
+            }
             //Scorch
             if (IsSpellReady(SCORCH_1, diff) && can_do_fire && GetSpec() == BOT_SPEC_MAGE_FIRE && dist < CalcSpellMaxRange(SCORCH_1) && me->GetLevel() >= 25 &&
                 !mytar->GetAuraEffect(SPELL_AURA_MOD_ATTACKER_SPELL_CRIT_CHANCE, SPELLFAMILY_MAGE, 0x0, 0x2000, 0x0))
@@ -593,10 +835,10 @@ public:
                 if (doCast(mytar, GetSpell(ICE_LANCE_1)))
                     return;
             }
-            //Fireball or Frostfire Bolt (instant cast or combustion use up)
-            if (/*fbCasted && */IsSpellReady(FROSTFIREBOLT, diff) && (can_do_frost | can_do_fire) && dist < CalcSpellMaxRange(FROSTFIREBOLT) && Rand() < 150 &&
-                ((((CCed(mytar, true) || b_attackers.empty()) && me->HasAura(COMBUSTION_BUFF)) || me->HasAura(BRAIN_FREEZE_BUFF)) ||
-                !GetSpell(FROSTBOLT_1))) //level 1-3
+            // Fireball or Frostfire Bolt (instant cast or combustion use up)
+            if (/*fbCasted && */IsSpellReady(FROSTFIREBOLT, diff) && (can_do_frost || can_do_fire) && dist < CalcSpellMaxRange(FROSTFIREBOLT) && Rand() < 150 &&
+                (((CCed(mytar, true) || b_attackers.empty()) && me->HasAura(COMBUSTION_BUFF)) || me->HasAura(BRAIN_FREEZE_BUFF) ||
+                    !GetSpell(FROSTBOLT_1))) //level 1-3
             {
                 if (doCast(mytar, GetSpell(FROSTFIREBOLT)))
                     return;
@@ -619,7 +861,7 @@ public:
             }
             if (GetSpec() != BOT_SPEC_MAGE_ARCANE || !GetSpell(ARCANE_BLAST_1))
             {
-                if (IsSpellReady(FROSTFIREBOLT, diff) && (can_do_frost | can_do_fire) && (GetSpec() == BOT_SPEC_MAGE_FIRE ||
+                if (IsSpellReady(FROSTFIREBOLT, diff) && (can_do_frost || can_do_fire) && (GetSpec() == BOT_SPEC_MAGE_FIRE ||
                     (GetSpec() == BOT_SPEC_MAGE_FROST && (FROSTFIREBOLT == FROSTFIRE_BOLT_1 || !GetSpell(FROSTBOLT_1)))) &&
                     dist < CalcSpellMaxRange(FROSTFIREBOLT))
                 {
@@ -657,7 +899,7 @@ public:
                 polyCheckTimer = 2000;
             }
         }
-
+        
         void CheckPolymorph(uint32 diff)
         {
             if (poly == false && IsSpellReady(POLYMORPH_1, diff) && !IsCasting())
@@ -665,7 +907,27 @@ public:
                 if (Unit* target = FindPolyTarget(CalcSpellMaxRange(POLYMORPH_1)))
                 {
                     if (doCast(target, GetSpell(POLYMORPH_1)))
+                    {
+                        if (!IsWanderer()) // Check if not a wanderer before speaking
+                        {
+                            const char* polymorphMessages[] = {
+                                "|cFFFFFFFF%s is now a fluffy sheep, let's not wake them up.|r",
+                                "|cFFFFFFFFTurned %s into something less threatening. Polymorph for the win!|r",
+                                "|cFFFFFFFF%s just got a woolly makeover! Keep them sheepish.|r",
+                                "|cFFFFFFFFEveryone, meet the newest sheep in town, %s!|r",
+                                "|cFFFFFFFFBaa, baa, %s! Enjoy being a sheep.|r",
+                            };
+
+                            int randomIndex = urand(0, sizeof(polymorphMessages) / sizeof(char*) - 1);
+                            const char* selectedMessage = polymorphMessages[randomIndex];
+
+                            char messageBuffer[256];
+                            snprintf(messageBuffer, sizeof(messageBuffer), selectedMessage, target->GetName().c_str());
+
+                            me->Say(messageBuffer, LANG_UNIVERSAL, me->ToUnit());
+                        }
                         return;
+                    }
                 }
             }
         }
@@ -842,7 +1104,27 @@ public:
                 (CCed(me, true) || me->getAttackers().size() > 2 || GetHealthPCT(me) < 40))
             {
                 if (doCast(me, GetSpell(ICE_BLOCK_1)))
+                {
+                    if (!IsWanderer()) 
+                    {
+                        const char* iceBlockMessages[] = {
+                            "|cFFFFFFFFTime for a little chill out in my Ice Block!|r",
+                            "|cFFFFFFFFPhew! Ice Block just in time! Keep the fight going, team!|r",
+                            "|cFFFFFFFFA frosty retreat in my Ice Block. Cover me!|r",
+                            "|cFFFFFFFFCooling off in my Ice Block. I'll be back in the fray soon!|r",
+                            "|cFFFFFFFFBrb, encased in ice. Keep them off me!|r",
+                        };
+
+                        int randomIndex = urand(0, sizeof(iceBlockMessages) / sizeof(char*) - 1);
+                        const char* selectedMessage = iceBlockMessages[randomIndex];
+
+                        char messageBuffer[256];
+                        snprintf(messageBuffer, sizeof(messageBuffer), selectedMessage, me->GetName().c_str());
+
+                        me->Say(messageBuffer, LANG_UNIVERSAL);
+                    }
                     return;
+                }
             }
         }
 
@@ -1020,10 +1302,10 @@ public:
             if (AuraEffect const* pow = me->GetAuraEffect(SPELL_AURA_ADD_PCT_MODIFIER, SPELLFAMILY_MAGE, 0x0, 0x80000, 0x0))
                 if (pow->IsAffectedOnSpell(spellInfo))
                     pctbonus += 0.2f;
-            //Molten Fury: 12% bonus damage for All spells against target with less than 35% hp
+            //Molten Fury: 12% bonus damage for All spells against target with less than 35% hp (increased to 15% for scorch executes)
             if ((GetSpec() == BOT_SPEC_MAGE_FIRE) &&
                 lvl >= 40 && damageinfo.target->HasAuraState(AURA_STATE_HEALTHLESS_35_PERCENT))
-                pctbonus += 0.12f;
+                pctbonus += 0.15f;
             //Arctic Winds part 1: 5% bonus damage for Frost spells
             if ((GetSpec() == BOT_SPEC_MAGE_FROST) && lvl >= 40 && (SPELL_SCHOOL_MASK_FROST & spellInfo->GetSchoolMask()))
                 pctbonus += 0.05f;
@@ -1114,19 +1396,26 @@ public:
             int32 timebonus = 0;
             //float pctbonus = 0.0f;
 
-            //100% mods
-            //Firestarter part 1: -100% cast time for Flamestrike
+            // 100% mods
+            // Firestarter part 1: -100% cast time for Flamestrike
             if (baseId == FLAMESTRIKE_1)
                 if (me->HasAura(FIRESTARTER_BUFF))
                     timebonus += casttime;
-            //Brain Freeze: -100% cast time for Fireball and Frostfire Bolt
-            //we can check spellFamilyFlags or just use ids, going easy way here
+
+            // Brain Freeze: -100% cast time for Fireball and Frostfire Bolt
+            // we can check spellFamilyFlags or just use ids, going easy way here
             if (baseId == FROSTFIRE_BOLT_1 || baseId == FIREBALL_1)
                 if (me->HasAura(BRAIN_FREEZE_BUFF))
                     timebonus += casttime;
-            //Hot Streak: -100% cast time for Pyroblast
+
+            // NETHERWIND: -100% cast time for ARCANE_BLAST_1
+            if (baseId == ARCANE_BLAST_1)
+                if (me->HasAura(NETHERWIND_PRESENCE_BUFF))
+                    timebonus += casttime;
+
+            // Hot Streak: -100% cast time for Pyroblast
             if (baseId == PYROBLAST_1)
-                if (me->HasAura(HOT_STREAK_BUFF))
+                if (me->HasAura(HOT_STREAK_BUFF) || me->HasAura(NETHERWIND_PRESENCE_BUFF))
                     timebonus += casttime;
             //Presence of Mind: -100% cast time
             if (AuraEffect const* eff = me->GetAuraEffect(SPELL_AURA_ADD_PCT_MODIFIER, SPELLFAMILY_MAGE, 0x0, 0x20, 0x0))
@@ -1299,7 +1588,7 @@ public:
             //special cases
             //Pyroblast (special): ensure no double pyroblast casts
             if (baseId == PYROBLAST_1)
-                SetSpellCooldown(PYROBLAST_1, 3000);
+                SetSpellCooldown(PYROBLAST_1, 500);
 
             if (baseId == ICE_BLOCK_1)
             {
@@ -1350,6 +1639,11 @@ public:
                 //Hot Streak
                 if (baseId == PYROBLAST_1)
                     me->RemoveAurasDueToSpell(HOT_STREAK_BUFF);
+                if (baseId == PYROBLAST_1)
+                {
+                    if (me->HasAura(NETHERWIND_PRESENCE_BUFF) && !me->HasAura(HOT_STREAK_BUFF))
+                        me->RemoveAurasDueToSpell(NETHERWIND_PRESENCE_BUFF);
+                }
             }
             //Handle Cold Snap
             if (baseId == COLD_SNAP_1)
@@ -1553,9 +1847,9 @@ public:
             OnSpellHit(caster, spell);
         }
 
-        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType, SpellSchoolMask damageSchoolMask) override
+        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType) override
         {
-            bot_ai::DamageDealt(victim, damage, damageType, damageSchoolMask);
+            bot_ai::DamageDealt(victim, damage, damageType);
         }
 
         void DamageTaken(Unit* u, uint32& /*damage*/, DamageEffectType /*damageType*/, SpellSchoolMask /*schoolMask*/) override
@@ -1640,6 +1934,7 @@ public:
             shieldCheckTimer = 0;
             arcaneBlastStack = 0;
             manaGemCharges = 0;
+            TimeWarpCheckTimer = 5000;
 
             poly = false;
             shielded = false;
@@ -1654,6 +1949,8 @@ public:
             if (fmCheckTimer > diff)                fmCheckTimer -= diff;
             if (iceblockCheckTimer > diff)          iceblockCheckTimer -= diff;
             if (shieldCheckTimer > diff)            shieldCheckTimer -= diff;
+            if (TimeWarpCheckTimer > diff)          TimeWarpCheckTimer -= diff;
+
         }
 
         void InitPowers() override
@@ -1699,6 +1996,8 @@ public:
             //InitSpellMap(FROST_WARD_1);
             //InitSpellMap(FIRE_WARD_1);
             InitSpellMap(MIRROR_IMAGE_1);
+            InitSpellMap(TIME_WARP_1);
+
 
  /*Special*/InitSpellMap(CONJURE_MANA_GEM_1);
  /*Special*/InitSpellMap(MANA_GEM_1);
@@ -1731,7 +2030,7 @@ public:
             uint8 level = master->GetLevel();
             bool isArca = GetSpec() == BOT_SPEC_MAGE_ARCANE;
             bool isFire = GetSpec() == BOT_SPEC_MAGE_FIRE;
-            bool isFros = GetSpec() == BOT_SPEC_MAGE_FROST;
+            bool isFros = GetSpec() == BOT_SPEC_MAGE_FROST;            
 
             RefreshAura(ARCANE_CONCENTRATION, level >= 15 ? 1 : 0);
             RefreshAura(ARCANE_MEDITATION, level >= 25 ? 1 : 0); //mana regen 1
@@ -1746,26 +2045,29 @@ public:
             RefreshAura(INCANTERS_ABSORPTION1, isArca && level >= 40 && level < 41 ? 1 : 0);
             RefreshAura(MISSILE_BARRAGE, isArca && level >= 45 ? 1 : 0);
 
-            RefreshAura(IGNITE, level >= 15 ? 1 : 0);
-            RefreshAura(BURNING_DETERMINATION, level >= 15 ? 1 : 0);
-            RefreshAura(IMPACT, level >= 20 ? 1 : 0);
-            RefreshAura(IMPROVED_SCORCH, level >= 25 ? 1 : 0);
-            RefreshAura(MOLTEN_SHIELDS, level >= 25 ? 1 : 0);
-            RefreshAura(MASTER_OF_ELEMENTS, level >= 25 ? 1 : 0);
+            RefreshAura(IGNITE, isFire && level >= 15 ? 1 : 0);
+            RefreshAura(BURNING_DETERMINATION, isFire && level >= 15 ? 1 : 0);
+            RefreshAura(IMPACT, isFire && level >= 20 ? 1 : 0);
+            RefreshAura(IMPROVED_SCORCH, isFire && level >= 25 ? 1 : 0);
+            RefreshAura(MOLTEN_SHIELDS, isFire && level >= 25 ? 1 : 0);
+            RefreshAura(MASTER_OF_ELEMENTS, isFire && level >= 25 ? 1 : 0);
             RefreshAura(BLAZING_SPEED, isFire && level >= 35 ? 1 : 0);
             RefreshAura(PYROMANIAC, isFire && level >= 40 ? 1 : 0); //mana regen 2
             RefreshAura(FIRESTARTER2, isFire && level >= 51 ? 1 : 0);
             RefreshAura(FIRESTARTER1, isFire && level >= 50 && level < 51 ? 1 : 0);
             RefreshAura(HOT_STREAK, isFire && level >= 50 ? 1 : 0);
 
-            RefreshAura(FROSTBITE3, level >= 12 ? 1 : 0);
-            RefreshAura(FROSTBITE2, level >= 11 && level < 12 ? 1 : 0);
-            RefreshAura(FROSTBITE1, level >= 10 && level < 11 ? 1 : 0);
-            RefreshAura(FROST_WARDING, level >= 15 ? 1 : 0);
-            RefreshAura(IMPROVED_BLIZZARD, level >= 20 ? 1 : 0);
-            RefreshAura(SHATTER3, level >= 27 ? 1 : 0);
-            RefreshAura(SHATTER2, level >= 26 && level < 27 ? 1 : 0);
-            RefreshAura(SHATTER1, level >= 25 && level < 26 ? 1 : 0);
+            RefreshAura(FROSTBITE3, isFros && level >= 12 ? 1 : 0);
+            RefreshAura(FROSTBITE2, isFros && level >= 11 && level < 12 ? 1 : 0);
+            RefreshAura(FROSTBITE1, isFros && level >= 10 && level < 11 ? 1 : 0);
+            RefreshAura(29438, level >= 13 && level < 14 ? 1 : 0); // Precision Rank 1
+            RefreshAura(29439, level >= 14 && level < 15 ? 1 : 0); // Precision Rank 2
+            RefreshAura(29440, level >= 15 ? 1 : 0); // Precision Rank 3
+            RefreshAura(FROST_WARDING, isFros && level >= 15 ? 1 : 0);
+            RefreshAura(IMPROVED_BLIZZARD, isFros && level >= 20 ? 1 : 0);
+            RefreshAura(SHATTER3, isFros && level >= 27 ? 1 : 0);
+            RefreshAura(SHATTER2, isFros && level >= 26 && level < 27 ? 1 : 0);
+            RefreshAura(SHATTER1, isFros && level >= 25 && level < 26 ? 1 : 0);
             RefreshAura(WINTERS_CHILL3, isFros && level >= 37 ? 1 : 0);
             RefreshAura(WINTERS_CHILL2, isFros && level >= 36 && level < 37 ? 1 : 0);
             RefreshAura(WINTERS_CHILL1, isFros && level >= 35 && level < 36 ? 1 : 0);
@@ -1780,7 +2082,9 @@ public:
             RefreshAura(GLYPG_REMOVE_CURSE, level >= 18 ? 1 : 0);
             RefreshAura(GLYPH_ICY_VEINS, level >= 20 ? 1 : 0);
             RefreshAura(GLYPH_LIVING_BOMB, level >= 60 ? 1 : 0);
-            RefreshAura(GLYPH_ICE_LANCE, level >= 66 ? 1 : 0);
+            RefreshAura(GLYPH_ICE_LANCE, level >= 60 ? 1 : 0);
+            RefreshAura(ARCANE_FOCUS);
+
         }
 
         bool CanUseManually(uint32 basespell) const override
@@ -1798,6 +2102,7 @@ public:
                 case ICE_ARMOR_1:
                 case ICE_BARRIER_1:
                 case COMBUSTION_1:
+                case TIME_WARP_1:
                 case ICY_VEINS_1:
                 case BLAST_WAVE_1:
                 case FLAMESTRIKE_1:
@@ -1841,7 +2146,7 @@ public:
         //Spells
 /*frst*/uint32 FROSTFIREBOLT;
         //Timers
-/*exc.*/uint32 polyCheckTimer, fmCheckTimer, iceblockCheckTimer, shieldCheckTimer;
+/*exc.*/uint32 polyCheckTimer, fmCheckTimer, iceblockCheckTimer, TimeWarpCheckTimer, shieldCheckTimer;
         //Counters
 /*exc.*/uint8 arcaneBlastStack;
 /*exc.*/uint8 manaGemCharges;

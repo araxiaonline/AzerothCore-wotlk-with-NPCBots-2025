@@ -174,7 +174,7 @@ public:
             }
             else if (std::any_of(queue.m_QueuedPlayers.cbegin(), queue.m_QueuedPlayers.cend(), [=](BattlegroundQueue::QueuedPlayersMap::value_type const& qpm_pair) {
                 return qpm_pair.first.IsPlayer() && qpm_pair.second->IsInvitedToBGInstanceGUID == my_gqi->IsInvitedToBGInstanceGUID;
-            }))
+                }))
                 botBGJoinEvents.at(_playerGUID).AddEventAtOffset(new BotBattlegroundEnterEvent(_playerGUID, _botGUID, _bgQueueTypeId, _bgTypeId, _removeTime), 2s);
             else
                 AbortAll();
@@ -377,11 +377,23 @@ private:
         bot_template.InitializeQueryData();
 
         uint8 bot_spec = bot_ai::SelectSpecForClass(bot_class);
-        _botsData[next_bot_id] = new NpcBotData(bot_ai::DefaultRolesForClass(bot_class, bot_spec), bot_faction, bot_spec);
-        _botsExtras[next_bot_id] = new NpcBotExtras{ .race = orig_extras->race, .bclass = bot_class };
+        NpcBotData* bot_data = new NpcBotData(bot_ai::DefaultRolesForClass(bot_class, bot_spec), bot_faction, bot_spec);
+        _botsData[next_bot_id] = bot_data;
+        NpcBotExtras* bot_extras = new NpcBotExtras();
+        bot_extras->bclass = bot_class;
+        bot_extras->race = orig_extras->race;
+        _botsExtras[next_bot_id] = bot_extras;
         if (NpcBotAppearanceData const* orig_apdata = BotDataMgr::SelectNpcBotAppearance(orig_entry))
-            _botsAppearanceData[next_bot_id] = new NpcBotAppearanceData(*orig_apdata);
-
+        {
+            NpcBotAppearanceData* bot_apdata = new NpcBotAppearanceData();
+            bot_apdata->face = orig_apdata->face;
+            bot_apdata->features = orig_apdata->features;
+            bot_apdata->gender = orig_apdata->gender;
+            bot_apdata->hair = orig_apdata->hair;
+            bot_apdata->haircolor = orig_apdata->haircolor;
+            bot_apdata->skin = orig_apdata->skin;
+            _botsAppearanceData[next_bot_id] = bot_apdata;
+        }
         int8 beqId = 1;
         _botsWanderCreatureEquipmentTemplates[next_bot_id] = sObjectMgr->GetEquipmentInfo(orig_entry, beqId);
 
@@ -518,8 +530,6 @@ public:
         }
         else
         {
-            ASSERT(bracketEntry);
-
             bracketPcts[bracketEntry->minLevel / 10] = 100u;
             switch (team)
             {
@@ -549,7 +559,7 @@ public:
                     if (int32(botTeam) != team)
                         continue;
 
-                    if (BotDataMgr::GetMinLevelForBotClass(kv.first) > bracketEntry->maxLevel)
+                    if (bracketEntry && BotDataMgr::GetMinLevelForBotClass(kv.first) > bracketEntry->maxLevel)
                         continue;
 
                     teamSpareBotIdsPerClass.push_back({kv.first, spareBotId});
@@ -1837,7 +1847,7 @@ bool BotDataMgr::GenerateBattlegroundBots(Player const* groupLeader, [[maybe_unu
 
     botBGJoinEvents[groupLeader->GetGUID()].AddEventAtOffset([ammr = ammr, atype = atype, bgqTypeId = bgqTypeId, bgTypeId = bgTypeId, bracketId = bracketId]() {
         sBattlegroundMgr->ScheduleQueueUpdate(ammr, atype, bgqTypeId, bgTypeId, bracketId);
-    }, Seconds(2));
+        }, Seconds(2));
 
     uint8 maxlevel = BotMgr::IsBotLevelCappedByConfigBGFirstPlayer() ? groupLeader->GetLevel() : 0;
     for (NpcBotRegistry const* registry3 : { &spawned_bots_a, &spawned_bots_h })
@@ -2347,7 +2357,7 @@ void BotDataMgr::CreateWanderingBotsSortedGear()
     BOT_LOG_INFO("server.loading", ">> Sorted wandering bots gear in {} ms", GetMSTimeDiffToNow(oldMSTime));
 }
 
-Item* BotDataMgr::GenerateWanderingBotItem(uint8 slot, uint8 botclass, uint8 level, std::function<bool(uint8, ItemTemplate const*)> const& check)
+Item* BotDataMgr::GenerateWanderingBotItem(uint8 slot, uint8 botclass, uint8 level, std::function<bool(ItemTemplate const*)>&& check)
 {
     ASSERT(slot < BOT_INVENTORY_SIZE);
     ASSERT(botclass < BOT_CLASS_END);
@@ -2375,7 +2385,7 @@ Item* BotDataMgr::GenerateWanderingBotItem(uint8 slot, uint8 botclass, uint8 lev
             for (uint32 iid : *itemIdVec)
             {
                 ItemTemplate const* proto = sObjectMgr->GetItemTemplate(iid);
-                if ((!maxLvl || proto->ItemLevel <= maxLvl) && check(slot, proto))
+                if ((!maxLvl || proto->ItemLevel <= maxLvl) && check(proto))
                     validVec.push_back(iid);
             }
         }
@@ -2389,6 +2399,93 @@ Item* BotDataMgr::GenerateWanderingBotItem(uint8 slot, uint8 botclass, uint8 lev
                     newItem->SetItemRandomProperties(randomPropertyId);
 
                 return newItem;
+            }
+        }
+    }
+
+    return nullptr;
+}
+
+Item* BotDataMgr::GenerateRandomBotItem(uint8 slot, uint8 botclass, uint8 level, uint32 minIlevel, uint32 maxIlevel, std::function<bool(ItemTemplate const*)>&& check)
+{
+    ASSERT(slot < BOT_INVENTORY_SIZE);
+    ASSERT(botclass < BOT_CLASS_END);
+    ASSERT(level <= DEFAULT_MAX_LEVEL + 4);
+
+    uint8 lvl = level;
+    ItemIdVector const* itemIdVec = &_botsWanderCreaturesSortedGear[botclass][slot][lvl / ITEM_SORTING_LEVEL_STEP];
+
+    // Iterate backwards if the item vector is empty, until a valid vector is found or lvl goes below the sorting step
+    while (itemIdVec->empty() && lvl > ITEM_SORTING_LEVEL_STEP)
+    {
+        lvl -= ITEM_SORTING_LEVEL_STEP;
+        itemIdVec = &_botsWanderCreaturesSortedGear[botclass][slot][lvl / ITEM_SORTING_LEVEL_STEP];
+    }
+
+    // Check if the vector is still empty after decrementing the level
+    if (!itemIdVec->empty())
+    {
+        ItemIdVector validVec;
+        validVec.reserve(itemIdVec->size());
+        for (uint32 iid : *itemIdVec)
+        {
+            ItemTemplate const* proto = sObjectMgr->GetItemTemplate(iid);
+
+            // Apply the item level constraints
+            if (proto->ItemLevel >= minIlevel && proto->ItemLevel <= maxIlevel && check(proto))
+            {
+                validVec.push_back(iid);
+            }
+        }
+
+        // If valid items were found within the level range, return one of them
+        if (!validVec.empty())
+        {
+            uint32 itemId = Acore::Containers::SelectRandomContainerElement(validVec);
+            if (Item* newItem = Item::CreateItem(itemId, 1, nullptr))
+            {
+                if (uint32 randomPropertyId = Item::GenerateItemRandomPropertyId(itemId))
+                {
+                    newItem->SetItemRandomProperties(randomPropertyId);
+                }
+
+                return newItem;
+            }
+        }
+    }
+
+    // If no valid items were found, attempt to fallback to lower item levels until something is generated
+    while (lvl > 1)
+    {
+        lvl -= ITEM_SORTING_LEVEL_STEP;
+        itemIdVec = &_botsWanderCreaturesSortedGear[botclass][slot][lvl / ITEM_SORTING_LEVEL_STEP];
+
+        if (!itemIdVec->empty())
+        {
+            ItemIdVector validVec;
+            validVec.reserve(itemIdVec->size());
+            for (uint32 iid : *itemIdVec)
+            {
+                ItemTemplate const* proto = sObjectMgr->GetItemTemplate(iid);
+
+                if (check(proto))
+                {
+                    validVec.push_back(iid);
+                }
+            }
+
+            if (!validVec.empty())
+            {
+                uint32 itemId = Acore::Containers::SelectRandomContainerElement(validVec);
+                if (Item* newItem = Item::CreateItem(itemId, 1, nullptr))
+                {
+                    if (uint32 randomPropertyId = Item::GenerateItemRandomPropertyId(itemId))
+                    {
+                        newItem->SetItemRandomProperties(randomPropertyId);
+                    }
+
+                    return newItem;
+                }
             }
         }
     }
@@ -2412,7 +2509,7 @@ bool BotDataMgr::GenerateWanderingBotItemEnchants(Item* item, uint8 slot, uint8 
 
     ItemTemplate const* proto = item->GetTemplate();
 
-    if (proto->RequiredLevel < 60)
+    if (proto->ItemLevel < 95)
         return result;
 
     static const auto is_enchantable = [](ItemTemplate const* p, SpellInfo const* s) {

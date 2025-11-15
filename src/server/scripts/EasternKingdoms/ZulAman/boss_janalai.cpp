@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -173,7 +173,7 @@ struct boss_janalai : public BossAI
         BossAI::JustSummoned(summon);
     }
 
-    void DamageDealt(Unit* target, uint32& damage, DamageEffectType /*damagetype*/, SpellSchoolMask /*damageSchoolMask*/) override
+    void DamageDealt(Unit* target, uint32& damage, DamageEffectType /*damagetype*/) override
     {
         if (_isFlameBreathing)
         {
@@ -401,7 +401,7 @@ struct npc_janalai_hatcher : public ScriptedAI
                 ++_repeatCount;
 
                 if (me->FindNearestCreature(NPC_EGG, 100.0f))
-                    context.Repeat(5s);
+                    context.Repeat(4s);
                 else
                 {
                     if (WorldObject* summoner = GetSummoner())
@@ -464,7 +464,7 @@ class spell_summon_all_players_dummy: public SpellScript
         Position pos = GetCaster()->GetPosition();
         targets.remove_if([&, pos](WorldObject* target) -> bool
         {
-            return target->IsWithinBox(pos, 22.0f, 28.0f, 28.0f);
+            return target->IsWithinBox(pos, 18.0f, 18.0f, 18.0f);
         });
     }
 

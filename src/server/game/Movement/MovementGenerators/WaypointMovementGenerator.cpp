@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -28,36 +28,26 @@
 #include "Spell.h"
 #include "Transport.h"
 #include "World.h"
-#include "SmartScriptMgr.h"
 
 void WaypointMovementGenerator<Creature>::LoadPath(Creature* creature)
 {
-    switch (i_pathSource)
-    {
-        case PathSource::WAYPOINT_MGR:
-        {
-            if (!path_id)
-                path_id = creature->GetWaypointPath();
+    if (!path_id)
+        path_id = creature->GetWaypointPath();
 
-            i_path = sWaypointMgr->GetPath(path_id);
-            break;
-        }
-        case PathSource::SMART_WAYPOINT_MGR:
-        {
-            i_path = sSmartWaypointMgr->GetPath(path_id);
-            break;
-        }
-    }
+    i_path = sWaypointMgr->GetPath(path_id);
 
     if (!i_path)
     {
-        // No movement found for entry
-        LOG_ERROR("sql.sql", "WaypointMovementGenerator::LoadPath: creature {} ({}) doesn't have waypoint path id: {}",
-            creature->GetName(), creature->GetGUID().ToString(), path_id);
+        // Dinkle: Skip logging if the creature is "Defias Thug" or "Lord Xiz"
+        std::string creatureName = creature->GetName();
+        if (creatureName != "Defias Thug" && creatureName != "Lord Xiz")
+        {
+            // No movement found for entry
+            LOG_ERROR("sql.sql", "WaypointMovementGenerator::LoadPath: creature {} ({}) doesn't have waypoint path id: {}",
+                creature->GetName(), creature->GetGUID().ToString(), path_id);
+        }
         return;
     }
-
-    i_currentNode = i_path->begin()->first;
 
     StartMoveNow(creature);
 }
@@ -71,6 +61,7 @@ void WaypointMovementGenerator<Creature>::DoInitialize(Creature* creature)
 void WaypointMovementGenerator<Creature>::DoFinalize(Creature* creature)
 {
     creature->ClearUnitState(UNIT_STATE_ROAMING | UNIT_STATE_ROAMING_MOVE);
+    creature->SetWalk(false);
 }
 
 void WaypointMovementGenerator<Creature>::DoReset(Creature* creature)
@@ -93,24 +84,22 @@ void WaypointMovementGenerator<Creature>::OnArrived(Creature* creature)
     creature->ClearUnitState(UNIT_STATE_ROAMING_MOVE);
     m_isArrivalDone = true;
 
-    auto currentNodeItr = i_path->find(i_currentNode);
-
-    if (currentNodeItr->second.event_id && urand(0, 99) < currentNodeItr->second.event_chance)
+    if (i_path->at(i_currentNode)->event_id && urand(0, 99) < i_path->at(i_currentNode)->event_chance)
     {
         LOG_DEBUG("maps.script", "Creature movement start script {} at point {} for {}.",
-            currentNodeItr->second.event_id, i_currentNode, creature->GetGUID().ToString());
+            i_path->at(i_currentNode)->event_id, i_currentNode, creature->GetGUID().ToString());
         creature->ClearUnitState(UNIT_STATE_ROAMING_MOVE);
-        creature->GetMap()->ScriptsStart(sWaypointScripts, currentNodeItr->second.event_id, creature, nullptr);
+        creature->GetMap()->ScriptsStart(sWaypointScripts, i_path->at(i_currentNode)->event_id, creature, nullptr);
     }
 
     // Inform script
     MovementInform(creature);
     creature->UpdateWaypointID(i_currentNode);
 
-    if (currentNodeItr->second.delay)
+    if (i_path->at(i_currentNode)->delay)
     {
         creature->ClearUnitState(UNIT_STATE_ROAMING_MOVE);
-        Stop(currentNodeItr->second.delay);
+        Stop(i_path->at(i_currentNode)->delay);
     }
 }
 
@@ -130,11 +119,12 @@ bool WaypointMovementGenerator<Creature>::StartMove(Creature* creature)
 
     if (m_isArrivalDone)
     {
+        // Xinef: not true... update this at every waypoint!
+        //if ((i_currentNode == i_path->size() - 1) && !repeating) // If that's our last waypoint
         {
-            auto currentNodeItr = i_path->find(i_currentNode);
-            float x = currentNodeItr->second.x;
-            float y = currentNodeItr->second.y;
-            float z = currentNodeItr->second.z;
+            float x = i_path->at(i_currentNode)->x;
+            float y = i_path->at(i_currentNode)->y;
+            float z = i_path->at(i_currentNode)->z;
             float o = creature->GetOrientation();
 
             if (!transportPath)
@@ -155,17 +145,14 @@ bool WaypointMovementGenerator<Creature>::StartMove(Creature* creature)
         }
 
         // Xinef: moved the upper IF here
-        uint32 lastPoint = i_path->rbegin()->first;
-        if ((i_currentNode == lastPoint) && !repeating) // If that's our last waypoint
+        if ((i_currentNode == i_path->size() - 1) && !repeating) // If that's our last waypoint
         {
             creature->AI()->PathEndReached(path_id);
             creature->GetMotionMaster()->Initialize();
             return false;
         }
 
-        ++i_currentNode;
-        if (lastPoint < i_currentNode)
-            i_currentNode = i_path->begin()->first;
+        i_currentNode = (i_currentNode + 1) % i_path->size();
     }
 
     // xinef: do not initialize motion if we got stunned in movementinform
@@ -174,14 +161,13 @@ bool WaypointMovementGenerator<Creature>::StartMove(Creature* creature)
         return true;
     }
 
-    auto currentNodeItr = i_path->find(i_currentNode);
-    WaypointData const& node = currentNodeItr->second;
+    WaypointData const* node = i_path->at(i_currentNode);
 
     m_isArrivalDone = false;
 
     creature->AddUnitState(UNIT_STATE_ROAMING_MOVE);
 
-    Movement::Location formationDest(node.x, node.y, node.z, 0.0f);
+    Movement::Location formationDest(node->x, node->y, node->z, 0.0f);
     Movement::MoveSplineInit init(creature);
 
     //! If creature is on transport, we assume waypoints set in DB are already transport offsets
@@ -192,16 +178,16 @@ bool WaypointMovementGenerator<Creature>::StartMove(Creature* creature)
             trans->CalculatePassengerPosition(formationDest.x, formationDest.y, formationDest.z, &formationDest.orientation);
     }
 
-    float z = node.z;
-    creature->UpdateAllowedPositionZ(node.x, node.y, z);
+    float z = node->z;
+    creature->UpdateAllowedPositionZ(node->x, node->y, z);
     //! Do not use formationDest here, MoveTo requires transport offsets due to DisableTransportPathTransformations() call
     //! but formationDest contains global coordinates
-    init.MoveTo(node.x, node.y, z, true, true);
+    init.MoveTo(node->x, node->y, z, true, true);
 
-    if (node.orientation.has_value() && node.delay > 0)
-        init.SetFacing(*node.orientation);
+    if (node->orientation.has_value() && node->delay > 0)
+        init.SetFacing(*node->orientation);
 
-    switch (node.move_type)
+    switch (node->move_type)
     {
         case WAYPOINT_MOVE_TYPE_LAND:
             init.SetAnimation(Movement::ToGround);
@@ -223,7 +209,7 @@ bool WaypointMovementGenerator<Creature>::StartMove(Creature* creature)
 
     //Call for creature group update
     if (creature->GetFormation() && creature->GetFormation()->GetLeader() == creature)
-        creature->GetFormation()->LeaderMoveTo(formationDest.x, formationDest.y, formationDest.z, node.move_type);
+        creature->GetFormation()->LeaderMoveTo(formationDest.x, formationDest.y, formationDest.z, node->move_type);
 
     return true;
 }
@@ -259,7 +245,13 @@ bool WaypointMovementGenerator<Creature>::DoUpdate(Creature* creature, uint32 di
     }
     else
     {
-        if (creature->movespline->Finalized())
+        bool finished = creature->movespline->Finalized();
+        // xinef: code to detect pre-empetively if we should start movement to next waypoint
+        // xinef: do not start pre-empetive movement if current node has delay or we are ending waypoint movement
+        //if (!finished && !i_path->at(i_currentNode)->delay && ((i_currentNode != i_path->size() - 1) || repeating))
+        //    finished = (creature->movespline->_Spline().length(creature->movespline->_currentSplineIdx() + 1) - creature->movespline->timePassed()) < 200;
+
+        if (finished)
         {
             OnArrived(creature);
             return StartMove(creature);

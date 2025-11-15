@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -129,7 +129,7 @@ struct boss_ouro : public BossAI
 
                     context.Repeat();
                 })
-                .Schedule(20s, [this](TaskContext context)
+                .Schedule(25s, [this](TaskContext context)
                     {
                         DoCastSelf(SPELL_SUMMON_OURO_MOUNDS, true);
                         context.Repeat();
@@ -170,7 +170,7 @@ struct boss_ouro : public BossAI
             }
         }
 
-        me->DespawnOrUnsummon(1s);
+        me->DespawnOrUnsummon(1000);
     }
 
     void CastGroundRupture()
@@ -178,7 +178,7 @@ struct boss_ouro : public BossAI
         std::list<WorldObject*> targets;
         Acore::AllWorldObjectsInRange checker(me, 10.0f);
         Acore::WorldObjectListSearcher<Acore::AllWorldObjectsInRange> searcher(me, targets, checker);
-        Cell::VisitObjects(me, searcher, 10.0f);
+        Cell::VisitAllObjects(me, searcher, 10.0f);
 
         for (WorldObject* target : targets)
         {
@@ -206,7 +206,7 @@ struct boss_ouro : public BossAI
         CastGroundRupture();
         scheduler.Schedule(20s, GROUP_EMERGED, [this](TaskContext context)
                 {
-                    if (Unit* target = SelectTarget(SelectTargetMethod::MaxThreat, 0, 0.0f, true))
+                    if (Unit* target = SelectTarget(SelectTargetMethod::MaxThreat, 0, 0.0f, false))
                     {
                         me->SetTarget(target->GetGUID());
                     }
@@ -223,7 +223,7 @@ struct boss_ouro : public BossAI
 
                     context.Repeat();
                 })
-            .Schedule(22s, GROUP_EMERGED, [this](TaskContext context)
+            .Schedule(21s, GROUP_EMERGED, [this](TaskContext context)
                 {
                     DoCastVictim(SPELL_SWEEP);
                     context.Repeat();
@@ -273,7 +273,7 @@ struct boss_ouro : public BossAI
         if (me->GetThreatMgr().GetThreatList().empty())
         {
             DoCastSelf(SPELL_OURO_SUBMERGE_VISUAL);
-            me->DespawnOrUnsummon(1s);
+            me->DespawnOrUnsummon(1000);
             instance->SetBossState(DATA_OURO, FAIL);
             if (GameObject* base = me->FindNearestGameObject(GO_SANDWORM_BASE, 200.f))
                 base->DespawnOrUnsummon();
@@ -292,6 +292,36 @@ struct boss_ouro : public BossAI
 
         scheduler.Update(diff,
             std::bind(&ScriptedAI::DoMeleeAttackIfReady, this));
+    }
+
+    void JustDied(Unit* killer) override
+    {
+        summons.DespawnAll();
+
+        // Cast any self-spell or effect as needed (e.g., 875167)
+        DoCastSelf(875167, true);
+
+        // Reward players with challenge rewards
+        Map::PlayerList const& players = me->GetMap()->GetPlayers();
+        for (auto const& playerPair : players)
+        {
+            Player* player = playerPair.GetSource();
+            if (player)
+            {
+                DistributeChallengeRewards(player, me, 1, false);
+            }
+        }
+
+        // Despawn NPC with ID 15957
+        std::list<Creature*> npcList;
+        me->GetCreatureListWithEntryInGrid(npcList, 15957, 200.0f); // Search for NPCs with ID 15957 within a 100-yard radius
+
+        for (Creature* npc : npcList)
+        {
+                npc->DespawnOrUnsummon();
+        }
+
+        BossAI::JustDied(killer); 
     }
 
 protected:
@@ -332,15 +362,15 @@ struct npc_dirt_mound : ScriptedAI
     {
         DoZoneInCombat();
         scheduler.Schedule(30s, [this](TaskContext /*context*/)
-        {
-            DoCastSelf(SPELL_SUMMON_SCARABS, true);
-            me->DespawnOrUnsummon(1s);
-        })
+            {
+                DoCastSelf(SPELL_SUMMON_SCARABS, true);
+                me->DespawnOrUnsummon(1000);
+            })
             .Schedule(100ms, [this](TaskContext context)
-        {
-            ChaseNewTarget();
-            context.Repeat(5s, 10s);
-        });
+                {
+                    ChaseNewTarget();
+                    context.Repeat(5s, 10s);
+                });
     }
 
     void ChaseNewTarget()
@@ -363,9 +393,16 @@ struct npc_dirt_mound : ScriptedAI
 
     void Reset() override
     {
-        DoCastSelf(SPELL_DIRTMOUND_PASSIVE, true);
-        DoCastSelf(SPELL_DREAM_FOG, true);
-        DoCastSelf(SPELL_QUAKE, true);
+        DoCastSelf(88011, true);
+        DoCastSelf(822009, true);
+
+        // Schedule the casting of SPELL_QUAKE after 4 seconds
+        scheduler.Schedule(4s, [this](TaskContext /*context*/)
+            {
+                DoCastSelf(SPELL_QUAKE, true);
+                DoCastSelf(SPELL_DIRTMOUND_PASSIVE, true);
+                DoCastSelf(SPELL_DREAM_FOG, true);
+            });
     }
 
     void EnterEvadeMode(EvadeReason /*why*/) override

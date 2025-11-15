@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -1614,7 +1614,7 @@ void SpellMgr::LoadSpellTargetPositions()
         }
         if (found)
         {
-            if (!GetSpellTargetPosition(i))
+            if (!sSpellMgr->GetSpellTargetPosition(i))
                 LOG_DEBUG("spells.aura", "Spell (ID: {}) does not have record in `spell_target_position`", i);
         }
     }*/
@@ -2348,7 +2348,7 @@ void SpellMgr::LoadPetLevelupSpellMap()
     LOG_INFO("server.loading", " ");
 }
 
-static bool LoadPetDefaultSpells_helper(CreatureTemplate const* cInfo, PetDefaultSpellsEntry& petDefSpells)
+bool LoadPetDefaultSpells_helper(CreatureTemplate const* cInfo, PetDefaultSpellsEntry& petDefSpells)
 {
     // skip empty list;
     bool have_spell = false;
@@ -3405,6 +3405,15 @@ void SpellMgr::LoadSpellInfoCustomAttributes()
                 }
 
             // Xinef: Cooldown overwrites
+            // Jotunheim Rapid-Fire Harpoon: Energy Reserve
+            case 56585:
+                spellInfo->RecoveryTime = 30000;
+                spellInfo->_requireCooldownInfo = true;
+                break;
+            // Jotunheim Rapid-Fire Harpoon: Rapid-Fire Harpoon
+            case 56570:
+                spellInfo->RecoveryTime = 200;
+                break;
             // Burst of Speed
             case 57493:
                 spellInfo->RecoveryTime = 60000;
@@ -3439,9 +3448,9 @@ void SpellMgr::LoadSpellInfoCustomAttributes()
 
         spellInfo->_InitializeExplicitTargetMask();
 
-        if (HasSpellCooldownOverride(spellInfo->Id))
+        if (sSpellMgr->HasSpellCooldownOverride(spellInfo->Id))
         {
-            SpellCooldownOverride spellOverride = GetSpellCooldownOverride(spellInfo->Id);
+            SpellCooldownOverride spellOverride = sSpellMgr->GetSpellCooldownOverride(spellInfo->Id);
 
             if (spellInfo->RecoveryTime != spellOverride.RecoveryTime)
             {
@@ -3488,7 +3497,7 @@ void SpellMgr::LoadSpellInfoCustomAttributes()
                     case SPELL_AURA_PERIODIC_TRIGGER_SPELL:
                     case SPELL_AURA_PERIODIC_TRIGGER_SPELL_FROM_CLIENT:
                     case SPELL_AURA_PERIODIC_TRIGGER_SPELL_WITH_VALUE:
-                        if (SpellInfo const* triggerSpell = GetSpellInfo(spellInfo->Effects[j].TriggerSpell))
+                        if (SpellInfo const* triggerSpell = sSpellMgr->GetSpellInfo(spellInfo->Effects[j].TriggerSpell))
                         {
                             overrideAttr = true;
                             if (triggerSpell->AttributesCu & SPELL_ATTR0_CU_BINARY_SPELL)

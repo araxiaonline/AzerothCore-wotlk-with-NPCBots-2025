@@ -19,6 +19,10 @@ enum DPSTrackerConstants : uint32
 
 DPSTracker::DPSTracker()
 {
+    _updateTimer = 0;
+    _inactiveTimer = 0;
+    _trackTimer = 0;
+    _active = false;
 }
 
 DPSTracker::~DPSTracker()

@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -38,6 +38,7 @@ enum Drakes
 
     // Centrifuge Constructs
     SPELL_EMPOWERING_BLOWS                  = 50044,
+    H_SPELL_EMPOWERING_BLOWS                = 59213,
 
     SPELL_AMBER_SHOCK_CHARGE                = 49836,
     SPELL_RUBY_EVASIVE_CHARGES              = 50241,
@@ -74,6 +75,8 @@ enum DrakeGiverTexts
 class npc_oculus_drakegiver : public CreatureScript
 {
 public:
+    std::unordered_map<ObjectGuid, bool>openedMenu;
+
     npc_oculus_drakegiver() : CreatureScript("npc_oculus_drakegiver") { }
 
     CreatureAI* GetAI(Creature* creature) const override
@@ -190,8 +193,20 @@ public:
                 SendGossipMenuFor(player, GOSSIP_TEXTID_VERDISA1, creature->GetGUID());
                 break;
             case NPC_BELGARISTRASZ:
-                AddGossipItemFor(player, 9708, 0, GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF);
-                SendGossipMenuFor(player, GOSSIP_TEXTID_DRAKES, creature->GetGUID());
+                if (HAS_ESSENCE(player))
+                {
+                    openedMenu[player->GetGUID()] = true;
+                }
+
+                if (!openedMenu[player->GetGUID()])
+                {
+                    AddGossipItemFor(player, 9708, 0, GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF);
+                    SendGossipMenuFor(player, GOSSIP_TEXTID_DRAKES, creature->GetGUID());
+                }
+                else
+                {
+                    OnGossipSelect(player, creature, GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF);
+                }
                 break;
             case NPC_ETERNOS:
                 AddGossipItemFor(player, 9574, 0, GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF);
@@ -262,6 +277,7 @@ public:
             switch (uiAction)
             {
             case GOSSIP_ACTION_INFO_DEF:
+                openedMenu[player->GetGUID()] = true;
                 if (player->HasItemCount(ITEM_AMBER_ESSENCE))
                 {
                     AddGossipItemFor(player, 9575, 1, GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF + 1);
@@ -394,7 +410,7 @@ public:
             }
             else
             {
-                me->DespawnOrUnsummon(2050ms);
+                me->DespawnOrUnsummon(2050);
                 me->SetOrientation(2.5f);
                 me->SetSpeedRate(MOVE_FLIGHT, 1.0f);
                 Position pos = me->GetPosition();
@@ -457,7 +473,7 @@ public:
                     }
                     else
                     {
-                        me->DespawnOrUnsummon(2050ms);
+                        me->DespawnOrUnsummon(2050);
                         me->SetOrientation(2.5f);
                         me->SetSpeedRate(MOVE_FLIGHT, 1.0f);
                         Position pos = me->GetPosition();
@@ -474,7 +490,7 @@ public:
             {
                 if (despawnTimer >= 5000)
                 {
-                    me->DespawnOrUnsummon(2050ms);
+                    me->DespawnOrUnsummon(2050);
                     me->SetOrientation(2.5f);
                     Position pos = me->GetPosition();
                     Position offset = { 10.0f, 10.0f, 12.0f, 0.0f };
@@ -503,7 +519,7 @@ public:
 
         void JustEngagedWith(Unit* /*who*/) override
         {
-            DoCast(SPELL_EMPOWERING_BLOWS);
+            DoCast(IsHeroic() ? H_SPELL_EMPOWERING_BLOWS : SPELL_EMPOWERING_BLOWS);
         }
 
         void UpdateAI(uint32 /*diff*/) override

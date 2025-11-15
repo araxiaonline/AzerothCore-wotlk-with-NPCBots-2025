@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -18,28 +18,9 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#include <cstdint>
 #include <stdexcept>
 #include <string_view>
 #include <vector>
-
-enum class ConfigSeverity : uint8_t
-{
-    Skip,
-    Warn,
-    Error,
-    Fatal
-};
-
-struct ConfigPolicy
-{
-    ConfigSeverity defaultSeverity = ConfigSeverity::Warn;
-    ConfigSeverity missingFileSeverity = ConfigSeverity::Error;
-    ConfigSeverity missingOptionSeverity = ConfigSeverity::Warn;
-    ConfigSeverity criticalOptionSeverity = ConfigSeverity::Fatal;
-    ConfigSeverity unknownOptionSeverity = ConfigSeverity::Error;
-    ConfigSeverity valueErrorSeverity = ConfigSeverity::Error;
-};
 
 class ConfigMgr
 {
@@ -51,7 +32,7 @@ class ConfigMgr
 public:
     bool LoadAppConfigs(bool isReload = false);
     bool LoadModulesConfigs(bool isReload = false, bool isNeedPrintInfo = true);
-    void Configure(std::string const& initFileName, std::vector<std::string> args, std::string_view modulesConfigList = {}, ConfigPolicy policy = {});
+    void Configure(std::string const& initFileName, std::vector<std::string> args, std::string_view modulesConfigList = {});
 
     static ConfigMgr* instance();
 
@@ -67,6 +48,26 @@ public:
 
     template<class T>
     T GetOption(std::string const& name, T const& def, bool showLogs = true) const;
+
+    /*
+  * Deprecated geters. This geters will be deleted
+  */
+
+    [[deprecated("Use GetOption<std::string> instead")]]
+    std::string GetStringDefault(std::string const& name, const std::string& def, bool showLogs = true);
+
+    [[deprecated("Use GetOption<bool> instead")]]
+    bool GetBoolDefault(std::string const& name, bool def, bool showLogs = true);
+
+    [[deprecated("Use GetOption<int32> instead")]]
+    int GetIntDefault(std::string const& name, int def, bool showLogs = true);
+
+    [[deprecated("Use GetOption<float> instead")]]
+    float GetFloatDefault(std::string const& name, float def, bool showLogs = true);
+
+    /*
+     * End deprecated geters
+     */
 
     bool isDryRun() { return dryRun; }
     void setDryRun(bool mode) { dryRun = mode; }

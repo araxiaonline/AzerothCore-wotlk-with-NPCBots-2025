@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -18,6 +18,7 @@
 #include "CreatureScript.h"
 #include "ScriptedCreature.h"
 #include "deadmines.h"
+#include "../scripts/Custom/Timewalking/10Man.h"
 
 enum Spells
 {
@@ -78,6 +79,20 @@ public:
             events.ScheduleEvent(EVENT_SMITE_SLAM, 3s);
         }
 
+        void JustDied(Unit* killer) override
+        {
+            Map::PlayerList const& players = me->GetMap()->GetPlayers();
+            if (players.begin() != players.end())
+            {
+
+                Player* player = players.begin()->GetSource();
+                if (player)
+                {
+                    DistributeChallengeRewards(player, me, 1, true);
+                }
+            }
+        }
+
         void UpdateAI(uint32 diff) override
         {
             if (!UpdateVictim())
@@ -90,7 +105,7 @@ public:
                     if (me->HealthBelowPct(67) && !health67)
                     {
                         me->CastSpell(me, SPELL_SMITE_STOMP, false);
-                        events.DelayEvents(10s);
+                        events.DelayEvents(10000);
                         me->GetMotionMaster()->Clear();
                         me->GetMotionMaster()->MovePoint(EQUIP_TWO_SWORDS, 1.859f, -780.72f, 9.831f);
                         Talk(SAY_SWAP1);
@@ -105,7 +120,7 @@ public:
                     if (me->HealthBelowPct(34) && !health34)
                     {
                         me->CastSpell(me, SPELL_SMITE_STOMP, false);
-                        events.DelayEvents(10s);
+                        events.DelayEvents(10000);
                         me->GetMotionMaster()->Clear();
                         me->GetMotionMaster()->MovePoint(EQUIP_MACE, 1.859f, -780.72f, 9.831f);
                         Talk(SAY_SWAP2);

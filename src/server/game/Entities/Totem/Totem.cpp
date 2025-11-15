@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -29,7 +29,7 @@
 #include "ObjectAccessor.h"
 //end npcbot
 
-Totem::Totem(SummonPropertiesEntry const* properties, ObjectGuid owner) : Minion(properties, owner)
+Totem::Totem(SummonPropertiesEntry const* properties, ObjectGuid owner) : Minion(properties, owner, false)
 {
     m_unitTypeMask |= UNIT_MASK_TOTEM;
     m_duration = 0;
@@ -70,20 +70,17 @@ void Totem::InitStats(uint32 duration)
     if (Unit* owner = ObjectAccessor::GetUnit(*this, m_owner))
     {
         uint32 slot = m_Properties->Slot;
-        if (owner->IsPlayer() && slot >= SUMMON_SLOT_TOTEM_FIRE && slot < MAX_TOTEM_SLOT)
+        if (owner->IsPlayer() && slot >= SUMMON_SLOT_TOTEM && slot < MAX_TOTEM_SLOT)
         {
             WorldPackets::Totem::TotemCreated data;
             data.Totem = GetGUID();
-            data.Slot = slot - SUMMON_SLOT_TOTEM_FIRE;
+            data.Slot = slot - SUMMON_SLOT_TOTEM;
             data.Duration = duration;
             data.SpellID = GetUInt32Value(UNIT_CREATED_BY_SPELL);
             owner->ToPlayer()->SendDirectMessage(data.Write());
 
             // set display id depending on caster's race
-            //npcbot: handled in class AI for bot totems
-            if (!(GetCreatorGUID().IsCreature() && owner->ToPlayer()->HaveBot() && owner->ToPlayer()->GetBotMgr()->GetBot(GetCreatorGUID())))
-            //end npcbot
-            SetDisplayId(sObjectMgr->GetModelForTotem(SummonSlot(slot), Races(owner->getRace())));
+            SetDisplayId(owner->GetModelForTotem(PlayerTotemType(m_Properties->Id)));
         }
 
         SetLevel(owner->GetLevel());
@@ -141,11 +138,11 @@ void Totem::InitSummon()
     }
 }
 
-void Totem::UnSummon(Milliseconds msTime)
+void Totem::UnSummon(uint32 msTime)
 {
-    if (msTime > 0ms)
+    if (msTime)
     {
-        m_Events.AddEventAtOffset(new ForcedUnsummonDelayEvent(*this), msTime);
+        m_Events.AddEvent(new ForcedUnsummonDelayEvent(*this), m_Events.CalculateTime(msTime));
         return;
     }
 
@@ -155,7 +152,7 @@ void Totem::UnSummon(Milliseconds msTime)
     if (Unit* owner = GetOwner())
     {
         // clear owner's totem slot
-        for (uint8 i = SUMMON_SLOT_TOTEM_FIRE; i < MAX_TOTEM_SLOT; ++i)
+        for (uint8 i = SUMMON_SLOT_TOTEM; i < MAX_TOTEM_SLOT; ++i)
         {
             if (owner->m_SummonSlot[i] == GetGUID())
             {

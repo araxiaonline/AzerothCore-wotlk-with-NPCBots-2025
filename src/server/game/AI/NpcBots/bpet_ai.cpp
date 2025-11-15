@@ -98,7 +98,6 @@ bot_pet_ai::bot_pet_ai(Creature* creature) : CreatureAI(creature)
     _updateTimerMedium = 0;
     _updateTimerEx1 = urand(12000, 15000);
     checkAurasTimer = 0;
-    shouldUpdateStats = false;
 
     _wanderer = false;
 
@@ -107,8 +106,6 @@ bot_pet_ai::bot_pet_ai(Creature* creature) : CreatureAI(creature)
     myType = 0;
     petOwner = nullptr;
     canUpdate = true;
-
-    opponent = nullptr;
 }
 bot_pet_ai::~bot_pet_ai()
 {
@@ -237,7 +234,7 @@ void bot_pet_ai::SetBotCommandState(uint32 st, bool force, Position* newpos)
                 else if (pdist > 10.0f)
                     speed = baserunspeed * 1.25f;
             }
-            me->GetMotionMaster()->Add(new PointMovementGenerator<Creature>(1, movepos.m_positionX, movepos.m_positionY, movepos.m_positionZ, FORCED_MOVEMENT_NONE, speed, 0.f, nullptr, true));
+            me->GetMotionMaster()->Add(new PointMovementGenerator<Creature>(1, movepos.m_positionX, movepos.m_positionY, movepos.m_positionZ, speed, 0.f, nullptr, true));
         }
         RemoveBotCommandState(BOT_COMMAND_STAY | BOT_COMMAND_FULLSTOP | BOT_COMMAND_ATTACK | BOT_COMMAND_COMBATRESET);
     }
@@ -1542,7 +1539,7 @@ Unit* bot_pet_ai::_getTarget(bool &reset) const
         foldist = std::max<float>(foldist, spelldist + 4.f);
     }
     bool dropTarget = false;
-    if (mytar)
+    if (!dropTarget && mytar)
     {
         dropTarget = IAmFree() ?
             petOwner->GetDistance(mytar) > foldist :
@@ -2194,7 +2191,7 @@ bool bot_pet_ai::IsTank(Unit const* unit) const
             for (Group::member_citerator itr = slots.begin(); itr != slots.end(); ++itr)
                 if (itr->guid == unit->GetGUID())
                     return itr->flags & MEMBER_FLAG_MAINTANK;
-            if (gr->isLFGGroup() && sLFGMgr->GetRoles(unit->GetGUID()) & lfg::PLAYER_ROLE_TANK)
+            if (gr->isLFGGroup() && sLFGMgr->GetRoles(unit->GetGUID()) & lfg::PLAYER_ROLE_TANK | CLASS_SHAMAN)
                 return true;
         }
     }
@@ -2252,7 +2249,7 @@ void bot_pet_ai::AttackStart(Unit* /*u*/)
 {
 }
 
-void bot_pet_ai::DamageDealt(Unit* victim, uint32& damage, DamageEffectType /*damageType*/, SpellSchoolMask /*damageSchoolMask*/)
+void bot_pet_ai::DamageDealt(Unit* victim, uint32& damage, DamageEffectType /*damageType*/)
 {
     if (victim == me)
         return;
@@ -2329,9 +2326,11 @@ void bot_pet_ai::OnBotPetSpellGo(Spell const* spell, bool ok)
 
 void bot_pet_ai::OnBotPetSpellInterrupted(SpellSchoolMask schoolMask, uint32 unTimeMs)
 {
+    SpellInfo const* info;
+
     for (BotPetSpellMap::iterator itr = _spells.begin(); itr != _spells.end(); ++itr)
     {
-        SpellInfo const* info = sSpellMgr->GetSpellInfo(itr->second->spellId);
+        info = sSpellMgr->GetSpellInfo(itr->second->spellId);
         if (!info || !(info->GetSchoolMask() & schoolMask)) continue;
         if (info->IsCooldownStartedOnEvent()) continue;
         if (info->PreventionType != SPELL_PREVENTION_TYPE_SILENCE) continue;
@@ -2384,9 +2383,10 @@ bool bot_pet_ai::GlobalUpdate(uint32 diff)
     //Check current cast state: interrupt casts that became pointless
     if (me->HasUnitState(UNIT_STATE_CASTING) && urand(1,100) <= 75)
     {
+        bool interrupt;
         for (uint8 i = CURRENT_FIRST_NON_MELEE_SPELL; i != CURRENT_AUTOREPEAT_SPELL; ++i)
         {
-            bool interrupt = false;
+            interrupt = false;
             Spell* spell = me->GetCurrentSpell(CurrentSpellTypes(i));
             if (!spell)
                 continue;

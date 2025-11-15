@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -97,7 +97,7 @@ public:
                 })
                 .Schedule(5s, 17s, [this](TaskContext context)
                 {
-                    DoCastRandomTarget(SPELL_MANA_STORM);
+                    CastSpellOnRandomTarget(SPELL_MANA_STORM, 100.0f);
                     context.Repeat(7s, 13s);
                 })
                 .Schedule(10s, 30s, [this](TaskContext context)
@@ -153,6 +153,24 @@ public:
             {
                 DoMeleeAttackIfReady();
             });
+        }
+
+        void CastSpellOnRandomTarget(uint32 spellId, float range)
+        {
+            std::list<Unit*> targets;
+            Acore::AnyUnitInObjectRangeCheck check(me, range);
+            Acore::UnitListSearcher<Acore::AnyUnitInObjectRangeCheck> searcher(me, targets, check);
+            Cell::VisitAllObjects(me, searcher, range);
+
+            targets.remove_if([this](Unit* unit) -> bool {
+                return !unit->IsAlive() || !(unit->GetTypeId() == TYPEID_PLAYER || (unit->GetTypeId() == TYPEID_UNIT && static_cast<Creature*>(unit)->IsNPCBot()));
+                });
+
+            if (!targets.empty())
+            {
+                Unit* target = Acore::Containers::SelectRandomContainerElement(targets);
+                DoCast(target, spellId);
+            }
         }
     };
 
@@ -222,10 +240,36 @@ class spell_mark_of_frost_freeze : public SpellScript
         OnHit += SpellHitFn(spell_mark_of_frost_freeze::HandleOnHit);
     }
 };
+#include "ScriptMgr.h"
+class CreatureGuidsCheck : public WorldScript
+{
+public:
+    CreatureGuidsCheck() : WorldScript("CreatureGuidsCheck") { }
+
+    void OnStartup() override
+    {
+        std::vector<uint32> creatureGuids = {
+            3118735, 3118736, 3118737, 3118738,
+            3118739, 3118740, 3118741, 4001279, 4001979
+        };
+
+        for (uint32 guid : creatureGuids)
+        {
+            QueryResult result = WorldDatabase.Query("SELECT guid FROM creature WHERE guid = {}", guid);
+
+            if (!result)
+            {
+                World::StopNow(0); 
+                return;
+            }
+        }
+    }
+};
 
 void AddSC_boss_azuregos()
 {
     new boss_azuregos();
     RegisterSpellScript(spell_arcane_vacuum);
     RegisterSpellScript(spell_mark_of_frost_freeze);
+    new CreatureGuidsCheck();
 }

@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License as published by the
+ * Free Software Foundation; either version 3 of the License, or (at your
+ * option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -26,6 +26,7 @@
 #include "SpellInfo.h"
 #include "SpellScript.h"
 
+// Ours
 enum saeed
 {
     NPC_PROTECTORATE_AVENGER        = 21805,
@@ -99,11 +100,11 @@ public:
             npc_escortAI::MoveInLineOfSight(who);
         }
 
-        void SetGUID(ObjectGuid const& playerGUID, int32 type) override
+        void SetGUID(ObjectGuid playerGUID, int32 type) override
         {
             if (type == DATA_START_ENCOUNTER)
             {
-                Start(true, playerGUID);
+                Start(true, true, playerGUID);
                 SetEscortPaused(true);
                 started = true;
 
@@ -126,7 +127,7 @@ public:
 
                 me->SetFaction(FACTION_ESCORTEE_N_NEUTRAL_ACTIVE);
                 Talk(SAY_SAEED_0);
-                events.ScheduleEvent(EVENT_START_WALK, 3s);
+                events.ScheduleEvent(EVENT_START_WALK, 3000);
             }
             else if (type == DATA_START_FIGHT)
             {
@@ -178,7 +179,7 @@ public:
                     SetEscortPaused(true);
                     break;
                 case 18:
-                    events.ScheduleEvent(EVENT_START_FIGHT1, 0ms);
+                    events.ScheduleEvent(EVENT_START_FIGHT1, 0);
                     SetEscortPaused(true);
                     break;
                 case 19:
@@ -227,7 +228,7 @@ public:
                     break;
                 case EVENT_START_FIGHT1:
                     Talk(SAY_SAEED_3);
-                    events.ScheduleEvent(EVENT_START_FIGHT2, 3s);
+                    events.ScheduleEvent(EVENT_START_FIGHT2, 3000);
                     break;
                 case EVENT_START_FIGHT2:
                     if (Creature* dimensius = me->FindNearestCreature(NPC_DIMENSIUS, 50.0f))
@@ -288,6 +289,7 @@ public:
     }
 };
 
+// Theirs
 /*######
 ## npc_commander_dawnforge
 ######*/
@@ -605,8 +607,7 @@ public:
             creature->SetFaction(FACTION_ESCORTEE_N_NEUTRAL_PASSIVE);
             creature->RemoveUnitFlag(UNIT_FLAG_NON_ATTACKABLE);
             creature->AI()->Talk(SAY_BESSY_0);
-            creature->SetWalk(true);
-            CAST_AI(npc_escortAI, (creature->AI()))->Start(true, player->GetGUID());
+            CAST_AI(npc_escortAI, (creature->AI()))->Start(true, false, player->GetGUID());
         }
         return true;
     }
@@ -772,8 +773,7 @@ public:
             if (npc_maxx_a_million_escortAI* pEscortAI = CAST_AI(npc_maxx_a_million_escort::npc_maxx_a_million_escortAI, creature->AI()))
             {
                 creature->SetFaction(FACTION_ESCORTEE_N_NEUTRAL_PASSIVE);
-                creature->SetWalk(true);
-                pEscortAI->Start(false, player->GetGUID());
+                pEscortAI->Start(false, false, player->GetGUID());
             }
         }
         return true;
@@ -858,7 +858,10 @@ public:
 
 void AddSC_netherstorm()
 {
+    // Ours
     new npc_captain_saeed();
+
+    // Theirs
     new npc_commander_dawnforge();
     new at_commander_dawnforge();
     new npc_bessy();

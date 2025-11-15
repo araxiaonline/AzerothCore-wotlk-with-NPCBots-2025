@@ -172,7 +172,7 @@ public:
                 };
                 Creature* creature = nullptr;
                 Bcore::CreatureLastSearcher searcher(me, creature, corpse_pred);
-                Cell::VisitObjects(me, searcher, ceinfo->RangeEntry->RangeMax[0]);
+                Cell::VisitAllObjects(me, searcher, ceinfo->RangeEntry->RangeMax[0]);
 
                 if (creature)
                 {
@@ -192,7 +192,7 @@ public:
                         std::list<Unit*> units;
                         NearbyHostileUnitCheck check(me, ceradius, this, 0, c);
                         Bcore::UnitListSearcher searcher(c, units, check);
-                        Cell::VisitObjects(c, searcher, ceradius);
+                        Cell::VisitAllObjects(c, searcher, ceradius);
                         if (units.size() > maxmob)
                         {
                             maxmob = units.size();
@@ -204,7 +204,7 @@ public:
                 };
                 std::list<Creature*> corpses;
                 Bcore::CreatureListSearcher searcher(me, corpses, corpse_pred);
-                Cell::VisitObjects(me, searcher, ceinfo->RangeEntry->RangeMax[0]);
+                Cell::VisitAllObjects(me, searcher, ceinfo->RangeEntry->RangeMax[0]);
 
                 if (Creature* corpse = corpses.empty() ? nullptr : corpses.size() == 1 ? corpses.front() :
                     Bcore::Containers::SelectRandomContainerElement(corpses))
@@ -236,7 +236,7 @@ public:
             };
             Creature* creature = nullptr;
             Bcore::CreatureLastSearcher searcher(me, creature, corpse_pred);
-            Cell::VisitObjects(me, searcher, 25.f);
+            Cell::VisitAllObjects(me, searcher, 25.f);
 
             if (creature)
             {
@@ -548,9 +548,9 @@ public:
             OnSpellHit(caster, spell);
         }
 
-        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType, SpellSchoolMask damageSchoolMask) override
+        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType) override
         {
-            bot_ai::DamageDealt(victim, damage, damageType, damageSchoolMask);
+            bot_ai::DamageDealt(victim, damage, damageType);
         }
 
         void DamageTaken(Unit* u, uint32& /*damage*/, DamageEffectType /*damageType*/, SpellSchoolMask /*schoolMask*/) override
