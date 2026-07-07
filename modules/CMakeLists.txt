@@ -77,7 +77,9 @@ foreach(SOURCE_MODULE ${MODULES_MODULE_LIST})
   endif()
 
   # Use only static for mod-ALE
-  if (SOURCE_MODULE MATCHES "mod-ale")
+  # araxia: also give mod-eluna the ALE treatment (AZEROTHCORE/WOTLK defines,
+  # lualib link, lua.c exclusion) until our custom Lua is ported to mod-ale
+  if (SOURCE_MODULE MATCHES "mod-ale" OR SOURCE_MODULE MATCHES "mod-eluna")
     ConfigureALEModule(${SOURCE_MODULE})
   endif()
 
