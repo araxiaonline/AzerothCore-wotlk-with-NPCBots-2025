@@ -1,7 +1,9 @@
 # Story 1: Merge upstream `npcbots_3.3.5` into `araxia-merge-20260707`
 
 **Epic:** [Upstream Catch-Up Merge 2026-07-07](epic-upstream-merge-20260707.md)
-**Status:** Ready
+**Status:** ✅ Complete (2026-07-07)
+
+**Change log:** Direct merge of `665021b72` (skipped the unverified midpoint). Merge commit `87f6e9f30`; conf.dist follow-up `8dde2b839`. 6 conflicted files resolved as planned; `NpcBot.MaxLevel` re-implemented as `BotCfg::GetMaxBotLevel()`; `gdb.conf` restored (upstream deleted it, our Dockerfile copies it); `NpcBot.MaxLevel` newly documented in `worldserver.conf.dist`. Full worldserver+authserver build passed (clang 18, Ubuntu 24.04 container). Branch pushed to origin.
 **Estimated conflict surface:** ~15 tracked files ours vs 4,588 files upstream; real conflicts concentrated in `src/server/game/AI/NpcBots/*`, `modules/CMakeLists.txt`, `apps/docker/Dockerfile`
 
 ## Story
