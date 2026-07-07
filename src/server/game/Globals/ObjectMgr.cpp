@@ -1772,14 +1772,20 @@ void ObjectMgr::LoadCreatureModelInfo()
         if (modelInfo.combat_reach < 0.1f)
             modelInfo.combat_reach = DEFAULT_COMBAT_REACH;
 
-        if (CreatureModelDataEntry const* modelData = sCreatureModelDataStore.LookupEntry(creatureDisplay->ModelId))
+        // creatureDisplay may be null when the display id is not present in
+        // CreatureDisplayInfo.dbc (e.g. custom/stale creature_model_info rows) —
+        // guard the deref to avoid a startup crash (already warned above).
+        if (creatureDisplay)
         {
-            for (uint32 i = 0; i < 14; i++)
+            if (CreatureModelDataEntry const* modelData = sCreatureModelDataStore.LookupEntry(creatureDisplay->ModelId))
             {
-                if (modelData->Id == triggerCreatureModelDataID[i])
+                for (uint32 i = 0; i < 14; i++)
                 {
-                    modelInfo.is_trigger = true;
-                    break;
+                    if (modelData->Id == triggerCreatureModelDataID[i])
+                    {
+                        modelInfo.is_trigger = true;
+                        break;
+                    }
                 }
             }
         }
