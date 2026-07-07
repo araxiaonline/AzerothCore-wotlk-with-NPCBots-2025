@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Affero General Public License as published by the
- * Free Software Foundation; either version 3 of the License, or (at your
- * option) any later version.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -25,8 +25,8 @@
 
 enum DataTypes
 {
-    DATA_NALORAKK                       = 0,
-    DATA_AKILZON                        = 1,
+    DATA_AKILZON                        = 0,
+    DATA_NALORAKK                       = 1,
     DATA_JANALAI                        = 2,
     DATA_HALAZZI                        = 3,
     DATA_HEXLORD                        = 4,
@@ -60,11 +60,12 @@ enum CreatureIds
     NPC_AMANISHI_MEDICINE_MAN           = 23581,
     NPC_AMANISHI_AXE_THROWER            = 23542,
     NPC_AMANI_HATCHLING                 = 23598, // 42493
+    NPC_AMANISHI_GUARDIAN               = 23597,
     // Akil'zon gauntlet
     NPC_AMANISHI_WIND_WALKER            = 24179,
-    NPC_AMINISHI_LOOKOUT                = 24175,
-    NPC_AMINISHI_PROTECTOR              = 24180,
-    NPC_AMINISHI_TEMPEST                = 24549,
+    NPC_AMANISHI_LOOKOUT                = 24175,
+    NPC_AMANISHI_PROTECTOR              = 24180,
+    NPC_AMANISHI_TEMPEST                = 24549,
     NPC_EAGLE_TRASH_AGGRO_TRIGGER       = 24223
 };
 
@@ -90,14 +91,17 @@ enum GameobjectIds
 
 enum MiscIds
 {
+    // Persistent data
     DATA_TIMED_RUN                      = 0,
+    DATA_CHEST_COUNT                    = 1,
+
     ACTION_START_TIMED_RUN              = 0,
     ACTION_START_AKILZON_GAUNTLET       = 1,
     ACTION_RESET_AKILZON_GAUNTLET       = 2,
     GROUP_TIMED_RUN                     = 1
 };
 
-uint32 constexpr PersistentDataCount = 1;
+uint32 constexpr PersistentDataCount = 2;
 
 template <class AI, class T>
 inline AI* GetZulAmanAI(T* obj)
