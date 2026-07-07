@@ -1,7 +1,7 @@
 # Story 2: Database updates, config migration, and end-to-end validation
 
 **Epic:** [Upstream Catch-Up Merge 2026-07-07](epic-upstream-merge-20260707.md)
-**Status:** Ready (depends on Story 1)
+**Status:** In progress (2026-07-07) — fresh-DB SQL chain validated, config key diff produced (see `MERGE_20260707.md`), release image built, branch pushed. Remaining: prod-snapshot DB run, in-game smoke, config reconciliation, cutover.
 
 ## Story
 
