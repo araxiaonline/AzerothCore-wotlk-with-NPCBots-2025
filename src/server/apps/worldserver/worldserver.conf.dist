@@ -4884,6 +4884,14 @@ NpcBot.MaxBotsPerClass = 0
 NpcBot.MaxBotsPerAccount = 0
 
 #
+#    NpcBot.MaxLevel
+#        Description: Maximum level bots can reach (owned bots are capped to this
+#                     regardless of owner level; also caps rank level bonuses).
+#        Default:     80 - DEFAULT_MAX_LEVEL
+
+NpcBot.MaxLevel = 80
+
+#
 #    NpcBot.Botgiver.FilterRaces
 #        Description: Make botgiver only offer bots of player faction (normal classes).
 #        Default:     0 - disable
