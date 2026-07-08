@@ -98,7 +98,9 @@ namespace MMAP
     {
         std::vector<std::string> files;
         uint32 mapID, tileX, tileY, tileID, count = 0, fsize = 0;
-        char filter[12];
+        // large enough for any uint32 map id ("%03u*.vmtile" with a 10-digit id = 18 chars + NUL);
+        // custom high map ids (e.g. 5000) overflowed the old 12-byte buffer and smashed the stack
+        char filter[32];
 
         printf("Discovering maps... ");
         getDirContents(files, m_config->MapsPath());
@@ -132,7 +134,7 @@ namespace MMAP
             std::set<uint32>* tiles = m_tile.m_tiles;
             mapID = m_tile.m_mapId;
 
-            sprintf(filter, "%03u*.vmtile", mapID);
+            snprintf(filter, sizeof(filter), "%03u*.vmtile", mapID);
             files.clear();
             getDirContents(files, m_config->VMapsPath(), filter);
             for (auto & file : files)
@@ -147,7 +149,7 @@ namespace MMAP
                 count++;
             }
 
-            sprintf(filter, "%03u*", mapID);
+            snprintf(filter, sizeof(filter), "%03u*", mapID);
             files.clear();
             getDirContents(files, m_config->MapsPath(), filter);
             for (auto & file : files)

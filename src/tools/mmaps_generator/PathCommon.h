@@ -110,6 +110,11 @@ namespace MMAP
             errno = 0;
             if ((dp = readdir(dirp)) != nullptr)
             {
+                // skip the "." / ".." directory entries — they are not map/vmap files and
+                // their short names underflow the substr() tile-id parsing in discoverTiles
+                if (std::strcmp(dp->d_name, ".") == 0 || std::strcmp(dp->d_name, "..") == 0)
+                    continue;
+
                 if (matchWildcardFilter(filter.c_str(), dp->d_name))
                     fileList.emplace_back(dp->d_name);
             }
