@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Affero General Public License as published by the
- * Free Software Foundation; either version 3 of the License, or (at your
- * option) any later version.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -28,6 +28,7 @@
 #include "Opcodes.h"
 #include "Pet.h"
 #include "Player.h"
+#include "RBAC.h"
 #include "ScriptMgr.h"
 #include "Spell.h"
 #include "WorldSession.h"
@@ -57,6 +58,18 @@ void InstanceScript::SaveToDB()
     stmt->SetData(0, data);
     stmt->SetData(1, instance->GetInstanceId());
     CharacterDatabase.Execute(stmt);
+}
+
+void InstanceScript::OnPlayerEnter(Player* player)
+{
+    if (sWorld->getBoolConfig(CONFIG_ALLOW_TWO_SIDE_INTERACTION_GROUP) && IsTwoFactionInstance())
+        player->SetFaction((_teamIdInInstance == TEAM_HORDE) ? 1610 /*FACTION_HORDE*/ : 1 /*FACTION_ALLIANCE*/);
+}
+
+void InstanceScript::OnPlayerLeave(Player* player)
+{
+    if (sWorld->getBoolConfig(CONFIG_ALLOW_TWO_SIDE_INTERACTION_GROUP) && IsTwoFactionInstance())
+        player->SetFactionForRace(player->getRace());
 }
 
 void InstanceScript::OnCreatureCreate(Creature* creature)
@@ -124,6 +137,11 @@ void InstanceScript::HandleGameObject(ObjectGuid GUID, bool open, GameObject* go
     {
         LOG_DEBUG("scripts.ai", "InstanceScript: HandleGameObject failed");
     }
+}
+
+void InstanceScript::HandleGameObject(uint32 type, bool open)
+{
+    HandleGameObject(ObjectGuid::Empty, open, GetGameObject(type));
 }
 
 bool InstanceScript::IsEncounterInProgress() const
@@ -374,6 +392,11 @@ void InstanceScript::SetSummoner(Creature* creature)
                 summoner->AI()->JustSummoned(creature);
 }
 
+bool InstanceScript::_SkipCheckRequiredBosses(Player const* player /*= nullptr*/) const
+{
+    return player && player->GetSession()->HasPermission(rbac::RBAC_PERM_SKIP_CHECK_INSTANCE_REQUIRED_BOSSES);
+}
+
 bool InstanceScript::SetBossState(uint32 id, EncounterState state)
 {
     if (id < bosses.size())
@@ -586,6 +609,12 @@ void InstanceScript::DoRespawnGameObject(ObjectGuid uiGuid, uint32 uiTimeToDespa
     }
     else
         LOG_DEBUG("scripts", "InstanceScript: DoRespawnGameObject failed");
+}
+
+void InstanceScript::DoRespawnGameObject(uint32 type)
+{
+    if (GameObject* go = instance->GetGameObject(GetObjectGuid(type)))
+        go->Respawn();
 }
 
 void InstanceScript::DoRespawnCreature(ObjectGuid guid, bool force)
@@ -882,6 +911,24 @@ bool InstanceHasScript(WorldObject const* obj, char const* scriptName)
     if (InstanceMap* instance = obj->GetMap()->ToInstanceMap())
     {
         return instance->GetScriptName() == scriptName;
+    }
+
+    return false;
+}
+
+bool InstanceScript::IsTwoFactionInstance() const
+{
+    switch (instance->GetId())
+    {
+        case 540: // Shattered Halls
+        case 576: // Nexus
+        case 631: // Icecrown Citadel
+        case 632: // Forge of Souls
+        case 649: // Trial of the Champion
+        case 650: // Trial of the Crusader
+        case 658: // Pit of Saron
+        case 668: // Halls of Reflection
+            return true;
     }
 
     return false;

@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Affero General Public License as published by the
- * Free Software Foundation; either version 3 of the License, or (at your
- * option) any later version.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -1014,8 +1014,11 @@ bool Item::HasSocket() const
 uint8 Item::GetGemCountWithID(uint32 GemID) const
 {
     uint8 count = 0;
-    for (uint32 enchant_slot = SOCK_ENCHANTMENT_SLOT; enchant_slot < SOCK_ENCHANTMENT_SLOT + MAX_GEM_SOCKETS; ++enchant_slot)
+    for (uint32 enchant_slot = SOCK_ENCHANTMENT_SLOT; enchant_slot <= PRISMATIC_ENCHANTMENT_SLOT; ++enchant_slot)
     {
+        if (enchant_slot == BONUS_ENCHANTMENT_SLOT)
+            continue;
+
         uint32 enchant_id = GetEnchantmentId(EnchantmentSlot(enchant_slot));
         if (!enchant_id)
             continue;
@@ -1033,8 +1036,11 @@ uint8 Item::GetGemCountWithID(uint32 GemID) const
 uint8 Item::GetGemCountWithLimitCategory(uint32 limitCategory) const
 {
     uint8 count = 0;
-    for (uint32 enchant_slot = SOCK_ENCHANTMENT_SLOT; enchant_slot < SOCK_ENCHANTMENT_SLOT + MAX_GEM_SOCKETS; ++enchant_slot)
+    for (uint32 enchant_slot = SOCK_ENCHANTMENT_SLOT; enchant_slot <= PRISMATIC_ENCHANTMENT_SLOT; ++enchant_slot)
     {
+        if (enchant_slot == BONUS_ENCHANTMENT_SLOT)
+            continue;
+
         uint32 enchant_id = GetEnchantmentId(EnchantmentSlot(enchant_slot));
         if (!enchant_id)
             continue;
@@ -1066,7 +1072,7 @@ void Item::SendUpdateSockets()
     for (uint32 i = SOCK_ENCHANTMENT_SLOT; i <= BONUS_ENCHANTMENT_SLOT; ++i)
         data << uint32(GetEnchantmentId(EnchantmentSlot(i)));
 
-    GetOwner()->GetSession()->SendPacket(&data);
+    GetOwner()->SendDirectMessage(&data);
 }
 
 // Though the client has the information in the item's data field,
@@ -1081,7 +1087,7 @@ void Item::SendTimeUpdate(Player* owner)
     WorldPacket data(SMSG_ITEM_TIME_UPDATE, (8 + 4));
     data << GetGUID();
     data << uint32(duration);
-    owner->GetSession()->SendPacket(&data);
+    owner->SendDirectMessage(&data);
 }
 
 Item* Item::CreateItem(uint32 item, uint32 count, Player const* player, bool clone, uint32 randomPropertyId)
@@ -1150,7 +1156,7 @@ bool Item::IsBindedNotWith(Player const* player) const
     return true;
 }
 
-void Item::BuildUpdate(UpdateDataMapType& data_map, UpdatePlayerSet&)
+void Item::BuildUpdate(UpdateDataMapType& data_map)
 {
     if (Player* owner = GetOwner())
         BuildFieldsUpdate(owner, data_map);

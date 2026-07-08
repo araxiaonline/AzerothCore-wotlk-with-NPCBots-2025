@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Affero General Public License as published by the
- * Free Software Foundation; either version 3 of the License, or (at your
- * option) any later version.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -16,6 +16,7 @@
  */
 
 #include "Group.h"
+#include "AreaDefines.h"
 #include "Battleground.h"
 #include "BattlegroundMgr.h"
 #include "Config.h"
@@ -27,6 +28,7 @@
 #include "LFGMgr.h"
 #include "Log.h"
 #include "MapMgr.h"
+#include "MiscPackets.h"
 #include "ObjectMgr.h"
 #include "Opcodes.h"
 #include "Player.h"
@@ -64,6 +66,40 @@ void Roll::setLoot(Loot* pLoot)
 Loot* Roll::getLoot()
 {
     return getTarget();
+}
+
+static void SendRollWonItemViaMail(Player* player, LootItem const* lootItem, uint32 itemId)
+{
+    Item* mailItem = Item::CreateItem(itemId, lootItem->count, player, false, lootItem->randomPropertyId);
+    if (!mailItem)
+        return;
+
+    AllowedLooterSet looters = lootItem->GetAllowedLooters();
+    ItemTemplate const* proto = mailItem->GetTemplate();
+    // Preserve the 2-hour group trade window the item would have had if stored directly.
+    if (looters.size() > 1 && proto->GetMaxStackSize() == 1 &&
+        (proto->Bonding == BIND_WHEN_PICKED_UP || proto->Bonding == BIND_QUEST_ITEM) &&
+        sWorld->getBoolConfig(CONFIG_SET_BOP_ITEM_TRADEABLE))
+    {
+        mailItem->SetBinding(true);
+        mailItem->SetSoulboundTradeable(looters);
+        mailItem->SetUInt32Value(ITEM_FIELD_CREATE_PLAYED_TIME, player->GetTotalPlayedTime());
+
+        std::string lootersStr;
+        for (ObjectGuid const& guid : looters)
+        {
+            if (!lootersStr.empty())
+                lootersStr += ' ';
+            lootersStr += std::to_string(guid.GetCounter());
+        }
+
+        CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_INS_ITEM_BOP_TRADE);
+        stmt->SetData(0, mailItem->GetGUID().GetCounter());
+        stmt->SetData(1, lootersStr);
+        CharacterDatabase.Execute(stmt);
+    }
+
+    player->SendItemRetrievalMail(mailItem);
 }
 
 Group::Group() : m_leaderName(""), m_groupType(GROUPTYPE_NORMAL),
@@ -500,7 +536,7 @@ bool Group::AddMember(Creature* creature)
     }
 
     // insert into the table if we're not a battleground group
-    if (!isBGGroup() && !isBFGroup())
+    if (!isBGGroup() && !isBFGroup() && !creature->IsSummon())
     {
         //REPLACE INTO characters_npcbot_group_member (guid, entry, memberFlags, subgroup, roles) VALUES(?, ?, ?, ?, ?), CONNECTION_ASYNC
         CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_REP_NPCBOT_GROUP_MEMBER);
@@ -523,7 +559,7 @@ bool Group::AddMember(Creature* creature)
 }
 //end npcbot
 
-bool Group::AddMember(Player* player)
+bool Group::AddMember(Player* player, uint8 roles /* = 0 */)
 {
     if (!player)
         return false;
@@ -551,7 +587,7 @@ bool Group::AddMember(Player* player)
     member.name      = player->GetName();
     member.group     = subGroup;
     member.flags     = 0;
-    member.roles     = 0;
+    member.roles     = roles;
     m_memberSlots.push_back(member);
 
     if (!isBGGroup() && !isBFGroup())
@@ -701,59 +737,68 @@ bool Group::RemoveMember(ObjectGuid guid, const RemoveMethod& method /*= GROUP_R
         //npcbot: skip group size check before removing a bot
         if (guid.IsCreature())
         {
-            if (Creature const* cbot = BotDataMgr::FindBot(guid.GetEntry()))
+            if (GetMembersCount() > ((isBGGroup() || isBFGroup()) ? 1u : 2u))
             {
-                Creature* bot = const_cast<Creature*>(cbot);
-                if (isBGGroup() || isBFGroup())
-                    bot->RemoveFromBattlegroundOrBattlefieldRaid();
-                else
+                if (Creature const* cbot = BotDataMgr::FindBot(guid.GetEntry()))
                 {
-                    if (bot->GetOriginalGroup() == this)
-                        bot->SetOriginalGroup(nullptr);
+                    Creature* bot = const_cast<Creature*>(cbot);
+                    if (isBGGroup() || isBFGroup())
+                        bot->RemoveFromBattlegroundOrBattlefieldRaid();
                     else
-                        bot->SetBotGroup(nullptr);
+                    {
+                        if (bot->GetOriginalGroup() == this)
+                            bot->SetOriginalGroup(nullptr);
+                        else
+                            bot->SetBotGroup(nullptr);
+                    }
                 }
-            }
 
-            // Remove bot from group in DB
-            if (!isBGGroup() && !isBFGroup())
-            {
-                //DELETE FROM characters_npcbot_group_member WHERE entry = ?, CONNECTION_ASYNC
-                CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_DEL_NPCBOT_GROUP_MEMBER);
-                stmt->SetData(0, guid.GetEntry());
-                CharacterDatabase.Execute(stmt);
-                DelinkBotMember(guid);
-            }
+                // Remove bot from group in DB
+                if (!isBGGroup() && !isBFGroup())
+                {
+                    //DELETE FROM characters_npcbot_group_member WHERE entry = ?, CONNECTION_ASYNC
+                    CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_DEL_NPCBOT_GROUP_MEMBER);
+                    stmt->SetData(0, guid.GetEntry());
+                    CharacterDatabase.Execute(stmt);
+                    DelinkBotMember(guid);
+                }
 
-            // Update subgroups
-            member_witerator slot = _getMemberWSlot(guid);
-            if (slot != m_memberSlots.end())
-            {
-                SubGroupCounterDecrease(slot->group);
-                m_memberSlots.erase(slot);
-            }
+                // Update subgroups
+                member_witerator slot = _getMemberWSlot(guid);
+                if (slot != m_memberSlots.end())
+                {
+                    SubGroupCounterDecrease(slot->group);
+                    m_memberSlots.erase(slot);
+                }
 
-            sScriptMgr->OnGroupRemoveMember(this, guid, method, kicker, reason);
+                sScriptMgr->OnGroupRemoveMember(this, guid, method, kicker, reason);
 
-            SendUpdate();
+                SendUpdate();
 
-            // do not disband raid group if bot owner logging out within dungeon
-            // 1-player raid groups will not happen unless player is gm - bots will rejoin at login
-            if (GetMembersCount() < 2 && isRaidGroup() && !(isBGGroup() || isBFGroup()) && GetLeaderGUID())
-            {
-                Player const* player = ObjectAccessor::FindPlayer(GetLeaderGUID());
-                Map const* map = player ? player->FindMap() : nullptr;
-                if (!(map && map->IsDungeon() && player && player->GetSession()->PlayerLogout()))
+                // do not disband raid group if bot owner logging out within dungeon
+                // 1-player raid groups will not happen unless player is gm - bots will rejoin at login
+                if (GetMembersCount() < 2 && isRaidGroup() && !(isBGGroup() || isBFGroup()) && GetLeaderGUID())
+                {
+                    Player const* player = ObjectAccessor::FindPlayer(GetLeaderGUID());
+                    Map const* map = player ? player->FindMap() : nullptr;
+                    if (!(map && map->IsDungeon() && player && player->GetSession()->PlayerLogout()))
+                        Disband();
+                }
+                else if (GetMembersCount() < ((isLFGGroup() || isBGGroup() || isBFGroup()) ? 1u : 2u))
+                {
                     Disband();
+                    return false;
+                }
+
+                return true;
             }
-            else if (GetMembersCount() < ((isLFGGroup() || isBGGroup() || isBFGroup()) ? 1u : 2u))
+            else
             {
                 Disband();
                 return false;
             }
-
-            return true;
         }
+        //end npcbot
 
         Player* player = ObjectAccessor::FindConnectedPlayer(guid);
         if (player)
@@ -778,14 +823,14 @@ bool Group::RemoveMember(ObjectGuid guid, const RemoveMethod& method /*= GROUP_R
             if (method == GROUP_REMOVEMETHOD_KICK || method == GROUP_REMOVEMETHOD_KICK_LFG)
             {
                 data.Initialize(SMSG_GROUP_UNINVITE, 0);
-                player->GetSession()->SendPacket(&data);
+                player->SendDirectMessage(&data);
             }
 
             // Do we really need to send this opcode?
             data.Initialize(SMSG_GROUP_LIST, 1 + 1 + 1 + 1 + 8 + 4 + 4 + 8);
             data << uint8(0x10) << uint8(0) << uint8(0) << uint8(0);
             data << m_guid << uint32(m_counter) << uint32(0) << uint64(0);
-            player->GetSession()->SendPacket(&data);
+            player->SendDirectMessage(&data);
         }
 
         // Remove player from group in DB
@@ -798,35 +843,7 @@ bool Group::RemoveMember(ObjectGuid guid, const RemoveMethod& method /*= GROUP_R
         }
 
         // Remove player from loot rolls
-        for (Rolls::iterator it = RollId.begin(); it != RollId.end();)
-        {
-            Roll* roll = *it;
-            Roll::PlayerVote::iterator itr2 = roll->playerVote.find(guid);
-            if (itr2 == roll->playerVote.end())
-            {
-                ++it;
-                continue;
-            }
-
-            if (itr2->second == GREED || itr2->second == DISENCHANT)
-                --roll->totalGreed;
-            else if (itr2->second == NEED)
-                --roll->totalNeed;
-            else if (itr2->second == PASS)
-                --roll->totalPass;
-
-            if (itr2->second != NOT_VALID)
-                --roll->totalPlayersRolling;
-
-            roll->playerVote.erase(itr2);
-
-            // Xinef: itr can be erased inside
-            // Xinef: player is removed from all vote lists so it will not pass above playerVote == playerVote.end statement during second iteration
-            if (CountRollVote(guid, roll->itemGUID, MAX_ROLL_TYPE))
-                it = RollId.begin();
-            else
-                ++it;
-        }
+        RemovePlayerFromRolls(guid);
 
         // Update subgroups
         member_witerator slot = _getMemberWSlot(guid);
@@ -1020,7 +1037,7 @@ void Group::Disband(bool hideDestroy /* = false */)
         if (!hideDestroy)
         {
             data.Initialize(SMSG_GROUP_DESTROYED, 0);
-            player->GetSession()->SendPacket(&data);
+            player->SendDirectMessage(&data);
         }
 
         //we already removed player from group and in player->GetGroup() is his original group, send update
@@ -1033,7 +1050,7 @@ void Group::Disband(bool hideDestroy /* = false */)
             data.Initialize(SMSG_GROUP_LIST, 1 + 1 + 1 + 1 + 8 + 4 + 4 + 8);
             data << uint8(0x10) << uint8(0) << uint8(0) << uint8(0);
             data << m_guid << uint32(m_counter) << uint32(0) << uint64(0);
-            player->GetSession()->SendPacket(&data);
+            player->SendDirectMessage(&data);
         }
     }
     RollId.clear();
@@ -1097,7 +1114,7 @@ void Group::SendLootStartRoll(uint32 CountDown, uint32 mapid, const Roll& r)
             continue;
 
         if (itr->second == NOT_EMITED_YET)
-            p->GetSession()->SendPacket(&data);
+            p->SendDirectMessage(&data);
     }
 }
 
@@ -1120,7 +1137,7 @@ void Group::SendLootStartRollToPlayer(uint32 countDown, uint32 mapId, Player* p,
         voteMask &= ~ROLL_FLAG_TYPE_NEED;
     data << uint8(voteMask);                                // roll type mask
 
-    p->GetSession()->SendPacket(&data);
+    p->SendDirectMessage(&data);
 }
 
 void Group::SendLootRoll(ObjectGuid sourceGuid, ObjectGuid targetGuid, uint8 rollNumber, uint8 rollType, Roll const& roll, bool autoPass)
@@ -1143,7 +1160,7 @@ void Group::SendLootRoll(ObjectGuid sourceGuid, ObjectGuid targetGuid, uint8 rol
             continue;
 
         if (itr->second != NOT_VALID)
-            p->GetSession()->SendPacket(&data);
+            p->SendDirectMessage(&data);
     }
 }
 
@@ -1166,7 +1183,7 @@ void Group::SendLootRollWon(ObjectGuid sourceGuid, ObjectGuid targetGuid, uint8 
             continue;
 
         if (itr->second != NOT_VALID)
-            p->GetSession()->SendPacket(&data);
+            p->SendDirectMessage(&data);
     }
 }
 
@@ -1186,7 +1203,7 @@ void Group::SendLootAllPassed(Roll const& roll)
             continue;
 
         if (itr->second != NOT_VALID)
-            player->GetSession()->SendPacket(&data);
+            player->SendDirectMessage(&data);
     }
 }
 
@@ -1350,6 +1367,8 @@ void Group::GroupLoot(Loot* loot, WorldObject* pLootedObject)
 
             if (member->IsAtLootRewardDistance(pLootedObject))
             {
+                r->totalPlayersRolling++;
+
                 RollVote vote = NOT_EMITED_YET;
                 if (!CanRollOnItem(*i, member, loot))
                 {
@@ -1588,7 +1607,7 @@ void Group::MasterLoot(Loot* loot, WorldObject* pLootedObject)
 
     for (Player* looter : looters)
     {
-        looter->GetSession()->SendPacket(&data);
+        looter->SendDirectMessage(&data);
     }
 }
 
@@ -1636,20 +1655,20 @@ bool Group::CountRollVote(ObjectGuid playerGUID, ObjectGuid Guid, uint8 Choice)
 
     if (roll->totalPass + roll->totalNeed + roll->totalGreed >= roll->totalPlayersRolling)
     {
-        CountTheRoll(rollI, nullptr);
+        CountTheRoll(rollI);
         return true;
     }
     return false;
 }
 
 //called when roll timer expires
-void Group::EndRoll(Loot* pLoot, Map* allowedMap)
+void Group::EndRoll(Loot* pLoot)
 {
     for (Rolls::iterator itr = RollId.begin(); itr != RollId.end();)
     {
         if ((*itr)->getLoot() == pLoot)
         {
-            CountTheRoll(itr, allowedMap);           //i don't have to edit player votes, who didn't vote ... he will pass
+            CountTheRoll(itr);           //i don't have to edit player votes, who didn't vote ... he will pass
             itr = RollId.begin();
         }
         else
@@ -1657,7 +1676,38 @@ void Group::EndRoll(Loot* pLoot, Map* allowedMap)
     }
 }
 
-void Group::CountTheRoll(Rolls::iterator rollI, Map* allowedMap)
+void Group::RemovePlayerFromRolls(ObjectGuid guid)
+{
+    for (Rolls::iterator it = RollId.begin(); it != RollId.end();)
+    {
+        Roll* roll = *it;
+        Roll::PlayerVote::iterator itr2 = roll->playerVote.find(guid);
+        if (itr2 == roll->playerVote.end())
+        {
+            ++it;
+            continue;
+        }
+
+        if (itr2->second == GREED || itr2->second == DISENCHANT)
+            --roll->totalGreed;
+        else if (itr2->second == NEED)
+            --roll->totalNeed;
+        else if (itr2->second == PASS)
+            --roll->totalPass;
+
+        if (itr2->second != NOT_VALID)
+            --roll->totalPlayersRolling;
+
+        roll->playerVote.erase(itr2);
+
+        if (CountRollVote(guid, roll->itemGUID, MAX_ROLL_TYPE))
+            it = RollId.begin();
+        else
+            ++it;
+    }
+}
+
+void Group::CountTheRoll(Rolls::iterator rollI)
 {
     Roll* roll = *rollI;
     if (!roll->isValid())                                   // is loot already deleted ?
@@ -1682,7 +1732,7 @@ void Group::CountTheRoll(Rolls::iterator rollI, Map* allowedMap)
                     continue;
 
                 player = ObjectAccessor::FindPlayer(itr->first);
-                if (!player || (allowedMap != nullptr && player->FindMap() != allowedMap))
+                if (!player)
                 {
                     --roll->totalNeed;
                     continue;
@@ -1717,14 +1767,28 @@ void Group::CountTheRoll(Rolls::iterator rollI, Map* allowedMap)
                         AllowedLooterSet looters = item->GetAllowedLooters();
                         Item* _item = player->StoreNewItem(dest, roll->itemid, true, item->randomPropertyId, looters);
                         if (_item)
-                            sScriptMgr->OnGroupRollRewardItem(player, _item, _item->GetCount(), NEED, roll);
+                            sScriptMgr->OnPlayerGroupRollRewardItem(player, _item, item->count, NEED, roll);
                         player->UpdateLootAchievements(item, roll->getLoot());
                     }
                     else
                     {
-                        item->is_blocked = false;
-                        item->rollWinnerGUID = player->GetGUID();
-                        player->SendEquipError(msg, nullptr, nullptr, roll->itemid);
+                        uint32 mailOnFull = sWorld->getIntConfig(CONFIG_LFG_MAIL_ITEM_ON_FULL_INVENTORY);
+                        // Only mail when bags are genuinely full. Unique/max-count failures must
+                        // leave the item on the corpse so it can be re-rolled or freely looted.
+                        if (msg == EQUIP_ERR_INVENTORY_FULL && (mailOnFull == MAIL_ITEM_ON_FULL_INVENTORY_EVERYWHERE || (mailOnFull == MAIL_ITEM_ON_FULL_INVENTORY_LFG_ONLY && isLFGGroup())))
+                        {
+                            item->is_looted = true;
+                            roll->getLoot()->NotifyItemRemoved(roll->itemSlot);
+                            roll->getLoot()->unlootedCount--;
+                            player->SendEquipError(msg, nullptr, nullptr, roll->itemid);
+                            SendRollWonItemViaMail(player, item, roll->itemid);
+                        }
+                        else
+                        {
+                            item->is_blocked = false;
+                            item->rollWinnerGUID = player->GetGUID();
+                            player->SendEquipError(msg, nullptr, nullptr, roll->itemid);
+                        }
                     }
                 }
             }
@@ -1732,7 +1796,7 @@ void Group::CountTheRoll(Rolls::iterator rollI, Map* allowedMap)
                 roll->totalNeed = 0;
         }
     }
-    if (roll->totalNeed == 0 && roll->totalGreed > 0) // pussywizard: if (roll->totalNeed == 0 && ...), not else if, because numbers can be modified above if player is on a different map
+    if (roll->totalNeed == 0 && roll->totalGreed > 0) // if (roll->totalNeed == 0 && ...), not else if, because totalNeed can be decremented above when a needing player is offline
     {
         if (!roll->playerVote.empty())
         {
@@ -1748,7 +1812,7 @@ void Group::CountTheRoll(Rolls::iterator rollI, Map* allowedMap)
                     continue;
 
                 player = ObjectAccessor::FindPlayer(itr->first);
-                if (!player || (allowedMap != nullptr && player->FindMap() != allowedMap))
+                if (!player)
                 {
                     --roll->totalGreed;
                     continue;
@@ -1787,14 +1851,28 @@ void Group::CountTheRoll(Rolls::iterator rollI, Map* allowedMap)
                             AllowedLooterSet looters = item->GetAllowedLooters();
                             Item* _item = player->StoreNewItem(dest, roll->itemid, true, item->randomPropertyId, looters);
                             if (_item)
-                                sScriptMgr->OnGroupRollRewardItem(player, _item, _item->GetCount(), GREED, roll);
+                                sScriptMgr->OnPlayerGroupRollRewardItem(player, _item, item->count, GREED, roll);
                             player->UpdateLootAchievements(item, roll->getLoot());
                         }
                         else
                         {
-                            item->is_blocked = false;
-                            item->rollWinnerGUID = player->GetGUID();
-                            player->SendEquipError(msg, nullptr, nullptr, roll->itemid);
+                            uint32 mailOnFull = sWorld->getIntConfig(CONFIG_LFG_MAIL_ITEM_ON_FULL_INVENTORY);
+                            // Only mail when bags are genuinely full. Unique/max-count failures must
+                            // leave the item on the corpse so it can be re-rolled or freely looted.
+                            if (msg == EQUIP_ERR_INVENTORY_FULL && (mailOnFull == MAIL_ITEM_ON_FULL_INVENTORY_EVERYWHERE || (mailOnFull == MAIL_ITEM_ON_FULL_INVENTORY_LFG_ONLY && isLFGGroup())))
+                            {
+                                item->is_looted = true;
+                                roll->getLoot()->NotifyItemRemoved(roll->itemSlot);
+                                roll->getLoot()->unlootedCount--;
+                                player->SendEquipError(msg, nullptr, nullptr, roll->itemid);
+                                SendRollWonItemViaMail(player, item, roll->itemid);
+                            }
+                            else
+                            {
+                                item->is_blocked = false;
+                                item->rollWinnerGUID = player->GetGUID();
+                                player->SendEquipError(msg, nullptr, nullptr, roll->itemid);
+                            }
                         }
                     }
                     else if (rollvote == DISENCHANT)
@@ -1832,7 +1910,7 @@ void Group::CountTheRoll(Rolls::iterator rollI, Map* allowedMap)
                 roll->totalGreed = 0;
         }
     }
-    if (roll->totalNeed == 0 && roll->totalGreed == 0) // pussywizard: if, not else, because numbers can be modified above if player is on a different map
+    if (roll->totalNeed == 0 && roll->totalGreed == 0) // if, not else, because the totals can be decremented above when a rolling player is offline
     {
         SendLootAllPassed(*roll);
 
@@ -1881,12 +1959,15 @@ void Group::SetTargetIcon(uint8 id, ObjectGuid whoGuid, ObjectGuid targetGuid)
             if (!setter && itr->GetSource()->GetGUID() == whoGuid)
                 setter = itr->GetSource();
         }
+
+        if (need_cache_name && setter)
+            break;
     }
 
     if (need_cache_name && setter)
     {
         Unit const* newtarget = targetGuid ? ObjectAccessor::GetUnit(*setter, targetGuid) : nullptr;
-        std::string const& newname = newtarget ? newtarget->GetName() : "";
+        std::string_view newname = newtarget ? std::string_view{ newtarget->GetName() } : std::string_view{ "" };
         for (GroupReference const* itr = GetFirstMember(); itr != nullptr; itr = itr->next())
         {
             Player const* member = itr->GetSource();
@@ -2006,7 +2087,7 @@ void Group::SendUpdateToPlayer(ObjectGuid playerGUID, MemberSlot* slot)
         data << uint8(m_raidDifficulty >= RAID_DIFFICULTY_10MAN_HEROIC);    // 3.3 Dynamic Raid Difficulty - 0 normal/1 heroic
     }
 
-    player->GetSession()->SendPacket(&data);
+    player->SendDirectMessage(&data);
 }
 
 //npcbot
@@ -2018,10 +2099,9 @@ void Group::UpdateBotOutOfRange(Creature* creature)
     WorldPacket data;
     BotMgr::BuildBotPartyMemberStatsChangedPacket(creature, &data);
 
-    Player* member;
     for (GroupReference* itr = GetFirstMember(); itr != nullptr; itr = itr->next())
     {
-        member = itr->GetSource();
+        Player const*member = itr->GetSource();
         if (member/* && (!member->IsInMap(creature) || !member->IsWithinDist(creature, member->GetSightRange(), false))*/)
             member->SendDirectMessage(&data);
     }
@@ -2038,9 +2118,9 @@ void Group::UpdatePlayerOutOfRange(Player* player)
 
     for (GroupReference* itr = GetFirstMember(); itr != nullptr; itr = itr->next())
     {
-        Player* member = itr->GetSource();
+        Player const* member = itr->GetSource();
         if (member && (!member->IsInMap(player) || !member->IsWithinDist(player, member->GetSightRange(player), false)))
-            member->GetSession()->SendPacket(&data);
+            member->SendDirectMessage(&data);
     }
 }
 
@@ -2053,7 +2133,7 @@ void Group::BroadcastPacket(WorldPacket const* packet, bool ignorePlayersInBGRai
             continue;
 
         if (group == -1 || itr->getSubGroup() == group)
-            player->GetSession()->SendPacket(packet);
+            player->SendDirectMessage(packet);
     }
 }
 
@@ -2064,7 +2144,7 @@ void Group::BroadcastReadyCheck(WorldPacket const* packet)
         Player* player = itr->GetSource();
         if (player)
             if (IsLeader(player->GetGUID()) || IsAssistant(player->GetGUID()))
-                player->GetSession()->SendPacket(packet);
+                player->SendDirectMessage(packet);
     }
 }
 
@@ -2290,7 +2370,7 @@ GroupJoinBattlegroundResult Group::CanJoinBattlegroundQueue(Battleground const* 
             return ERR_BATTLEGROUND_JOIN_RANGE_INDEX;
 
         // check for deserter debuff in case not arena queue
-        if (bgTemplate->GetBgTypeID() != BATTLEGROUND_AA && !member->CanJoinToBattleground())
+        if (bgTemplate->GetBgTypeID() != BATTLEGROUND_AA && !member->CanJoinToBattleground(bgTemplate))
             return ERR_GROUP_JOIN_BATTLEGROUND_DESERTERS;
 
         // check if someone in party is using dungeon system
@@ -2323,7 +2403,7 @@ GroupJoinBattlegroundResult Group::CanJoinBattlegroundQueue(Battleground const* 
             return ERR_IN_NON_RANDOM_BG;
 
         // don't let Death Knights join BG queues when they are not allowed to be teleported yet
-        if (member->IsClass(CLASS_DEATH_KNIGHT, CLASS_CONTEXT_TELEPORT) && member->GetMapId() == 609 && !member->IsGameMaster() && !member->HasSpell(50977))
+        if (member->IsClass(CLASS_DEATH_KNIGHT, CLASS_CONTEXT_TELEPORT) && member->GetMapId() == MAP_EBON_HOLD && !member->IsGameMaster() && !member->HasSpell(50977))
             return ERR_GROUP_JOIN_BATTLEGROUND_FAIL;
 
         if (!member->GetBGAccessByLevel(bgTemplate->GetBgTypeID()))
@@ -2374,6 +2454,16 @@ GroupJoinBattlegroundResult Group::CanJoinBattlegroundQueue(Battleground const* 
     }
 
     return GroupJoinBattlegroundResult(bgTemplate->GetBgTypeID());
+}
+
+void Group::DoMinimapPing(ObjectGuid sourceGuid, float mapX, float mapY)
+{
+    WorldPackets::Misc::MinimapPing minimapPing;
+    minimapPing.SourceGuid = sourceGuid;
+    minimapPing.MapX = mapX;
+    minimapPing.MapY = mapY;
+
+    BroadcastPacket(minimapPing.Write(), true, -1, sourceGuid);
 }
 
 //===================================================
@@ -2456,7 +2546,7 @@ void Group::ResetInstances(uint8 method, bool isRaid, Player* leader)
                     }
                     else
                     {
-                        leader->SendResetInstanceFailed(0, instanceSave->GetMapId());
+                        leader->SendResetInstanceFailed(INSTANCE_RESET_FAILED, instanceSave->GetMapId());
                     }
 
                     sInstanceSaveMgr->DeleteInstanceSavedData(instanceSave->GetInstanceId());
@@ -2484,7 +2574,7 @@ void Group::ResetInstances(uint8 method, bool isRaid, Player* leader)
                     }
                     else
                     {
-                        leader->SendResetInstanceFailed(0, instanceSave->GetMapId());
+                        leader->SendResetInstanceFailed(INSTANCE_RESET_FAILED, instanceSave->GetMapId());
                     }
 
                     sInstanceSaveMgr->DeleteInstanceSavedData(instanceSave->GetInstanceId());

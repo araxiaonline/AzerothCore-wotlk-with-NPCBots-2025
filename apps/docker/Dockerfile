@@ -1,4 +1,4 @@
-ARG UBUNTU_VERSION=22.04 # LTS
+ARG UBUNTU_VERSION=24.04 # lts
 ARG TARGETARCH           # Docker automatically sets this based on --platform
 ARG TZ=Etc/America/New_York
 
@@ -6,6 +6,9 @@ ARG TZ=Etc/America/New_York
 FROM --platform=linux/${TARGETARCH} ubuntu:$UBUNTU_VERSION AS skeleton
 # FROM ubuntu:$UBUNTU_VERSION AS skeleton
 
+# Note: ARG instructions defined after FROM are available in this build stage.
+# Placing ARG TZ here (after FROM) ensures it is accessible for configuring the timezone below.
+ARG TZ=Etc/UTC
 ARG DOCKER=1
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -63,30 +66,13 @@ ARG CCACHE_COMPRESSLEVEL="9"
 ARG CCACHE_COMPILERCHECK="content"
 ARG CCACHE_LOGFILE=""
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    ccache \
-    libtool \
-    cmake-data \
-    make \
-    cmake \
-    clang \
-    git \
-    lsb-base \
-    curl \
-    unzip \
-    default-mysql-client \
-    openssl \
-    libmysqlclient-dev \
-    libboost-all-dev \
-    libssl-dev \
-    libmysql++-dev \
-    libreadline-dev \
-    zlib1g-dev \
-    libbz2-dev \
-    libncurses5-dev
-
-RUN rm -rf /var/lib/apt/lists/*
+RUN apt-get update                                                     \
+    && apt-get install -y --no-install-recommends                         \
+        build-essential ccache libtool cmake-data make cmake clang    \
+        git lsb-base curl unzip default-mysql-client openssl                  \
+        default-libmysqlclient-dev libboost-all-dev libssl-dev libmysql++-dev \
+        libreadline-dev zlib1g-dev libbz2-dev libncurses5-dev liblzma-dev  \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY CMakeLists.txt /azerothcore/CMakeLists.txt
 COPY conf /azerothcore/conf
@@ -146,16 +132,11 @@ ARG DEBUGGER=0
 ENV ACORE_COMPONENT=undefined
 
 # Install base dependencies for azerothcore
-# RUN apt-get update && \
-#     apt-get install -y --no-install-recommends \
-#       libmysqlclient21 libreadline8 \
-#       gettext-base default-mysql-client && \
-#     rm -rf /var/lib/apt/lists/*
-
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-      libmysqlclient21 libreadline8 \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+      libmysqlclient21 libreadline8 libicu74 libncurses5-dev \
       gettext-base default-mysql-client \
+      adduser \
     && rm -rf /var/lib/apt/lists/*
 
 # Install debuggers
@@ -185,10 +166,13 @@ VOLUME /azerothcore/env/dist/etc
 
 ENV PATH="/azerothcore/env/dist/bin:$PATH"
 
-RUN groupadd --gid "$GROUP_ID"  "$DOCKER_USER" && \
-    useradd -d /azerothcore --uid "$USER_ID"  --gid "$GROUP_ID"  "$DOCKER_USER" && \
-    passwd -d "$DOCKER_USER" && \
-    chown -R "$DOCKER_USER:$DOCKER_USER" /azerothcore
+# To use GID/UID 1000 in ubuntu > 23.04 the existing user must be deleted
+# See https://bugs.launchpad.net/cloud-images/+bug/2005129
+RUN userdel --remove ubuntu \
+  && addgroup --gid "$GROUP_ID" "$DOCKER_USER" \
+  && adduser --disabled-password --gecos '' --uid "$USER_ID" --gid "$GROUP_ID" "$DOCKER_USER" \
+  && passwd -d "$DOCKER_USER" \
+  && chown -R "$DOCKER_USER:$DOCKER_USER" /azerothcore
 
 COPY --chown=$USER_ID:$GROUP_ID \
      --chmod=755 \

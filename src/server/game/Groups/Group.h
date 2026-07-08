@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Affero General Public License as published by the
- * Free Software Foundation; either version 3 of the License, or (at your
- * option) any later version.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -128,6 +128,13 @@ enum lfgGroupFlags
     GROUP_LFG_FLAG_IS_HEROIC                = 0x004
 };
 
+enum MailItemOnFullInventory
+{
+    MAIL_ITEM_ON_FULL_INVENTORY_DISABLED    = 0,
+    MAIL_ITEM_ON_FULL_INVENTORY_LFG_ONLY    = 1,
+    MAIL_ITEM_ON_FULL_INVENTORY_EVERYWHERE  = 2,
+};
+
 enum DifficultyPreventionChangeType
 {
     DIFFICULTY_PREVENTION_CHANGE_NONE                   = 0,
@@ -207,7 +214,7 @@ public:
     void   RemoveInvite(Player* player);
     void   RemoveAllInvites();
     bool   AddLeaderInvite(Player* player);
-    bool   AddMember(Player* player);
+    bool   AddMember(Player* player, uint8 roles = 0);
     bool   RemoveMember(ObjectGuid guid, const RemoveMethod& method = GROUP_REMOVEMETHOD_DEFAULT, ObjectGuid kicker = ObjectGuid::Empty, const char* reason = nullptr);
     void   ChangeLeader(ObjectGuid guid);
     void   SetLootMethod(LootMethod method);
@@ -265,6 +272,8 @@ public:
     void SetBattlefieldGroup(Battlefield* bf);
     GroupJoinBattlegroundResult CanJoinBattlegroundQueue(Battleground const* bgTemplate, BattlegroundQueueTypeId bgQueueTypeId, uint32 MinPlayerCount, uint32 MaxPlayerCount, bool isRated, uint32 arenaSlot);
 
+    void DoMinimapPing(ObjectGuid sourceGuid, float mapX, float mapY);
+
     void ChangeMembersGroup(ObjectGuid guid, uint8 group);
     void SetTargetIcon(uint8 id, ObjectGuid whoGuid, ObjectGuid targetGuid);
     void SetGroupMemberFlag(ObjectGuid guid, bool apply, GroupMemberFlags flag);
@@ -304,9 +313,10 @@ public:
     void NeedBeforeGreed(Loot* loot, WorldObject* pLootedObject);
     void MasterLoot(Loot* loot, WorldObject* pLootedObject);
     Rolls::iterator GetRoll(ObjectGuid Guid);
-    void CountTheRoll(Rolls::iterator roll, Map* allowedMap);
+    void CountTheRoll(Rolls::iterator roll);
     bool CountRollVote(ObjectGuid playerGUID, ObjectGuid Guid, uint8 Choise);
-    void EndRoll(Loot* loot, Map* allowedMap);
+    void EndRoll(Loot* loot);
+    void RemovePlayerFromRolls(ObjectGuid guid);
 
     // related to disenchant rolls
     void ResetMaxEnchantingLevel();

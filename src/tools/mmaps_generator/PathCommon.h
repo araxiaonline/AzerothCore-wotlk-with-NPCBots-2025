@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Affero General Public License as published by the
- * Free Software Foundation; either version 3 of the License, or (at your
- * option) any later version.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -20,6 +20,7 @@
 
 #include <string>
 #include <vector>
+#include <boost/dll/runtime_symbol_info.hpp>
 
 #ifndef _WIN32
 #include <cstddef>
@@ -35,6 +36,11 @@
 
 namespace MMAP
 {
+    inline std::string executableDirectoryPath()
+    {
+        return boost::dll::program_location().parent_path().string();
+    }
+
     inline bool matchWildcardFilter(const char* filter, const char* str)
     {
         if (!filter || !str)
@@ -104,6 +110,11 @@ namespace MMAP
             errno = 0;
             if ((dp = readdir(dirp)) != nullptr)
             {
+                // skip the "." / ".." directory entries — they are not map/vmap files and
+                // their short names underflow the substr() tile-id parsing in discoverTiles
+                if (std::strcmp(dp->d_name, ".") == 0 || std::strcmp(dp->d_name, "..") == 0)
+                    continue;
+
                 if (matchWildcardFilter(filter.c_str(), dp->d_name))
                     fileList.emplace_back(dp->d_name);
             }
